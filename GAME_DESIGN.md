@@ -157,8 +157,6 @@ There is a distinction between:
 
 The player's task is partly to reconcile these different representations.
 
-**Development-only truth checks (agreed testing aid; not yet implemented, #25):** In development mode, each ticket has one two-state Match/Mismatch indicator, with **AND logic** across (1) reported versus actual workflow status, (2) reported versus actual work percentage (with consistent rounding), and (3) assigned developer ownership versus the developer currently active on that ticket. A hover/focus tooltip identifies *every* failed check and its values. The third check intentionally measures **operational alignment**, not whether ownership is truthful: a developer may legitimately be assigned to a ticket without actively working on it, particularly after completion. These indicators are strictly for manual development verification, not a player-facing trust or knowledge system. Future player-facing verification and uncertainty mechanics remain undecided.
-
 ### 4.3.1. Development diagnostics and future unlocks
 
 During prototype development, diagnostic displays expose true ticket size, completed and remaining work, active developer and work rate, estimated time to completion, developer assignments, and team-level totals. These help validate simulation behaviour.
@@ -270,7 +268,6 @@ Record significant decisions here as the project evolves.
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
 | Player-set ticket Rank | Agreed direction; not implemented (#12) | Explicit relative ordering set by drag-and-drop; represents managerial intent, not binding developer priority; future deviations to be designed |
-| Development truth Match/Mismatch indicators | Agreed testing aid; not implemented (#25) | One overall AND indicator for status, progress and assigned-versus-active developer alignment, with a tooltip listing failed comparisons; dev-only, not player knowledge |
 | Development and player UI visibility | Implemented prototype convention | #20: true-state diagnostics and Step/Restart/RNG tools are development-only; Pause/Resume, simulation clock, Kanban board and normal reported information remain player-facing. Vite development mode is a build mode, not a separate hosted environment. |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
