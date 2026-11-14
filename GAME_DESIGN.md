@@ -86,7 +86,7 @@ Tickets move through workflow stages representing the software development proce
 
 The player may need to intervene to keep the board accurate and the team productive.
 
-**Player-defined ticket Rank (agreed direction; not yet implemented, #12):** Tickets will carry an explicit relative `rank` set by the player, initially through drag-and-drop in To Do. Rank expresses managerial intended priority, not an objective urgency category and not an obligation that autonomous developers must always obey. The present prototype can consult rank when selecting eligible To Do work; future developer-specific judgments and deviations remain to be designed. Implementation and the treatment of tickets whose reported and actual columns disagree are still under discussion.
+**Player-defined ticket Rank (agreed design; not yet implemented, #12):** Tickets carry an explicit relative `rank` determined by the player, initially through drag-and-drop reordering within the **reported To Do** column. The player may reorder any ticket visible there even if its hidden actual status differs; reordering must not disclose that discrepancy. Rank expresses managerial intended priority, not an objective urgency category or an obligation that autonomous developers must obey. Under the current prototype selection rule, when a developer chooses To Do work, they select the highest-ranked *actually eligible* To Do ticket, skipping any ineligible ranked tickets. Developer-specific preferences and deviations remain a future design question.
 
 ### 4.1.1. Workflow stages (current prototype direction)
 
