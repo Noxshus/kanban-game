@@ -1,121 +1,91 @@
-import { useState } from 'react'
-import heroImg from './assets/hero.png'
-import reactLogo from './assets/react.svg'
-import viteLogo from './assets/vite.svg'
+import { useEffect, useState } from 'react'
+import { exampleGameState } from './data/exampleGameState'
+import { advanceSimulation } from './game/advanceSimulation'
+import type { WorkflowStatus } from './game/types'
+import { getPlayerView } from './store/playerView'
 import './App.css'
 
+const columns: { status: WorkflowStatus; title: string }[] = [
+  { status: 'todo', title: 'To Do' },
+  { status: 'in_progress', title: 'In Progress' },
+  { status: 'done', title: 'Done' },
+]
+
 function App() {
-  const [count, setCount] = useState(0)
+  const [state, setState] = useState(() => structuredClone(exampleGameState))
+  const [isPaused, setIsPaused] = useState(false)
+  const view = getPlayerView(state)
+
+  useEffect(() => {
+    if (isPaused) return
+
+    const timer = window.setInterval(() => {
+      setState((current) => advanceSimulation(current, 1))
+    }, 1000)
+
+    // Clean up on pause as well as unmount, including StrictMode effect restarts.
+    return () => window.clearInterval(timer)
+  }, [isPaused])
 
   return (
-    <>
-      <section id="center">
-        <div className="hero">
-          <img src={heroImg} className="base" width="170" height="179" alt="" />
-          <img src={reactLogo} className="framework" alt="React logo" />
-          <img src={viteLogo} className="vite" alt="Vite logo" />
+    <main className="game">
+      <header>
+        <h1>Kanban Game</h1>
+        <div className="simulation-controls">
+          <p>Simulation time: {view.simulationTime} seconds</p>
+          <p role="status">{isPaused ? 'Paused' : 'Running'}</p>
+          <button type="button" onClick={() => setIsPaused((paused) => !paused)}>
+            {isPaused ? 'Resume' : 'Pause'}
+          </button>
         </div>
-        <div>
-          <h1>Get started</h1>
-          <p>
-            Edit <code>src/App.tsx</code> and save to test <code>HMR</code>
-          </p>
-        </div>
-        <button
-          type="button"
-          className="counter"
-          onClick={() => setCount((count) => count + 1)}
-        >
-          Count is {count}
-        </button>
-      </section>
+      </header>
 
-      <div className="ticks"></div>
-
-      <section id="next-steps">
-        <div id="docs">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#documentation-icon"></use>
-          </svg>
-          <h2>Documentation</h2>
-          <p>Your questions, answered</p>
-          <ul>
-            <li>
-              <a href="https://vite.dev/" target="_blank">
-                <img className="logo" src={viteLogo} alt="" />
-                Explore Vite
-              </a>
-            </li>
-            <li>
-              <a href="https://react.dev/" target="_blank">
-                <img className="button-icon" src={reactLogo} alt="" />
-                Learn more
-              </a>
-            </li>
-          </ul>
-        </div>
-        <div id="social">
-          <svg className="icon" role="presentation" aria-hidden="true">
-            <use href="/icons.svg#social-icon"></use>
-          </svg>
-          <h2>Connect with us</h2>
-          <p>Join the Vite community</p>
-          <ul>
-            <li>
-              <a href="https://github.com/vitejs/vite" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#github-icon"></use>
-                </svg>
-                GitHub
-              </a>
-            </li>
-            <li>
-              <a href="https://chat.vite.dev/" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#discord-icon"></use>
-                </svg>
-                Discord
-              </a>
-            </li>
-            <li>
-              <a href="https://x.com/vite_js" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#x-icon"></use>
-                </svg>
-                X.com
-              </a>
-            </li>
-            <li>
-              <a href="https://bsky.app/profile/vite.dev" target="_blank">
-                <svg
-                  className="button-icon"
-                  role="presentation"
-                  aria-hidden="true"
-                >
-                  <use href="/icons.svg#bluesky-icon"></use>
-                </svg>
-                Bluesky
-              </a>
-            </li>
-          </ul>
+      <section aria-labelledby="board-heading">
+        <h2 id="board-heading">Kanban board</h2>
+        <div className="board">
+          {columns.map(({ status, title }) => {
+            // Board placement reflects reports, independently of simulation progress.
+            const tickets = view.tickets.filter((ticket) => ticket.reportedStatus === status)
+            return (
+              <section className="column" key={status} aria-labelledby={`column-${status}`}>
+                <h3 id={`column-${status}`}>{title}</h3>
+                <ul className="ticket-list">
+                  {tickets.map((ticket) => {
+                    const assignee = view.developers.find(
+                      (developer) => developer.id === ticket.assignedDeveloperId,
+                    )
+                    return (
+                      <li className="ticket" key={ticket.id}>
+                        <span className="ticket-id">{ticket.id}</span>
+                        <h4>{ticket.title}</h4>
+                        <p>{assignee ? `Assigned to: ${assignee.name}` : 'Unassigned'}</p>
+                        <label className="ticket-progress">
+                          <span>Reported progress: {Math.round(ticket.reportedProgress)}%</span>
+                          <progress max={100} value={ticket.reportedProgress} />
+                        </label>
+                      </li>
+                    )
+                  })}
+                </ul>
+                {tickets.length === 0 && <p>No tickets</p>}
+              </section>
+            )
+          })}
         </div>
       </section>
 
-      <div className="ticks"></div>
-      <section id="spacer"></section>
-    </>
+      <section aria-labelledby="developers-heading">
+        <h2 id="developers-heading">Developers</h2>
+        <ul className="developer-list">
+          {view.developers.map((developer) => (
+            <li key={developer.id}>
+              <strong>{developer.name}</strong>
+              <span>Productivity: {developer.productivity} work/second</span>
+            </li>
+          ))}
+        </ul>
+      </section>
+    </main>
   )
 }
 
