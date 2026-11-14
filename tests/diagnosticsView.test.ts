@@ -10,7 +10,7 @@ test('derives authoritative ticket, developer and team metrics without mutation'
   const original = structuredClone(state)
   const view = getDiagnosticsView(state)
   assert.deepEqual(view.tickets[0], {
-    id: 'ticket-1', requiredWork: 10, completedWork: 4, remainingWork: 6,
+    id: 'ticket-1', rank: 1, requiredWork: 10, completedWork: 4, remainingWork: 6,
     activeDeveloperName: 'Alex', workRate: 1, estimatedSeconds: 6,
   })
   assert.equal(view.tickets[1].estimatedSeconds, 5)
@@ -94,7 +94,7 @@ test('diagnostics update live through completion and remain separate from player
   assert.equal(player.tickets[0].reportedStatus, 'todo')
   assert.deepEqual(Object.keys(player).sort(), ['developers', 'simulationTime', 'tickets'])
   assert.deepEqual(Object.keys(player.tickets[0]).sort(),
-    ['assignedDeveloperId', 'id', 'reportedProgress', 'reportedStatus', 'title'])
+    ['assignedDeveloperId', 'id', 'rank', 'reportedProgress', 'reportedStatus', 'title'])
   assert.deepEqual(Object.keys(player.developers[0]).sort(), ['id', 'name', 'productivity'])
   getDiagnosticsView(state)
   assert.deepEqual(getPlayerView(state), player)
@@ -139,4 +139,14 @@ test('diagnostics ignore stale active-ticket references to Backlog', () => {
   assert.equal(view.tickets[0].workRate, 0)
   assert.equal(view.tickets[0].estimatedSeconds, null)
   assert.deepEqual(state, original)
+})
+
+test('diagnostics reflect managerial rank immediately after reorder', async () => {
+  const { reorderTodo } = await import('../src/game/rank.ts')
+  const state = structuredClone(exampleGameState)
+  const result = reorderTodo(state, 'ticket-2', 'ticket-5', true)
+  const before = getDiagnosticsView(state).tickets.find(t => t.id === 'ticket-2')!
+  const after = getDiagnosticsView(result).tickets.find(t => t.id === 'ticket-2')!
+  assert.notEqual(after.rank, before.rank)
+  assert.equal(after.rank, result.tickets.find(t => t.id === 'ticket-2')!.rank)
 })

@@ -24,6 +24,11 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
+      assert.match(html, /<li[^>]*draggable="true"[^>]*><span class="ticket-id">ticket-2<\/span>/)
+      assert.ok(!html.includes('Move ticket-2 up'))
+      assert.ok(!html.includes('Move ticket-2 down'))
+      assert.equal(html.includes('Rank: 2'), mode === 'development')
+      assert.doesNotMatch(html, /<li[^>]*draggable="true"[^>]*><span class="ticket-id">ticket-6<\/span>/)
       const header = html.match(/<header>(.*?)<\/header>/)?.[1] ?? ''
       assert.match(header, /Simulation time: 0 seconds/)
       assert.match(header, /role="status">Paused/)

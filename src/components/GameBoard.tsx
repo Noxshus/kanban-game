@@ -2,6 +2,7 @@ import type { WorkflowStatus } from '../game/types'
 import type { getPlayerView } from '../store/playerView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DeveloperDiagnostics, TicketDiagnostics } from './Diagnostics'
+import { useState } from 'react'
 
 const columns: { status: WorkflowStatus; title: string }[] = [
   { status: 'backlog', title: 'Backlog' },
@@ -11,11 +12,15 @@ const columns: { status: WorkflowStatus; title: string }[] = [
 ]
 
 interface Props {
+  onReorder?: (ticketId: string, targetId: string, after: boolean) => void
   view: ReturnType<typeof getPlayerView>
   diagnostics?: DiagnosticsView | null
 }
 
-export function GameBoard({ view, diagnostics }: Props) {
+export function GameBoard({ view, diagnostics, onReorder }: Props) {
+  const [dragged, setDragged] = useState<string | null>(null)
+  const [dropTarget, setDropTarget] = useState<string | null>(null)
+  const [dropAfter, setDropAfter] = useState(false)
   return (
     <>
       <section aria-labelledby="board-heading">
@@ -34,7 +39,30 @@ export function GameBoard({ view, diagnostics }: Props) {
                     )
                     const diagnostic = diagnostics?.tickets.find((item) => item.id === ticket.id)
                     return (
-                      <li className="ticket" key={ticket.id}>
+                      <li className={`ticket${dropTarget === ticket.id ? (dropAfter ? ' drop-after' : ' drop-before') : ''}`} key={ticket.id}
+                        draggable={status === 'todo'}
+                        onDragStart={status === 'todo' ? (event) => {
+                          setDragged(ticket.id)
+                          event.dataTransfer.effectAllowed = 'move'
+                          event.dataTransfer.setData('text/plain', ticket.id)
+                        } : undefined}
+                        onDragEnd={() => { setDragged(null); setDropTarget(null) }}
+                        onDragOver={status === 'todo' ? (event) => {
+                          if (!dragged) return
+                          event.preventDefault()
+                          event.dataTransfer.dropEffect = 'move'
+                          setDropTarget(ticket.id)
+                          const bounds = event.currentTarget.getBoundingClientRect()
+                          setDropAfter(event.clientY > bounds.top + bounds.height / 2)
+                        } : undefined}
+                        onDrop={status === 'todo' ? (event) => {
+                          event.preventDefault()
+                          if (dragged && event.dataTransfer.getData('text/plain') === dragged) {
+                            const bounds = event.currentTarget.getBoundingClientRect()
+                            onReorder?.(dragged, ticket.id, event.clientY > bounds.top + bounds.height / 2)
+                          }
+                          setDragged(null); setDropTarget(null)
+                        } : undefined}>
                         <span className="ticket-id">{ticket.id}</span>
                         <h4>{ticket.title}</h4>
                         <p>{assignee ? `Assigned to: ${assignee.name}` : 'Unassigned'}</p>

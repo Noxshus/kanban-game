@@ -8,6 +8,7 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
   return (
     <div className="diagnostics ticket-diagnostics">
       <strong>Development diagnostics — true values</strong>
+      <p>Rank: {ticket.rank}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
       <p>Actual work: {format(ticket.completedWork)} / {format(ticket.requiredWork)} work units</p>
       <p>Remaining: {format(ticket.remainingWork)} work units</p>

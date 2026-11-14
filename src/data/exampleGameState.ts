@@ -24,7 +24,7 @@ export const exampleGameState: GameState = {
   ],
   tickets: [
     {
-      id: 'ticket-1',
+      id: 'ticket-1', rank: 1,
       title: 'Build the navigation menu',
       actualStatus: 'in_progress',
       reportedStatus: 'in_progress',
@@ -34,7 +34,7 @@ export const exampleGameState: GameState = {
       reportedProgress: 40,
     },
     {
-      id: 'ticket-2',
+      id: 'ticket-2', rank: 2,
       title: 'Fix the search filter',
       actualStatus: 'in_progress',
       reportedStatus: 'todo',
@@ -44,7 +44,7 @@ export const exampleGameState: GameState = {
       reportedProgress: 25,
     },
     {
-      id: 'ticket-3',
+      id: 'ticket-3', rank: 3,
       title: 'Update the help page',
       actualStatus: 'todo',
       reportedStatus: 'todo',
@@ -53,7 +53,7 @@ export const exampleGameState: GameState = {
       reportedProgress: 0,
     },
     {
-      id: 'ticket-4',
+      id: 'ticket-4', rank: 4,
       title: 'Add form validation',
       actualStatus: 'todo',
       reportedStatus: 'todo',
@@ -62,7 +62,7 @@ export const exampleGameState: GameState = {
       reportedProgress: 0,
     },
     {
-      id: 'ticket-5',
+      id: 'ticket-5', rank: 5,
       title: 'Correct the page heading',
       actualStatus: 'todo',
       reportedStatus: 'todo',
@@ -71,12 +71,12 @@ export const exampleGameState: GameState = {
       reportedProgress: 0,
     },
     {
-      id: 'ticket-6', title: 'Improve keyboard navigation',
+      id: 'ticket-6', rank: 6, title: 'Improve keyboard navigation',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 6, completedWork: 0, reportedProgress: 0,
     },
     {
-      id: 'ticket-7', title: 'Review error messages',
+      id: 'ticket-7', rank: 7, title: 'Review error messages',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 4, completedWork: 0, reportedProgress: 0,
     },

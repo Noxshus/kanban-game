@@ -11,6 +11,7 @@ test('player view exposes only reported ticket information and public developer 
   const view = getPlayerView(state)
   assert.deepEqual(view.tickets[0], {
     id: 'ticket-1',
+    rank: 1,
     title: 'Build the navigation menu',
     reportedStatus: 'in_progress',
     reportedProgress: 15,

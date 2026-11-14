@@ -3,6 +3,8 @@ export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export interface Ticket {
   id: string
   title: string
+  // Global position 1..N (1 highest): managerial intent, not guaranteed developer compliance.
+  rank: number
 
    // Actual progress and reported progress are deliberately separate. The Kanban board may not reflect reality.
 

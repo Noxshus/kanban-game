@@ -125,7 +125,7 @@ When a developer becomes idle, they may take an eligible **To Do** ticket or res
 
 If both To Do and unclaimed In Progress tickets are available, the developer makes a **50/50 random selection between those two categories**. If only one category is available, they choose that category without a category roll.
 
-**Second-stage ticket selection:** After choosing **In Progress**, the developer selects **uniformly at random among all eligible, unclaimed, unfinished In Progress tickets**. This second draw also applies when In Progress is the only available category (unless only one eligible ticket exists, in which case the result is unambiguous). After choosing **To Do**, the prototype selects the first eligible To Do ticket in its existing order. With both categories available and three eligible In Progress tickets, each has a one-sixth overall selection probability.
+**Second-stage ticket selection:** After choosing **In Progress**, the developer selects **uniformly at random among all eligible, unclaimed, unfinished In Progress tickets**. This second draw also applies when In Progress is the only available category (unless only one eligible ticket exists, in which case the result is unambiguous). After choosing **To Do**, the prototype selects the actually eligible To Do ticket with the lowest global rank (rank 1 is highest priority). With both categories available and three eligible In Progress tickets, each has a one-sixth overall selection probability.
 
 This is intentionally a **two-stage decision**: the category-selection roll must not be weighted by the number of tickets in each category. Future developer attributes (e.g. a proposed **Judgement** attribute) may influence both the category choice and which particular ticket is considered worthwhile, but no attribute or specific weighting mechanic is confirmed yet.
 
@@ -259,7 +259,7 @@ Record significant decisions here as the project evolves.
 | Backlog separate from committed work | Confirmed | Backlog is potential work; only committed or already-started work is eligible for normal selection |
 | Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
 | In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
-| Resume vs start choice | Prototype decision | Implemented in #14 (`953a722`): 50/50 category roll when both are eligible, uniform random In Progress ticket selection, first eligible To Do ticket otherwise; reproducible game-state RNG |
+| Resume vs start choice | Prototype decision | Implemented in #14 (`953a722`): 50/50 category roll when both are eligible, uniform random In Progress ticket selection; #12 uses highest global rank among actually eligible To Do tickets; reproducible game-state RNG |
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Player-set ticket Rank | Agreed model; local implementation under refinement (#12) | Unique global 1..N order; drag within reported To Do permutes only its rank slots, preserving other columns' ranks; managerial intent, not binding developer priority |
@@ -269,3 +269,29 @@ Record significant decisions here as the project evolves.
 ---
 
 *This document describes the intended game experience. It is not an implementation specification. Unresolved mechanics must not be treated as approved requirements.*
+
+### Prototype managerial ranking (#12)
+
+All tickets share one global list with unique consecutive integer `rank` values
+from 1 through N, across all columns. Rank 1 is highest. This expresses managerial intent, not an
+objective urgency category or guaranteed developer obedience. The player can drag
+cards within reported To Do, dropping on the upper/lower half of a card to place
+before/after it. Keyboard-only ranking is deferred to #27, and compact Move to
+Top/Bottom actions are deferred to #26. Hidden
+actual status does not constrain this visible action. Other columns cannot accept
+moves. Reordering works paused or running and changes only ranks in the reported
+To Do group: sort all tickets by rank, identify the slots belonging to reported
+To Do tickets, and permute only the tickets in those slots. Other columns retain
+their exact ranks, even when interleaved. No second ranking structure is stored.
+The example fixture replaces its former 10-point increments with 1..N directly;
+there is no persisted-save migration in this prototype. Malformed rank sets are
+rejected as no-op drops rather than repaired by changing unrelated columns.
+
+The existing 50/50 category decision and uniform In Progress selection remain.
+When To Do is chosen, actual eligibility and active claims are checked first,
+then the lowest rank wins. Valid states have no ties. No developer-specific rank preferences
+are implemented. Rank and display order are exposed by the player view; actual
+status and work remain excluded. Native HTML drag/drop is used without a library;
+keyboard-only reordering remains deferred. Desktop drag/drop requires
+hands-on verification before commit; automated transition and rendering tests do
+not emulate a browser drag gesture.

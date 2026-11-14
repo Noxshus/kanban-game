@@ -1,6 +1,7 @@
 import { exampleGameState } from '../data/exampleGameState.ts'
 import { advanceSimulation } from '../game/advanceSimulation.ts'
 import type { GameState } from '../game/types'
+import { reorderTodo } from '../game/rank.ts'
 
 export interface SimulationSession {
   game: GameState
@@ -8,6 +9,7 @@ export interface SimulationSession {
 }
 
 export type SimulationAction =
+  | { type: 'reorderTodo'; ticketId: string; targetId: string; after?: boolean }
   | { type: 'togglePause' }
   | { type: 'tick' }
   | { type: 'step' }
@@ -31,6 +33,10 @@ export function simulationReducer(
   action: SimulationAction,
 ): SimulationSession {
   switch (action.type) {
+    case 'reorderTodo': {
+      const game = reorderTodo(session.game, action.ticketId, action.targetId, action.after)
+      return game === session.game ? session : { ...session, game }
+    }
     case 'togglePause':
       return { ...session, isPaused: !session.isPaused }
     case 'tick':

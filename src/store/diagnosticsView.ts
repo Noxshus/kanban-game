@@ -30,6 +30,7 @@ export function getDiagnosticsView(state: GameState) {
       && (ticket.actualStatus === 'done' || remainingWork === 0)
     return {
       id: ticket.id,
+      rank: ticket.rank,
       requiredWork: ticket.requiredWork,
       completedWork: ticket.completedWork,
       remainingWork,

@@ -1,6 +1,7 @@
 import type { GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
+import { compareRank } from './rank.ts'
 
 export function advanceSimulation(
   state: GameState,
@@ -60,7 +61,7 @@ export function advanceSimulation(
       const eligible = tickets.filter((candidate) =>
         candidate.id !== excludedId && !isComplete(candidate) && !claimedTickets.has(candidate.id),
       )
-      const todo = eligible.find((candidate) => candidate.actualStatus === 'todo')
+      const todo = eligible.filter((candidate) => candidate.actualStatus === 'todo').sort(compareRank)[0]
       const inProgress = eligible.filter((candidate) => candidate.actualStatus === 'in_progress')
       // Provisional category choice, independent of category size; roll only for new work.
       // Inject random values in tests. Call boundaries still determine when new selections occur.

@@ -14,7 +14,7 @@ function createState(): GameState {
     tickets: [
       {
         id: 'ticket-1',
-        title: 'Example task',
+        title: 'Example task', rank: 10,
         actualStatus: 'todo',
         reportedStatus: 'todo',
         requiredWork: 10,

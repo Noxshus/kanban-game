@@ -136,6 +136,10 @@
   margin: 8px 0;
 }
 
+.ticket[draggable="true"] { cursor: grab; }
+.ticket.drop-before { box-shadow: 0 -4px #245da8; }
+.ticket.drop-after { box-shadow: 0 4px #245da8; }
+
 .ticket-progress {
   display: grid;
   gap: 4px;

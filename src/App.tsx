@@ -36,9 +36,9 @@ function App() {
       {/* One build-mode boundary owns all true-state development UI. */}
       {import.meta.env.DEV ? (
         <DevelopmentUI state={state} isPaused={isPaused} dispatch={dispatch}>
-          {(diagnostics) => <GameBoard view={view} diagnostics={diagnostics} />}
+          {(diagnostics) => <GameBoard onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
         </DevelopmentUI>
-      ) : <GameBoard view={view} />}
+      ) : <GameBoard onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
     </main>
   )
 }
