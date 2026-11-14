@@ -38,7 +38,6 @@ export function advanceSimulation(
         !isComplete(candidate) && !claimedTickets.has(candidate.id),
       )
       if (ticket) {
-        // Ownership is independent of active work and is never reassigned by selection.
         developer.activeTicketID = ticket.id
         claimedTickets.add(ticket.id)
       }
@@ -47,6 +46,10 @@ export function advanceSimulation(
     for (const developer of developers) {
       const ticket = ticketsById.get(developer.activeTicketID ?? '')
       if (!ticket) continue
+
+      // Temporary prototype rule: ownership follows active work, but remains recorded after completion.
+      // Keep the fields separate so future reporting can intentionally diverge.
+      ticket.assignedDeveloperId = developer.id
 
       ticket.completedWork = Math.min(
         ticket.requiredWork,

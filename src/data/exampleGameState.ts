@@ -63,11 +63,11 @@ export const exampleGameState: GameState = {
     {
       id: 'ticket-5',
       title: 'Correct the page heading',
-      actualStatus: 'done',
-      reportedStatus: 'done',
+      actualStatus: 'todo',
+      reportedStatus: 'todo',
       requiredWork: 3,
-      completedWork: 3,
-      reportedProgress: 100,
+      completedWork: 0,
+      reportedProgress: 0,
     },
   ],
 }

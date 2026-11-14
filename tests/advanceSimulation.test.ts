@@ -151,7 +151,7 @@ test('reserves existing active work before idle developers select in ticket orde
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
   assert.equal(result.tickets[0].completedWork, 3)
   assert.equal(result.tickets[1].completedWork, 2)
-  assert.equal(result.tickets[1].assignedDeveloperId, 'someone-else')
+  assert.equal(result.tickets[1].assignedDeveloperId, 'idle')
 })
 
 test('completion releases active work and subsequent calls select the next ticket', () => {
@@ -182,4 +182,36 @@ test('completed references are cleared and completed tickets are never selected 
   assert.equal(result.tickets[0].completedWork, 10)
   assert.equal(result.tickets[0].reportedStatus, 'done')
   assert.equal(advanceSimulation(result, 100).developers[0].activeTicketID, undefined)
+})
+
+test('prototype assignment follows pickup and existing active work without mutating input', () => {
+  for (const activeTicketID of [undefined, 'ticket-1']) {
+    for (const assignedDeveloperId of [undefined, 'someone-else']) {
+      const state = createState()
+      state.developers[0].activeTicketID = activeTicketID
+      state.tickets[0].assignedDeveloperId = assignedDeveloperId
+      const result = advanceSimulation(state, 1)
+      assert.equal(result.tickets[0].assignedDeveloperId, 'dev-1')
+      assert.equal(result.developers[0].activeTicketID, 'ticket-1')
+      assert.equal(state.tickets[0].assignedDeveloperId, assignedDeveloperId)
+    }
+  }
+})
+
+test('completion retains the last assignee after active work is released and on later ticks', () => {
+  const state = createState()
+  state.tickets[0].assignedDeveloperId = 'someone-else'
+  const completed = advanceSimulation(state, 100)
+  assert.equal(completed.tickets[0].assignedDeveloperId, 'dev-1')
+  assert.equal(completed.developers[0].activeTicketID, undefined)
+  assert.equal(advanceSimulation(completed, 1).tickets[0].assignedDeveloperId, 'dev-1')
+})
+
+test('unclaimed backlog remains unassigned and makes no progress', () => {
+  const state = createState()
+  state.tickets.push({ ...state.tickets[0], id: 'waiting', completedWork: 0, reportedProgress: 0 })
+  const result = advanceSimulation(state, 1)
+  assert.equal(result.tickets[1].assignedDeveloperId, undefined)
+  assert.equal(result.tickets[1].completedWork, 0)
+  assert.equal(result.tickets[1].reportedStatus, 'todo')
 })
