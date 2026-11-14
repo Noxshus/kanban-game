@@ -1,7 +1,7 @@
 # Kanban Game - Game Design Document
 
 **Status:** Early concept / Pre-production  
-**Version:** 0.1  
+**Version:** 0.2  
 **Working title:** Kanban Game
 
 ---
@@ -86,7 +86,22 @@ Tickets move through workflow stages representing the software development proce
 
 The player may need to intervene to keep the board accurate and the team productive.
 
-The exact workflow stages have not yet been finalized.
+### 4.1.1. Workflow stages (current prototype direction)
+
+The current prototype distinguishes four stages:
+
+- **Backlog:** Potential work that management has not yet committed to development. A ticket can remain here indefinitely; not every idea deserves implementation.
+- **To Do:** Committed, authorized work awaiting a developer.
+- **In Progress:** Work that has started but is not necessarily being actively worked on at this instant.
+- **Done:** Completed work.
+
+These are currently presented together as four columns for ease of inspection. A separate Backlog screen may be preferable as the game grows; that presentation choice remains open.
+
+A developer's **active work** is distinct from a ticket's In Progress workflow status. A ticket can remain In Progress without an active developer and can later be resumed by another developer.
+
+The Backlog boundary is deliberate: normal autonomous developer selection must not pick Backlog tickets. Misbehaviour that breaks this rule is a potential future mechanic, not part of the current prototype.
+
+For now, true status, reported status, reported progress and visible assignment are kept in sync for verification when work advances. The distinct underlying fields must remain, because unreliable reporting is a confirmed long-term design pillar.
 
 ### 4.2. Developer Simulation
 
@@ -102,7 +117,19 @@ They may:
 
 Developer behaviour will eventually be influenced by individual attributes and competencies.
 
-The exact attributes and decision-making systems remain undecided.
+### 4.2.1. Work selection (next prototype rule)
+
+When a developer becomes idle, they may take an eligible **To Do** ticket or resume an unfinished **In Progress** ticket that no other developer is actively working on. **Backlog** and **Done** are not eligible under ordinary behaviour.
+
+If both To Do and unclaimed In Progress tickets are available, the developer makes a **50/50 random selection between those two categories**. If only one category is available, they choose from that category without a roll. Within the chosen category, the prototype selects the first eligible ticket in the existing ordering.
+
+This roll takes place **when choosing new work**, not every simulation tick; developers do not repeatedly switch tickets because of a new roll. No two developers work on the same ticket under the current prototype rules.
+
+This equal probability is a **temporary baseline**, not a permanent statement about every developer's behaviour. Later developer attributes, preferences, management abilities or situational factors may change selection probabilities. Those details remain undecided.
+
+Implementation is tracked in GitHub issue #14 and should not be presented as already implemented until verified. Random selection should be controllable in tests so the simulation remains reliably testable.
+
+The exact future developer attributes and richer decision-making systems remain undecided.
 
 ### 4.3. Information and Deduction
 
@@ -115,6 +142,14 @@ There is a distinction between:
 3. **Player knowledge:** What the player has successfully established through available information and abilities.
 
 The player's task is partly to reconcile these different representations.
+
+### 4.3.1. Development diagnostics and future unlocks
+
+During prototype development, diagnostic displays expose true ticket size, completed and remaining work, active developer and work rate, estimated time to completion, developer assignments, and team-level totals. These help validate simulation behaviour.
+
+They are **development diagnostics**, not a commitment that the eventual player can always see accurate values. Individual metrics may become unlockable, approximate, misleading or subject to investigation. Keep authoritative simulation values separate from reported values and the player-facing information model.
+
+The prototype also begins paused with diagnostics shown by default to support manual verification; this is a development convenience, not a final gameplay decision.
 
 ### 4.4. Player Attributes and Abilities
 
@@ -181,9 +216,10 @@ The visual identity, aesthetic direction, and user experience conventions remain
 
 The following questions remain unresolved:
 
-- What are the precise Kanban workflow stages?
+- Will Backlog eventually have a separate screen rather than a board column?
 - What resources does the player accumulate?
-- How do developers decide what to work on?
+- How will developer attributes and circumstances affect the provisional 50/50 decision between resuming unfinished work and starting To Do work?
+- Should unclaimed In Progress work or To Do work receive any default preference beyond the initial neutral rule?
 - How are developer competencies represented?
 - What RPG attributes does the player possess?
 - How does the player investigate discrepancies?
@@ -207,6 +243,12 @@ Record significant decisions here as the project evolves.
 | Incremental progression | Confirmed | Details TBD |
 | Career-based prestige | Confirmed | Changing employers |
 | Defined game ending | Confirmed | Victory conditions TBD |
+| Backlog separate from committed work | Confirmed | Backlog is potential work; only committed or already-started work is eligible for normal selection |
+| Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
+| In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
+| Resume vs start choice | Prototype decision | 50/50 category roll when both are eligible; implementation pending #14 |
+| Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
+| Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
 
