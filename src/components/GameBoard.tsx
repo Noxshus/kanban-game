@@ -2,7 +2,8 @@ import type { WorkflowStatus } from '../game/types'
 import type { getPlayerView } from '../store/playerView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DeveloperDiagnostics, TicketDiagnostics } from './Diagnostics'
-import { useState } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import { createEdgeScroller, edgeSpeed } from './edgeScroll'
 
 const columns: { status: WorkflowStatus; title: string }[] = [
   { status: 'backlog', title: 'Backlog' },
@@ -21,6 +22,81 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
   const [dragged, setDragged] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [dropAfter, setDropAfter] = useState(false)
+  const todoColumn = useRef<HTMLElement>(null)
+  const dragId = useRef<string | null>(null)
+  const onReorderRef = useRef(onReorder)
+  useEffect(() => { onReorderRef.current = onReorder }, [onReorder])
+  useEffect(() => {
+    let x = 0, y = 0
+    let container: HTMLElement | null = null
+    const findTarget = () => {
+      const element = document.elementFromPoint(x, y)
+      if (element?.closest('.development-toolbar, .development-panel')) return null
+      const card = element?.closest<HTMLElement>('[data-todo-ticket]')
+      return card && todoColumn.current?.contains(card) ? card : null
+    }
+    const refresh = () => {
+      const card = findTarget()
+      setDropTarget(card?.dataset.todoTicket ?? null)
+      if (card) { const rect = card.getBoundingClientRect(); setDropAfter(y > rect.top + rect.height / 2) }
+    }
+    const scroller = createEdgeScroller({
+      request: cb => requestAnimationFrame(cb), cancel: id => cancelAnimationFrame(id),
+      scroll: pixels => {
+        if (!container) return false
+        const before = container.scrollTop
+        container.scrollTop += pixels
+        return container.scrollTop !== before
+      }, refresh,
+    })
+    function dragover(event: DragEvent) {
+      if (!dragId.current || !todoColumn.current) return
+      x = event.clientX; y = event.clientY
+      if (!container) {
+        let parent = todoColumn.current.parentElement
+        while (parent && parent !== document.body && parent !== document.documentElement) {
+          const style = getComputedStyle(parent)
+          if (/(auto|scroll)/.test(style.overflowY) && parent.scrollHeight > parent.clientHeight) break
+          parent = parent.parentElement
+        }
+        container = parent && parent !== document.body && parent !== document.documentElement
+          ? parent : document.scrollingElement as HTMLElement | null
+      }
+      const column = todoColumn.current.getBoundingClientRect()
+      const viewport = container === document.scrollingElement
+        ? { top: 0, bottom: window.innerHeight } : container?.getBoundingClientRect()
+      const underPointer = document.elementFromPoint(x, y)
+      const blocked = underPointer?.closest('.development-toolbar, .development-panel')
+      scroller.update(viewport && x >= column.left && x <= column.right && !blocked
+        ? edgeSpeed(y, Math.max(0, viewport.top), Math.min(window.innerHeight, viewport.bottom)) : 0)
+      refresh()
+      if (findTarget()) { event.preventDefault(); if (event.dataTransfer) event.dataTransfer.dropEffect = 'move' }
+    }
+    function end() { scroller.stop(); container = null; dragId.current = null; setDragged(null); setDropTarget(null) }
+    function leave(event: DragEvent) {
+      if (dragId.current && !event.relatedTarget &&
+        (event.clientX <= 0 || event.clientY <= 0 || event.clientX >= window.innerWidth || event.clientY >= window.innerHeight)) {
+        scroller.stop(); setDropTarget(null)
+      }
+    }
+    function drop(event: DragEvent) {
+      if (!dragId.current) return
+      // Hit-test at drop time: native drag targets can lag behind programmatic scrolling.
+      x = event.clientX; y = event.clientY
+      const card = findTarget()
+      if (card && event.dataTransfer?.getData('text/plain') === dragId.current) {
+        const bounds = card.getBoundingClientRect()
+        event.preventDefault(); event.stopPropagation()
+        onReorderRef.current?.(dragId.current, card.dataset.todoTicket!, y > bounds.top + bounds.height / 2)
+      }
+      end()
+    }
+    document.addEventListener('dragover', dragover, true)
+    document.addEventListener('drop', drop, true)
+    document.addEventListener('dragend', end, true)
+    document.addEventListener('dragleave', leave, true)
+    return () => { scroller.stop(); document.removeEventListener('dragover', dragover, true); document.removeEventListener('drop', drop, true); document.removeEventListener('dragend', end, true); document.removeEventListener('dragleave', leave, true) }
+  }, [])
   return (
     <>
       <section aria-labelledby="board-heading">
@@ -30,7 +106,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
             // Board placement reflects reports, independently of simulation progress.
             const tickets = view.tickets.filter((ticket) => ticket.reportedStatus === status)
             return (
-              <section className="column" key={status} aria-labelledby={`column-${status}`}>
+              <section className="column" key={status} ref={status === 'todo' ? todoColumn : undefined} aria-labelledby={`column-${status}`}>
                 <h3 id={`column-${status}`}>{title}</h3>
                 <ul className="ticket-list">
                   {tickets.map((ticket) => {
@@ -40,9 +116,11 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                     const diagnostic = diagnostics?.tickets.find((item) => item.id === ticket.id)
                     return (
                       <li className={`ticket${dropTarget === ticket.id ? (dropAfter ? ' drop-after' : ' drop-before') : ''}`} key={ticket.id}
+                        data-todo-ticket={status === 'todo' ? ticket.id : undefined}
                         draggable={status === 'todo'}
                         onDragStart={status === 'todo' ? (event) => {
                           setDragged(ticket.id)
+                          dragId.current = ticket.id
                           event.dataTransfer.effectAllowed = 'move'
                           event.dataTransfer.setData('text/plain', ticket.id)
                         } : undefined}
