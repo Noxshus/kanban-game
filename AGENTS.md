@@ -30,14 +30,21 @@ Do not treat proposed mechanics or open design questions as approved implementat
 - Avoid unnecessary dependencies.
 - Do not introduce complex abstractions prematurely.
 
+## Simulation architecture invariants
+
+- Preserve pure, deterministic simulation transitions; seeded random draws belong to simulation state, not ambient browser randomness.
+- Keep reported workflow status and progress distinct from actual ticket status and completed work. Developer assignment represents ownership, not necessarily active work.
+- Developers select only eligible committed To Do or unfinished unclaimed In Progress work under ordinary rules. Preserve the category-selection and switching rules in `GAME_DESIGN.md` unless the design changes.
+- Keep player-facing selectors from exposing authoritative diagnostic values. Technical regression cases and implementation particulars belong in code/tests or finite GitHub issues, not in the game design decision log.
+
 ## Development UI visibility
 
 - Use the single `import.meta.env.DEV` boundary in `src/App.tsx` for development UI.
-- Put development controls, diagnostic visibility state, and authoritative selectors in `DevelopmentUI` and its children. Future diagnostic overlays (#19) belong inside this boundary.
+- Put development controls, diagnostic visibility state, and authoritative selectors in `DevelopmentUI` and its children. The floating development toolbar and diagnostic overlays (#19) live inside this boundary.
 - Production (`npm run build` then `npm run preview`, also GitHub Pages) renders the reported board, normal developer information, Pause/Resume, and simulation clock. Step, Restart, RNG tools, and all true-state diagnostics are development-only.
 - Keep simulation behavior independent of Vite build mode and keep hidden values out of `getPlayerView`.
 - This is a UI visibility convention, not information security: all simulation state exists client-side. Do not add staging, authentication, or a feature-flag framework for it.
-- Ticket truth Match/Mismatch indicators are a **development-only diagnostic feature** tracked in [issue #25](https://github.com/Noxshus/kanban-game/issues/25), not a player-facing game mechanic. Compare reported and actual values through diagnostic selectors, without leaking authoritative state into the player view. Follow the issue for its detailed checks and tooltip behaviour.
+- Ticket truth Match/Mismatch indicators are a **proposed development-only diagnostic feature** tracked in [issue #25](https://github.com/Noxshus/kanban-game/issues/25), not a player-facing mechanic. Compare reported and actual values through diagnostic selectors without leaking authoritative state into the player view; the detailed acceptance criteria belong in the issue.
 
 
 ## AI-assisted development workflow
