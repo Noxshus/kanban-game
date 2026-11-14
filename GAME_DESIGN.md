@@ -86,7 +86,7 @@ Tickets move through workflow stages representing the software development proce
 
 The player may need to intervene to keep the board accurate and the team productive.
 
-**Player-defined ticket Rank (agreed design; not yet implemented, #12):** Tickets carry an explicit relative `rank` determined by the player, initially through drag-and-drop reordering within the **reported To Do** column. The player may reorder any ticket visible there even if its hidden actual status differs; reordering must not disclose that discrepancy. Rank expresses managerial intended priority, not an objective urgency category or an obligation that autonomous developers must obey. Under the current prototype selection rule, when a developer chooses To Do work, they select the highest-ranked *actually eligible* To Do ticket, skipping any ineligible ranked tickets. Developer-specific preferences and deviations remain a future design question.
+**Player-defined ticket Rank (agreed design; not yet pushed, #12):** Every ticket belongs to a single, globally ordered list with a unique, consecutive integer `rank` from 1 (highest) to N (lowest), regardless of Kanban column. Rank is the player's intended priority, not objective urgency or a guarantee developers follow it. Initially the player may drag tickets to reorder them **within the reported To Do column**, even if a ticket's hidden actual status differs. This changes only the ranks of the affected reported To Do tickets by permuting their positions in the global order; tickets in every other column retain their exact global rank, even when interleaved. When the current prototype selects To Do work, developers use the highest-ranked actually eligible ticket, skipping ineligible ones. Developer-specific judgments remain a future design question; cross-column dragging is deferred.
 
 ### 4.1.1. Workflow stages (current prototype direction)
 
@@ -262,7 +262,7 @@ Record significant decisions here as the project evolves.
 | Resume vs start choice | Prototype decision | Implemented in #14 (`953a722`): 50/50 category roll when both are eligible, uniform random In Progress ticket selection, first eligible To Do ticket otherwise; reproducible game-state RNG |
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
-| Player-set ticket Rank | Agreed direction; not implemented (#12) | Explicit relative ordering set by drag-and-drop; represents managerial intent, not binding developer priority; future deviations to be designed |
+| Player-set ticket Rank | Agreed model; local implementation under refinement (#12) | Unique global 1..N order; drag within reported To Do permutes only its rank slots, preserving other columns' ranks; managerial intent, not binding developer priority |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
 
