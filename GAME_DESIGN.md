@@ -129,11 +129,11 @@ If both To Do and unclaimed In Progress tickets are available, the developer mak
 
 This is intentionally a **two-stage decision**: the category-selection roll must not be weighted by the number of tickets in each category. Future developer attributes (e.g. a proposed **Judgement** attribute) may influence both the category choice and which particular ticket is considered worthwhile, but no attribute or specific weighting mechanic is confirmed yet.
 
-These selection rolls take place **when choosing new work**, not every simulation tick. Developers currently continue their existing work without rerolling; the separate spontaneous task-switching mechanic in issue #16 will introduce an explicit exception to this. No two developers work on the same ticket under the current prototype rules.
+These selection rolls take place **when choosing new work**, rather than being independently rerolled on every simulation tick. The spontaneous task-switching rule below is an explicit exception. No two developers work on the same ticket under the current prototype rules.
 
 This equal probability is a **temporary baseline**, not a permanent statement about every developer's behaviour. Later developer attributes, preferences, management abilities or situational factors may change selection probabilities. Those details remain undecided.
 
-**Implemented and independently reviewed in GitHub issue #14 (commit `953a722`).** Selection randomness uses a deterministic 32-bit linear congruential generator (LCG) whose state is stored in `GameState.randomState`; the simulation advances that state without external random side effects. Identical starting states and elapsed-time calls produce identical decisions, including under React StrictMode updater replay. A test-only RNG override permits controlled boundary tests. The seeded sequence is not intended to be cryptographically secure.
+**Prototype behaviour:** Random work-selection decisions are reproducible from the same initial simulation state and sequence of elapsed-time calls. See #14 for the implementation and validation details.
 
 ### 4.2.2. Spontaneous task switching (implemented prototype rule)
 
@@ -141,7 +141,7 @@ Developers who are already working independently have a **1% chance per one-seco
 
 Switch checks occur **before work advances** in each simulated second; a developer progresses only the final chosen ticket during that tick. Each active developer receives an independent switch check using the existing deterministic game-state RNG; idle developers do not roll to switch. A successful switch excludes the previous ticket from replacement candidates and reuses the two-stage work-selection rules above. The implementation processes whole seconds as successive one-second ticks, and uses the equivalent probability **1 − 0.99^elapsedSeconds** for a fractional remainder. Splitting fractional time differently may change decision timing, so exact replays require the same elapsed-time call sequence. The 1% rate remains subject to balancing, and a future developer attribute may modify it; the attribute and formula are not yet decided.
 
-**Implemented and reviewed in GitHub issue #16 (commit `3783299`).** This switch check is distinct from the 50/50 choice made when selecting work while idle (issue #14).
+The spontaneous switch check is distinct from the 50/50 choice made when selecting work while idle (see #14 and #16).
 
 The exact future developer attributes and richer decision-making systems remain undecided.
 
@@ -157,15 +157,11 @@ There is a distinction between:
 
 The player's task is partly to reconcile these different representations.
 
-### 4.3.1. Development diagnostics and future unlocks
+### 4.3.1. Information visibility and future unlocks
 
-During prototype development, diagnostic displays expose true ticket size, completed and remaining work, active developer and work rate, estimated time to completion, developer assignments, and team-level totals. These help validate simulation behaviour.
+The player should not begin with complete or reliably accurate knowledge of ticket progress, developer activity, or team performance. Individual pieces of information may later become unlockable, approximate, misleading, or subject to investigation. The precise unlock and verification mechanics remain undecided.
 
-They are **development diagnostics**, not a commitment that the eventual player can always see accurate values. Individual metrics may become unlockable, approximate, misleading or subject to investigation. Keep authoritative simulation values separate from reported values and the player-facing information model.
-
-The prototype begins paused in both modes. Pause/Resume and simulation time are provisionally player-facing in development and production. Authoritative diagnostics are development-only, enabled initially when running locally with Vite; which metrics may later become unlockable or unreliable player information remains undecided.
-
-**Implemented development controls (#10 and #18, commit `9c0bbac`):** While paused, a developer can advance the simulation by exactly one simulated second, apply a validated unsigned 32-bit RNG seed, or restart from a fresh copy of the example state (resetting time, work, assignments and RNG to the initial values, and leaving the simulation paused). The controls use the same pure simulation transition as normal play and are shown only in Vite development mode; this is a build mode, **not a separate hosted development environment**. All authoritative team, ticket and developer diagnostics, their toggle, and the Step/Restart/RNG controls sit behind the single `import.meta.env.DEV` boundary in `App.tsx` (#20). Production retains the reported Kanban board, normal developer information, Pause/Resume and simulation clock. This is a client-side UI visibility convention, not an information-security boundary. The development toolbar opens independent Simulation Controls and Team Diagnostics overlays (#19); ticket and developer diagnostics remain in place.
+The current prototype exposes extra authoritative information for testing; those development-only displays are an implementation aid rather than a player-facing design commitment. See `AGENTS.md` and the relevant GitHub implementation issues for development UI conventions.
 
 ### 4.4. Player Attributes and Abilities
 
@@ -266,9 +262,7 @@ Record significant decisions here as the project evolves.
 | Resume vs start choice | Prototype decision | Implemented in #14 (`953a722`): 50/50 category roll when both are eligible, uniform random In Progress ticket selection, first eligible To Do ticket otherwise; reproducible game-state RNG |
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
-| Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
 | Player-set ticket Rank | Agreed direction; not implemented (#12) | Explicit relative ordering set by drag-and-drop; represents managerial intent, not binding developer priority; future deviations to be designed |
-| Development and player UI visibility | Implemented prototype convention | #20: true-state diagnostics and Step/Restart/RNG tools are development-only; Pause/Resume, simulation clock, Kanban board and normal reported information remain player-facing. Vite development mode is a build mode, not a separate hosted environment. |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
 
