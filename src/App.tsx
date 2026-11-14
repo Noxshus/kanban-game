@@ -3,6 +3,8 @@ import { exampleGameState } from './data/exampleGameState'
 import { advanceSimulation } from './game/advanceSimulation'
 import type { WorkflowStatus } from './game/types'
 import { getPlayerView } from './store/playerView'
+import { getDiagnosticsView } from './store/diagnosticsView'
+import { DeveloperDiagnostics, TeamDiagnostics, TicketDiagnostics } from './components/Diagnostics'
 import './App.css'
 
 const columns: { status: WorkflowStatus; title: string }[] = [
@@ -13,8 +15,10 @@ const columns: { status: WorkflowStatus; title: string }[] = [
 
 function App() {
   const [state, setState] = useState(() => structuredClone(exampleGameState))
-  const [isPaused, setIsPaused] = useState(false)
+  const [isPaused, setIsPaused] = useState(true)
+  const [showDiagnostics, setShowDiagnostics] = useState(true)
   const view = getPlayerView(state)
+  const diagnostics = showDiagnostics ? getDiagnosticsView(state) : null
 
   useEffect(() => {
     if (isPaused) return
@@ -38,7 +42,14 @@ function App() {
             {isPaused ? 'Resume' : 'Pause'}
           </button>
         </div>
+        <label className="diagnostics-toggle">
+          <input type="checkbox" checked={showDiagnostics}
+            onChange={(event) => setShowDiagnostics(event.target.checked)} />
+          Show development diagnostics (true simulation values)
+        </label>
       </header>
+
+      {diagnostics && <TeamDiagnostics team={diagnostics.team} />}
 
       <section aria-labelledby="board-heading">
         <h2 id="board-heading">Kanban board</h2>
@@ -54,6 +65,7 @@ function App() {
                     const assignee = view.developers.find(
                       (developer) => developer.id === ticket.assignedDeveloperId,
                     )
+                    const diagnostic = diagnostics?.tickets.find((item) => item.id === ticket.id)
                     return (
                       <li className="ticket" key={ticket.id}>
                         <span className="ticket-id">{ticket.id}</span>
@@ -63,6 +75,7 @@ function App() {
                           <span>Reported progress: {Math.round(ticket.reportedProgress)}%</span>
                           <progress max={100} value={ticket.reportedProgress} />
                         </label>
+                        {diagnostic && <TicketDiagnostics ticket={diagnostic} />}
                       </li>
                     )
                   })}
@@ -77,12 +90,16 @@ function App() {
       <section aria-labelledby="developers-heading">
         <h2 id="developers-heading">Developers</h2>
         <ul className="developer-list">
-          {view.developers.map((developer) => (
+          {view.developers.map((developer) => {
+            const diagnostic = diagnostics?.developers.find((item) => item.id === developer.id)
+            return (
             <li key={developer.id}>
               <strong>{developer.name}</strong>
               <span>Productivity: {developer.productivity} work/second</span>
+              {diagnostic && <DeveloperDiagnostics developer={diagnostic} />}
             </li>
-          ))}
+            )
+          })}
         </ul>
       </section>
     </main>

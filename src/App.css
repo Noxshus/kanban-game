@@ -75,6 +75,33 @@
   gap: 8px 16px;
 }
 
+.diagnostics-toggle {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  margin-top: 16px;
+}
+
+.diagnostics {
+  border-left: 3px solid #8a601a;
+  padding-left: 12px;
+  overflow-wrap: anywhere;
+}
+
+.ticket-diagnostics {
+  margin-top: 16px;
+  font-size: 0.875rem;
+}
+
+.developer-list .diagnostics {
+  flex-basis: 100%;
+}
+
+.team-diagnostics {
+  padding: 16px;
+  background: #fff6e7;
+}
+
 @media (max-width: 700px) {
   .board {
     grid-template-columns: 1fr;
