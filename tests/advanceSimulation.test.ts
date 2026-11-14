@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
 import type { GameState } from '../src/game/types.ts'
+import { nextRandom } from '../src/game/random.ts'
 
 function createState(): GameState {
   return {
@@ -157,8 +158,9 @@ test('reserves existing active work before idle developers select in ticket orde
 
 test('completion releases active work and subsequent calls select the next ticket', () => {
   const state = createState()
+  state.tickets[0].completedWork = 9
   state.tickets.push({ ...state.tickets[0], id: 'ticket-2', completedWork: 0, reportedProgress: 0 })
-  const completed = advanceSimulation(state, 100)
+  const completed = advanceSimulation(state, 1, () => 0.99)
   assert.equal(completed.developers[0].activeTicketID, undefined)
   assert.equal(completed.tickets[1].completedWork, 0)
   const next = advanceSimulation(completed, 1)
@@ -260,7 +262,7 @@ test('50/50 threshold selects the first ticket in the chosen category', () => {
     assert.equal(chosen.reportedStatus, 'in_progress')
     assert.equal(chosen.reportedProgress, 30)
     assert.deepEqual(state, original)
-    const continued = advanceSimulation(result, 1, noRoll)
+    const continued = advanceSimulation(result, 1, () => 0.99)
     assert.equal(continued.developers[0].activeTicketID, expected)
   }
 })
@@ -290,7 +292,7 @@ test('resuming work reserves active tickets and prevents duplicate claims', () =
   assert.equal(result.developers[0].activeTicketID, 'resume-1')
   assert.equal(result.developers[1].activeTicketID, 'resume-2')
   assert.equal(result.developers[2].activeTicketID, 'ticket-1')
-  assert.equal(calls, 1)
+  assert.equal(calls, 2)
 })
 
 test('category probability does not depend on ticket counts and exhausted work is excluded', () => {
@@ -332,6 +334,99 @@ test('seeded state replays identical transitions and serialized continuation', (
     continued = advanceSimulation(continued, 1)
     assert.deepEqual(replay, continued)
   }
-  assert.equal(advanceSimulation(first, 1).randomState, first.randomState)
+  assert.equal(advanceSimulation(first, 1).randomState, nextRandom(first.randomState).state)
   assert.equal(advanceSimulation(state, 0).randomState, state.randomState)
+})
+
+function switchingState(): GameState {
+  const state = createState()
+  state.tickets[0].actualStatus = 'in_progress'
+  state.tickets[0].reportedStatus = 'in_progress'
+  state.tickets[0].assignedDeveloperId = 'dev-1'
+  state.tickets[0].requiredWork = 100
+  state.tickets.push({ ...state.tickets[0], id: 'alternative', actualStatus: 'todo', reportedStatus: 'todo', completedWork: 0 })
+  return state
+}
+
+test('one-percent switching boundary applies work only to the final ticket', () => {
+  for (const roll of [0, 0.009999, 0.01, 0.999999]) {
+    const state = switchingState()
+    const original = structuredClone(state)
+    let calls = 0
+    const result = advanceSimulation(state, 1, () => { calls++; return roll })
+    assert.equal(calls, 1)
+    const switched = roll < 0.01
+    assert.equal(result.developers[0].activeTicketID, switched ? 'alternative' : 'ticket-1')
+    assert.equal(result.tickets[0].completedWork, switched ? 1 : 3)
+    assert.equal(result.tickets[1].completedWork, switched ? 2 : 0)
+    assert.equal(result.tickets[0].actualStatus, 'in_progress')
+    assert.equal(result.tickets[0].assignedDeveloperId, 'dev-1')
+    assert.equal(result.tickets[0].reportedStatus, 'in_progress')
+    assert.deepEqual(state, original)
+  }
+})
+
+test('successful switch roll without alternatives retains active work', () => {
+  const state = switchingState()
+  state.tickets[1].actualStatus = 'backlog'
+  state.tickets.push({ ...state.tickets[1], id: 'done', actualStatus: 'done', completedWork: 100 })
+  let calls = 0
+  const result = advanceSimulation(state, 1, () => { calls++; return 0 })
+  assert.equal(calls, 1)
+  assert.equal(result.developers[0].activeTicketID, 'ticket-1')
+  assert.equal(result.tickets[0].completedWork, 3)
+  assert.deepEqual(result.tickets[1], state.tickets[1])
+})
+
+test('multiple switches resolve in developer order without duplicate claims or double work', () => {
+  const state = switchingState()
+  state.tickets.push({ ...state.tickets[0], id: 'other-active', completedWork: 5 })
+  state.developers.push({ id: 'dev-2', name: 'Sam', productivity: 1, activeTicketID: 'other-active' })
+  const result = advanceSimulation(state, 1, () => 0)
+  assert.equal(result.developers[0].activeTicketID, 'alternative')
+  assert.equal(result.developers[1].activeTicketID, 'ticket-1')
+  assert.equal(result.tickets[0].completedWork, 2)
+  assert.equal(result.tickets[1].completedWork, 2)
+  assert.equal(result.tickets[2].completedWork, 5)
+  assert.equal(result.tickets[2].actualStatus, 'in_progress')
+})
+
+test('switch replacements reuse category and uniform In Progress selection', () => {
+  const state = switchingState()
+  state.tickets.push(
+    { ...state.tickets[0], id: 'resume-a' },
+    { ...state.tickets[0], id: 'resume-b' },
+  )
+  const values = [0, 0.5, 0.999999]
+  let calls = 0
+  const result = advanceSimulation(state, 1, () => values[calls++])
+  assert.equal(calls, 3)
+  assert.equal(result.developers[0].activeTicketID, 'resume-b')
+  assert.equal(result.tickets[0].completedWork, 1)
+})
+
+test('switch RNG state advances exactly once for a check and replay remains pure', () => {
+  const state = switchingState()
+  // Seed 1972 yields a first draw below 1%; replacement is the sole To Do ticket.
+  let seed = 0
+  while (nextRandom(seed).value >= 0.01) seed++
+  state.randomState = seed
+  const original = structuredClone(state)
+  const first = advanceSimulation(state, 1)
+  assert.equal(first.developers[0].activeTicketID, 'alternative')
+  assert.equal(first.randomState, nextRandom(seed).state)
+  assert.deepEqual(advanceSimulation(state, 1), first)
+  assert.deepEqual(state, original)
+  assert.deepEqual(advanceSimulation(JSON.parse(JSON.stringify(first)), 1), advanceSimulation(first, 1))
+})
+
+test('large durations process independent one-second ticks; fractional probability scales with time', () => {
+  const state = switchingState()
+  assert.deepEqual(advanceSimulation(state, 10),
+    Array.from({ length: 10 }).reduce<GameState>(s => advanceSimulation(s, 1), state))
+  // A half-second has ~0.5013% chance, rather than the full 1% per call.
+  assert.equal(advanceSimulation(state, 0.5, () => 0.006).developers[0].activeTicketID, 'ticket-1')
+  const switched = advanceSimulation(state, 0.5, () => 0.004)
+  assert.equal(switched.developers[0].activeTicketID, 'alternative')
+  assert.equal(switched.tickets[1].completedWork, 1)
 })

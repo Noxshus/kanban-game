@@ -11,6 +11,18 @@ export function advanceSimulation(
     throw new RangeError('elapsedSeconds must be a finite, non-negative number')
   }
 
+  // Whole seconds are real simulation ticks, including selection after earlier completions.
+  // A fractional remainder uses the equivalent survival probability; fractional partitions
+  // can change decision timing, so replay requires the same elapsed-time call sequence.
+  if (elapsedSeconds > 1) {
+    let result = state
+    for (let seconds = 0; seconds < Math.floor(elapsedSeconds); seconds++) {
+      result = advanceSimulation(result, 1, random)
+    }
+    const remainder = elapsedSeconds % 1
+    return remainder > 0 ? advanceSimulation(result, remainder, random) : result
+  }
+
   const tickets = state.tickets.map((ticket) => ({
     ...ticket,
     reportedProgress: ticket.actualStatus === 'backlog'
@@ -44,19 +56,37 @@ export function advanceSimulation(
       }
     }
 
-    for (const developer of developers) {
-      if (developer.activeTicketID !== undefined) continue
+    const selectTicket = (excludedId?: string) => {
       const eligible = tickets.filter((candidate) =>
-        !isComplete(candidate) && !claimedTickets.has(candidate.id),
+        candidate.id !== excludedId && !isComplete(candidate) && !claimedTickets.has(candidate.id),
       )
       const todo = eligible.find((candidate) => candidate.actualStatus === 'todo')
       const inProgress = eligible.filter((candidate) => candidate.actualStatus === 'in_progress')
       // Provisional category choice, independent of category size; roll only for new work.
       // Inject random values in tests. Call boundaries still determine when new selections occur.
       const chooseInProgress = inProgress.length > 0 && (!todo || draw() >= 0.5)
-      const ticket = chooseInProgress
+      return chooseInProgress
         ? inProgress[inProgress.length === 1 ? 0 : Math.floor(draw() * inProgress.length)]
         : todo
+    }
+
+    // Existing workers get one switch opportunity before any work. Keep their claim
+    // until a replacement is secured, so failed switches never drop active work.
+    const switchProbability = elapsedSeconds === 1 ? 0.01 : 1 - 0.99 ** elapsedSeconds
+    for (const developer of developers) {
+      const current = ticketsById.get(developer.activeTicketID ?? '')
+      if (!current || draw() >= switchProbability) continue
+      const replacement = selectTicket(current.id)
+      if (!replacement) continue
+      current.actualStatus = 'in_progress'
+      claimedTickets.delete(current.id)
+      developer.activeTicketID = replacement.id
+      claimedTickets.add(replacement.id)
+    }
+
+    for (const developer of developers) {
+      if (developer.activeTicketID !== undefined) continue
+      const ticket = selectTicket()
       if (ticket) {
         developer.activeTicketID = ticket.id
         claimedTickets.add(ticket.id)
@@ -96,7 +126,7 @@ export function advanceSimulation(
       }
     }
 
-    // No leftover-time chaining: a developer picks subsequent work on the next simulation call.
+    // Subsequent work starts on the next tick, with no leftover-time chaining within a tick.
     for (const developer of developers) {
       const ticket = ticketsById.get(developer.activeTicketID ?? '')
       if (ticket?.actualStatus === 'done') delete developer.activeTicketID

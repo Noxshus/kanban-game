@@ -98,10 +98,11 @@ test('diagnostics update live through completion and remain separate from player
   assert.deepEqual(Object.keys(player.developers[0]).sort(), ['id', 'name', 'productivity'])
   getDiagnosticsView(state)
   assert.deepEqual(getPlayerView(state), player)
-  state = advanceSimulation(state, 1)
+  // These reporting assertions expect uninterrupted work, independent of the example seed.
+  state = advanceSimulation(state, 1, () => 0.99)
   assert.equal(getDiagnosticsView(state).tickets[0].completedWork, 5)
   assert.equal(getDiagnosticsView(state).team.activeDevelopers, 3)
-  for (let i = 0; i < 30; i++) state = advanceSimulation(state, 1)
+  for (let i = 0; i < 30; i++) state = advanceSimulation(state, 1, () => 0.99)
   const finished = getDiagnosticsView(state)
   assert.equal(finished.team.completedTickets, 5)
   assert.equal(finished.team.completedWork, 38)
