@@ -86,6 +86,8 @@ Tickets move through workflow stages representing the software development proce
 
 The player may need to intervene to keep the board accurate and the team productive.
 
+**Player-defined ticket Rank (agreed direction; not yet implemented, #12):** Tickets will carry an explicit relative `rank` set by the player, initially through drag-and-drop in To Do. Rank expresses managerial intended priority, not an objective urgency category and not an obligation that autonomous developers must always obey. The present prototype can consult rank when selecting eligible To Do work; future developer-specific judgments and deviations remain to be designed. Implementation and the treatment of tickets whose reported and actual columns disagree are still under discussion.
+
 ### 4.1.1. Workflow stages (current prototype direction)
 
 The current prototype distinguishes four stages:
@@ -154,6 +156,8 @@ There is a distinction between:
 3. **Player knowledge:** What the player has successfully established through available information and abilities.
 
 The player's task is partly to reconcile these different representations.
+
+**Development-only truth checks (agreed testing aid; not yet implemented, #25):** In development mode, ticket diagnostics should show a simple Match/Mismatch indication when comparable reported data (initially workflow status and progress) is checked against actual simulation values. This is for manual verification, not a player-facing trust or knowledge system. Ownership (`assignedDeveloperId`) and active work (`activeTicketID`) are different concepts and must not be labeled a mismatch merely because they differ. Future player-facing verification or uncertainty mechanics remain undecided.
 
 ### 4.3.1. Development diagnostics and future unlocks
 
@@ -265,6 +269,8 @@ Record significant decisions here as the project evolves.
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
+| Player-set ticket Rank | Agreed direction; not implemented (#12) | Explicit relative ordering set by drag-and-drop; represents managerial intent, not binding developer priority; future deviations to be designed |
+| Development truth Match/Mismatch indicators | Agreed testing aid; not implemented (#25) | Dev-only comparison of reported status/progress with actual state; no player-facing knowledge indicator or third uncertain state yet |
 | Development and player UI visibility | Implemented prototype convention | #20: true-state diagnostics and Step/Restart/RNG tools are development-only; Pause/Resume, simulation clock, Kanban board and normal reported information remain player-facing. Vite development mode is a build mode, not a separate hosted environment. |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
