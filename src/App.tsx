@@ -1,6 +1,6 @@
-import { useEffect, useState } from 'react'
-import { exampleGameState } from './data/exampleGameState'
-import { advanceSimulation } from './game/advanceSimulation'
+import { useEffect, useReducer, useState } from 'react'
+import { createSimulationSession, simulationReducer } from './store/simulationControls'
+import { DevelopmentControls } from './components/DevelopmentControls'
 import type { WorkflowStatus } from './game/types'
 import { getPlayerView } from './store/playerView'
 import { getDiagnosticsView } from './store/diagnosticsView'
@@ -15,8 +15,7 @@ const columns: { status: WorkflowStatus; title: string }[] = [
 ]
 
 function App() {
-  const [state, setState] = useState(() => structuredClone(exampleGameState))
-  const [isPaused, setIsPaused] = useState(true)
+  const [{ game: state, isPaused }, dispatch] = useReducer(simulationReducer, undefined, createSimulationSession)
   const [showDiagnostics, setShowDiagnostics] = useState(true)
   const view = getPlayerView(state)
   const diagnostics = showDiagnostics ? getDiagnosticsView(state) : null
@@ -25,7 +24,7 @@ function App() {
     if (isPaused) return
 
     const timer = window.setInterval(() => {
-      setState((current) => advanceSimulation(current, 1))
+      dispatch({ type: 'tick' })
     }, 1000)
 
     // Clean up on pause as well as unmount, including StrictMode effect restarts.
@@ -39,7 +38,7 @@ function App() {
         <div className="simulation-controls">
           <p>Simulation time: {view.simulationTime} seconds</p>
           <p role="status">{isPaused ? 'Paused' : 'Running'}</p>
-          <button type="button" onClick={() => setIsPaused((paused) => !paused)}>
+          <button type="button" onClick={() => dispatch({ type: 'togglePause' })}>
             {isPaused ? 'Resume' : 'Pause'}
           </button>
         </div>
@@ -49,6 +48,10 @@ function App() {
           Show development diagnostics (true simulation values)
         </label>
       </header>
+
+      {import.meta.env.DEV && (
+        <DevelopmentControls isPaused={isPaused} randomState={state.randomState} dispatch={dispatch} />
+      )}
 
       {diagnostics && <TeamDiagnostics team={diagnostics.team} />}
 

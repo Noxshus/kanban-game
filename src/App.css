@@ -15,6 +15,35 @@
   gap: 16px;
 }
 
+.development-controls {
+  display: grid;
+  gap: 12px;
+  padding: 16px;
+  background: #fff6e7;
+}
+
+.seed-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.seed-controls input {
+  font: inherit;
+  max-width: 100%;
+  min-width: 0;
+}
+
+.seed-controls p {
+  flex-basis: 100%;
+}
+
+.development-controls button:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 .board {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
