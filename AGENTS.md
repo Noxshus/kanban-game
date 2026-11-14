@@ -38,6 +38,11 @@ Do not treat proposed mechanics or open design questions as approved implementat
 - Keep simulation behavior independent of Vite build mode and keep hidden values out of `getPlayerView`.
 - This is a UI visibility convention, not information security: all simulation state exists client-side. Do not add staging, authentication, or a feature-flag framework for it.
 
+
+## AI-assisted development workflow
+
+Follow [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) for the ChatGPT/Codex/GitHub implementation, review, testing and commit process. For substantial changes, review in a separate Codex conversation before committing; use known deferred-issue references to keep reviews proportionate. Do not assume a proposed prompt has been executed without explicit user confirmation.
+
 ## Development practices
 
 - Use TypeScript throughout.
