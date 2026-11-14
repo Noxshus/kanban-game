@@ -15,8 +15,8 @@ test('derives authoritative ticket, developer and team metrics without mutation'
   })
   assert.equal(view.tickets[1].estimatedSeconds, 5)
   assert.deepEqual(view.team, {
-    completedTickets: 0, totalTickets: 5, activeDevelopers: 2, totalDevelopers: 3,
-    completedWork: 6, requiredWork: 38, workRate: 2.2,
+    completedTickets: 0, totalTickets: 7, activeDevelopers: 2, totalDevelopers: 3,
+    completedWork: 6, requiredWork: 48, workRate: 2.2,
   })
   assert.equal(view.developers[0].assignedTicketCount, 1)
   assert.deepEqual(view.developers[0].activeTicket, { id: 'ticket-1', title: 'Build the navigation menu' })
@@ -104,8 +104,11 @@ test('diagnostics update live through completion and remain separate from player
   for (let i = 0; i < 30; i++) state = advanceSimulation(state, 1)
   const finished = getDiagnosticsView(state)
   assert.equal(finished.team.completedTickets, 5)
-  assert.equal(finished.team.completedWork, finished.team.requiredWork)
+  assert.equal(finished.team.completedWork, 38)
+  assert.equal(finished.team.requiredWork, 48)
   assert.equal(finished.team.workRate, 0)
   assert.equal(finished.team.activeDevelopers, 0)
-  assert.ok(finished.tickets.every(ticket => ticket.estimatedSeconds === 0))
+  assert.ok(finished.tickets.slice(0, 5).every(ticket => ticket.estimatedSeconds === 0))
+  assert.ok(finished.tickets.slice(5).every(ticket => ticket.estimatedSeconds === null))
 })
+

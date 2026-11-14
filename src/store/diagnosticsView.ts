@@ -6,7 +6,7 @@ export function getDiagnosticsView(state: GameState) {
   const developers = state.developers.map((developer) => {
     const ticket = state.tickets.find((candidate) => candidate.id === developer.activeTicketID)
     // Match the engine's reservation rule: stale/completed references and duplicate claims are idle.
-    const activeTicket = ticket && ticket.actualStatus !== 'done'
+    const activeTicket = ticket && ticket.actualStatus !== 'done' && ticket.actualStatus !== 'backlog'
       && ticket.completedWork < ticket.requiredWork && !claimed.has(ticket.id)
       ? ticket : undefined
     if (activeTicket) claimed.add(activeTicket.id)

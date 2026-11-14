@@ -8,6 +8,7 @@ import { DeveloperDiagnostics, TeamDiagnostics, TicketDiagnostics } from './comp
 import './App.css'
 
 const columns: { status: WorkflowStatus; title: string }[] = [
+  { status: 'backlog', title: 'Backlog' },
   { status: 'todo', title: 'To Do' },
   { status: 'in_progress', title: 'In Progress' },
   { status: 'done', title: 'Done' },

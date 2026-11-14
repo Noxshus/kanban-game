@@ -34,9 +34,9 @@ export function TeamDiagnostics({ team }: { team: DiagnosticsView['team'] }) {
     <section className="diagnostics team-diagnostics" aria-labelledby="team-diagnostics-heading">
       <h2 id="team-diagnostics-heading">Development diagnostics: team overview</h2>
       <p>True simulation values, separate from player reports.</p>
-      <p>Completed tickets: {team.completedTickets} / {team.totalTickets}</p>
+      <p>Completed tickets (including backlog in total): {team.completedTickets} / {team.totalTickets}</p>
       <p>Active developers: {team.activeDevelopers} / {team.totalDevelopers}</p>
-      <p>Actual team work: {format(team.completedWork)} / {format(team.requiredWork)} work units</p>
+      <p>Actual team work (including backlog in total): {format(team.completedWork)} / {format(team.requiredWork)} work units</p>
       <p>Current team work rate: {format(team.workRate)} work units/second</p>
       <p>Rates and ETAs use simulated seconds at current productivity, excluding queue wait.</p>
     </section>

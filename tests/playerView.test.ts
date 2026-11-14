@@ -47,17 +47,18 @@ test('example backlog autonomously moves through player-visible columns to compl
   assert.equal(started.tickets.find(t => t.id === 'ticket-3')?.reportedStatus, 'in_progress')
   assert.equal(started.tickets.find(t => t.id === 'ticket-3')?.assignedDeveloperId, 'developer-3')
   for (let second = 1; second < 30; second++) state = advanceSimulation(state, 1)
-  for (const ticket of state.tickets) {
+  for (const ticket of state.tickets.slice(0, 5)) {
     assert.equal(ticket.actualStatus, 'done')
     assert.equal(ticket.completedWork, ticket.requiredWork)
   }
-  for (const ticket of getPlayerView(state).tickets) {
+  for (const ticket of getPlayerView(state).tickets.slice(0, 5)) {
     assert.equal(ticket.reportedStatus, 'done')
     assert.equal(ticket.reportedProgress, 100)
     assert.equal('actualStatus' in ticket, false)
   }
   assert.ok(state.developers.every(d => d.activeTicketID === undefined))
-  assert.ok(state.tickets.every(t =>
+  assert.deepEqual(state.tickets.slice(5), original.tickets.slice(5))
+  assert.ok(state.tickets.slice(0, 5).every(t =>
     state.developers.some(d => d.id === t.assignedDeveloperId),
   ))
   const later = advanceSimulation(state, 10)

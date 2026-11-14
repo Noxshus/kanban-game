@@ -1,4 +1,4 @@
-export type WorkflowStatus = 'todo' | 'in_progress' | 'done'
+export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 
 export interface Ticket {
   id: string

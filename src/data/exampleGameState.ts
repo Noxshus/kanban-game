@@ -69,5 +69,15 @@ export const exampleGameState: GameState = {
       completedWork: 0,
       reportedProgress: 0,
     },
+    {
+      id: 'ticket-6', title: 'Improve keyboard navigation',
+      actualStatus: 'backlog', reportedStatus: 'backlog',
+      requiredWork: 6, completedWork: 0, reportedProgress: 0,
+    },
+    {
+      id: 'ticket-7', title: 'Review error messages',
+      actualStatus: 'backlog', reportedStatus: 'backlog',
+      requiredWork: 4, completedWork: 0, reportedProgress: 0,
+    },
   ],
 }

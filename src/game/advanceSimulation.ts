@@ -11,7 +11,8 @@ export function advanceSimulation(
 
   const tickets = state.tickets.map((ticket) => ({
     ...ticket,
-    reportedProgress: clampReportedProgress(ticket.reportedProgress),
+    reportedProgress: ticket.actualStatus === 'backlog'
+      ? ticket.reportedProgress : clampReportedProgress(ticket.reportedProgress),
   }))
   const developers = state.developers.map((developer) => ({ ...developer }))
   const ticketsById = new Map(tickets.map((ticket) => [ticket.id, ticket]))
@@ -25,7 +26,7 @@ export function advanceSimulation(
     // Array order resolves duplicate active references deterministically; collaboration is not enabled.
     for (const developer of developers) {
       const ticket = ticketsById.get(developer.activeTicketID ?? '')
-      if (!ticket || isComplete(ticket) || claimedTickets.has(ticket.id)) {
+      if (!ticket || ticket.actualStatus === 'backlog' || isComplete(ticket) || claimedTickets.has(ticket.id)) {
         delete developer.activeTicketID
       } else {
         claimedTickets.add(ticket.id)
@@ -35,7 +36,7 @@ export function advanceSimulation(
     for (const developer of developers) {
       if (developer.activeTicketID !== undefined) continue
       const ticket = tickets.find((candidate) =>
-        !isComplete(candidate) && !claimedTickets.has(candidate.id),
+        candidate.actualStatus === 'todo' && !isComplete(candidate) && !claimedTickets.has(candidate.id),
       )
       if (ticket) {
         developer.activeTicketID = ticket.id
@@ -59,6 +60,8 @@ export function advanceSimulation(
     }
 
     for (const ticket of tickets) {
+      // Backlog is uncommitted work, even if reported state differs.
+      if (ticket.actualStatus === 'backlog') continue
       if (isComplete(ticket)) {
         ticket.actualStatus = 'done'
         ticket.reportedProgress = 100

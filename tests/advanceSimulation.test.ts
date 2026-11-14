@@ -215,3 +215,19 @@ test('unclaimed backlog remains unassigned and makes no progress', () => {
   assert.equal(result.tickets[1].completedWork, 0)
   assert.equal(result.tickets[1].reportedStatus, 'todo')
 })
+
+test('selection uses actual To Do and never touches actual Backlog, even with a stale active reference', () => {
+  const state = createState()
+  state.tickets[0].actualStatus = 'backlog'
+  state.tickets[0].reportedStatus = 'todo'
+  const backlog = structuredClone(state.tickets[0])
+  state.tickets.push({ ...backlog, id: 'ready', actualStatus: 'todo', reportedStatus: 'backlog' })
+  const result = advanceSimulation(state, 1)
+  assert.deepEqual(result.tickets[0], backlog)
+  assert.equal(result.developers[0].activeTicketID, 'ready')
+  assert.equal(result.tickets[1].reportedStatus, 'in_progress')
+  const finished = advanceSimulation(advanceSimulation(result, 100), 1)
+  assert.deepEqual(finished.tickets[0], backlog)
+  assert.equal(finished.developers[0].activeTicketID, undefined)
+})
+
