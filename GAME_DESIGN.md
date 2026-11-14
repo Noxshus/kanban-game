@@ -121,9 +121,13 @@ Developer behaviour will eventually be influenced by individual attributes and c
 
 When a developer becomes idle, they may take an eligible **To Do** ticket or resume an unfinished **In Progress** ticket that no other developer is actively working on. **Backlog** and **Done** are not eligible under ordinary behaviour.
 
-If both To Do and unclaimed In Progress tickets are available, the developer makes a **50/50 random selection between those two categories**. If only one category is available, they choose from that category without a roll. Within the chosen category, the prototype selects the first eligible ticket in the existing ordering.
+If both To Do and unclaimed In Progress tickets are available, the developer makes a **50/50 random selection between those two categories**. If only one category is available, they choose that category without a category roll.
 
-This roll takes place **when choosing new work**, not every simulation tick; developers do not repeatedly switch tickets because of a new roll. No two developers work on the same ticket under the current prototype rules.
+**Second-stage ticket selection:** After choosing **In Progress**, the developer selects **uniformly at random among all eligible, unclaimed, unfinished In Progress tickets**. This second draw also applies when In Progress is the only available category (unless only one eligible ticket exists, in which case the result is unambiguous). After choosing **To Do**, the prototype selects the first eligible To Do ticket in its existing order. With both categories available and three eligible In Progress tickets, each has a one-sixth overall selection probability.
+
+This is intentionally a **two-stage decision**: the category-selection roll must not be weighted by the number of tickets in each category. Future developer attributes (e.g. a proposed **Judgement** attribute) may influence both the category choice and which particular ticket is considered worthwhile, but no attribute or specific weighting mechanic is confirmed yet.
+
+These rolls take place **when choosing new work**, not every simulation tick; developers do not repeatedly switch tickets because of a new roll. No two developers work on the same ticket under the current prototype rules.
 
 This equal probability is a **temporary baseline**, not a permanent statement about every developer's behaviour. Later developer attributes, preferences, management abilities or situational factors may change selection probabilities. Those details remain undecided.
 
@@ -218,7 +222,7 @@ The following questions remain unresolved:
 
 - Will Backlog eventually have a separate screen rather than a board column?
 - What resources does the player accumulate?
-- How will developer attributes and circumstances affect the provisional 50/50 decision between resuming unfinished work and starting To Do work?
+- How will developer attributes (e.g. proposed Judgement) and circumstances affect the provisional 50/50 category decision and random selection among unfinished tickets?
 - Should unclaimed In Progress work or To Do work receive any default preference beyond the initial neutral rule?
 - How are developer competencies represented?
 - What RPG attributes does the player possess?
@@ -246,7 +250,7 @@ Record significant decisions here as the project evolves.
 | Backlog separate from committed work | Confirmed | Backlog is potential work; only committed or already-started work is eligible for normal selection |
 | Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
 | In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
-| Resume vs start choice | Prototype decision | 50/50 category roll when both are eligible; implementation pending #14 |
+| Resume vs start choice | Prototype decision | 50/50 category roll when both are eligible; then uniform random In Progress ticket selection; first eligible To Do ticket otherwise. Implementation pending #14 |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
 | Developer personality system | Proposed | Not yet committed |
