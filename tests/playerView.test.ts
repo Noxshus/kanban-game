@@ -36,3 +36,28 @@ test('player view bounds reported percentages without mutating the state', () =>
     assert.ok(Object.is(state.tickets[0].reportedProgress, value))
   }
 })
+
+test('example backlog autonomously moves through player-visible columns to completion', async () => {
+  const { advanceSimulation } = await import('../src/game/advanceSimulation.ts')
+  let state = structuredClone(exampleGameState)
+  const original = structuredClone(state)
+  state = advanceSimulation(state, 1)
+  const started = getPlayerView(state)
+  assert.equal(started.tickets.find(t => t.id === 'ticket-2')?.reportedStatus, 'in_progress')
+  assert.equal(started.tickets.find(t => t.id === 'ticket-3')?.reportedStatus, 'in_progress')
+  for (let second = 1; second < 30; second++) state = advanceSimulation(state, 1)
+  for (const ticket of state.tickets) {
+    assert.equal(ticket.actualStatus, 'done')
+    assert.equal(ticket.completedWork, ticket.requiredWork)
+  }
+  for (const ticket of getPlayerView(state).tickets) {
+    assert.equal(ticket.reportedStatus, 'done')
+    assert.equal(ticket.reportedProgress, 100)
+    assert.equal('actualStatus' in ticket, false)
+  }
+  assert.ok(state.developers.every(d => d.activeTicketID === undefined))
+  assert.deepEqual(state.tickets.map(t => t.assignedDeveloperId), original.tickets.map(t => t.assignedDeveloperId))
+  const later = advanceSimulation(state, 10)
+  assert.deepEqual(later.tickets, state.tickets)
+  assert.deepEqual(exampleGameState, original)
+})
