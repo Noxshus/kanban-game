@@ -30,6 +30,14 @@ Do not treat proposed mechanics or open design questions as approved implementat
 - Avoid unnecessary dependencies.
 - Do not introduce complex abstractions prematurely.
 
+## Development UI visibility
+
+- Use the single `import.meta.env.DEV` boundary in `src/App.tsx` for development UI.
+- Put development controls, diagnostic visibility state, and authoritative selectors in `DevelopmentUI` and its children. Future diagnostic overlays (#19) belong inside this boundary.
+- Production (`npm run build` then `npm run preview`, also GitHub Pages) renders the reported board, normal developer information, Pause/Resume, and simulation clock. Step, Restart, RNG tools, and all true-state diagnostics are development-only.
+- Keep simulation behavior independent of Vite build mode and keep hidden values out of `getPlayerView`.
+- This is a UI visibility convention, not information security: all simulation state exists client-side. Do not add staging, authentication, or a feature-flag framework for it.
+
 ## Development practices
 
 - Use TypeScript throughout.

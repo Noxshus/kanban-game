@@ -161,9 +161,9 @@ During prototype development, diagnostic displays expose true ticket size, compl
 
 They are **development diagnostics**, not a commitment that the eventual player can always see accurate values. Individual metrics may become unlockable, approximate, misleading or subject to investigation. Keep authoritative simulation values separate from reported values and the player-facing information model.
 
-The prototype also begins paused with diagnostics shown by default to support manual verification; this is a development convenience, not a final gameplay decision.
+The prototype begins paused in both modes. Pause/Resume and simulation time are provisionally player-facing in development and production. Authoritative diagnostics are development-only, enabled initially when running locally with Vite; which metrics may later become unlockable or unreliable player information remains undecided.
 
-**Implemented development controls (#10 and #18, commit `9c0bbac`):** While paused, a developer can advance the simulation by exactly one simulated second, apply a validated unsigned 32-bit RNG seed, or restart from a fresh copy of the example state (resetting time, work, assignments and RNG to the initial values, and leaving the simulation paused). The controls use the same pure simulation transition as normal play and are shown only in Vite development mode; this is a build mode, **not a separate hosted development environment**. The legacy true-state diagnostics are not yet consistently gated in production; issue #20 tracks that audit, and issue #19 tracks moving large diagnostic sections into overlays.
+**Implemented development controls (#10 and #18, commit `9c0bbac`):** While paused, a developer can advance the simulation by exactly one simulated second, apply a validated unsigned 32-bit RNG seed, or restart from a fresh copy of the example state (resetting time, work, assignments and RNG to the initial values, and leaving the simulation paused). The controls use the same pure simulation transition as normal play and are shown only in Vite development mode; this is a build mode, **not a separate hosted development environment**. All authoritative team, ticket and developer diagnostics, their toggle, and the Step/Restart/RNG controls now sit behind the single `import.meta.env.DEV` boundary in `App.tsx` (#20). Production retains the reported Kanban board, normal developer information, Pause/Resume and simulation clock. This is a client-side UI visibility convention, not an information-security boundary. Issue #19 will move development UI into overlays within this boundary; the current layout remains inline.
 
 ### 4.4. Player Attributes and Abilities
 
@@ -265,7 +265,7 @@ Record significant decisions here as the project evolves.
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
-| Step, restart and RNG development controls | Implemented developer tooling | #10/#18 (`9c0bbac`): single-second paused step, complete restart, validated seeded replay; Vite development-mode gated; consistency audit pending #20 |
+| Development and player UI visibility | Implemented prototype convention | #20: true-state diagnostics and Step/Restart/RNG tools are development-only; Pause/Resume, simulation clock, Kanban board and normal reported information remain player-facing. Vite development mode is a build mode, not a separate hosted environment. |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
 
