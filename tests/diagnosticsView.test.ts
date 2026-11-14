@@ -77,7 +77,7 @@ test('duplicate active references do not inflate team rates', () => {
 })
 
 test('empty team and backlog yield finite zero totals', () => {
-  const view = getDiagnosticsView({ tickets: [], developers: [], simulationTime: 0 })
+  const view = getDiagnosticsView({ tickets: [], developers: [], simulationTime: 0, randomState: 1 })
   assert.deepEqual(view.team, {
     completedTickets: 0, totalTickets: 0, activeDevelopers: 0, totalDevelopers: 0,
     completedWork: 0, requiredWork: 0, workRate: 0,

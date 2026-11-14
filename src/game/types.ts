@@ -29,6 +29,7 @@ export interface Developer {
 }
 
 export interface GameState {
+  randomState: number
   tickets: Ticket[]
   developers: Developer[]
   simulationTime: number

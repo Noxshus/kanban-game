@@ -1,9 +1,11 @@
 import type { GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
+import { nextRandom } from './random.ts'
 
 export function advanceSimulation(
   state: GameState,
   elapsedSeconds: number,
+  random?: () => number,
 ): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
     throw new RangeError('elapsedSeconds must be a finite, non-negative number')
@@ -16,6 +18,15 @@ export function advanceSimulation(
   }))
   const developers = state.developers.map((developer) => ({ ...developer }))
   const ticketsById = new Map(tickets.map((ticket) => [ticket.id, ticket]))
+  let randomState = state.randomState
+  // Keep RNG state local until return: StrictMode updater replays have no external effects.
+  // Test overrides control draws directly and leave the stored sequence unchanged.
+  const draw = () => {
+    if (random) return random()
+    const next = nextRandom(randomState)
+    randomState = next.state
+    return next.value
+  }
 
   if (elapsedSeconds > 0) {
     const claimedTickets = new Set<string>()
@@ -35,9 +46,17 @@ export function advanceSimulation(
 
     for (const developer of developers) {
       if (developer.activeTicketID !== undefined) continue
-      const ticket = tickets.find((candidate) =>
-        candidate.actualStatus === 'todo' && !isComplete(candidate) && !claimedTickets.has(candidate.id),
+      const eligible = tickets.filter((candidate) =>
+        !isComplete(candidate) && !claimedTickets.has(candidate.id),
       )
+      const todo = eligible.find((candidate) => candidate.actualStatus === 'todo')
+      const inProgress = eligible.filter((candidate) => candidate.actualStatus === 'in_progress')
+      // Provisional category choice, independent of category size; roll only for new work.
+      // Inject random values in tests. Call boundaries still determine when new selections occur.
+      const chooseInProgress = inProgress.length > 0 && (!todo || draw() >= 0.5)
+      const ticket = chooseInProgress
+        ? inProgress[inProgress.length === 1 ? 0 : Math.floor(draw() * inProgress.length)]
+        : todo
       if (ticket) {
         developer.activeTicketID = ticket.id
         claimedTickets.add(ticket.id)
@@ -86,6 +105,7 @@ export function advanceSimulation(
 
   return {
     ...state,
+    randomState,
     tickets,
     developers,
     simulationTime: state.simulationTime + elapsedSeconds,

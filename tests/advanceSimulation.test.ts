@@ -5,6 +5,7 @@ import type { GameState } from '../src/game/types.ts'
 
 function createState(): GameState {
   return {
+    randomState: 1,
     simulationTime: 10,
     developers: [
       { id: 'dev-1', name: 'Alex', activeTicketID: 'ticket-1', productivity: 2 },
@@ -231,3 +232,106 @@ test('selection uses actual To Do and never touches actual Backlog, even with a 
   assert.equal(finished.developers[0].activeTicketID, undefined)
 })
 
+
+function createSelectionState(): GameState {
+  const state = createState()
+  delete state.developers[0].activeTicketID
+  state.tickets.push(
+    { ...state.tickets[0], id: 'todo-2' },
+    { ...state.tickets[0], id: 'resume-1', actualStatus: 'in_progress', reportedStatus: 'backlog' },
+    { ...state.tickets[0], id: 'resume-2', actualStatus: 'in_progress' },
+  )
+  return state
+}
+
+const noRoll = () => { throw new Error('Unexpected random roll') }
+
+test('50/50 threshold selects the first ticket in the chosen category', () => {
+  for (const [roll, expected] of [[0, 'ticket-1'], [0.499999, 'ticket-1'], [0.5, 'resume-1'], [0.999999, 'resume-1']] as const) {
+    const state = createSelectionState()
+    const original = structuredClone(state)
+    let calls = 0
+    const result = advanceSimulation(state, 1, () => { calls++; return calls === 1 ? roll : 0 })
+    assert.equal(calls, roll < 0.5 ? 1 : 2)
+    assert.equal(result.developers[0].activeTicketID, expected)
+    const chosen = result.tickets.find(t => t.id === expected)!
+    assert.equal(chosen.completedWork, 3)
+    assert.equal(chosen.assignedDeveloperId, 'dev-1')
+    assert.equal(chosen.reportedStatus, 'in_progress')
+    assert.equal(chosen.reportedProgress, 30)
+    assert.deepEqual(state, original)
+    const continued = advanceSimulation(result, 1, noRoll)
+    assert.equal(continued.developers[0].activeTicketID, expected)
+  }
+})
+
+test('a single eligible ticket is selected without rolling', () => {
+  for (const status of ['todo', 'in_progress'] as const) {
+    const state = createSelectionState()
+    state.tickets = state.tickets.filter(t => t.actualStatus === status).slice(0, 1)
+    const result = advanceSimulation(state, 1, noRoll)
+    assert.equal(result.developers[0].activeTicketID, state.tickets[0].id)
+  }
+})
+
+test('no eligible work and zero elapsed time never roll', () => {
+  const state = createSelectionState()
+  assert.deepEqual(advanceSimulation(state, 0, noRoll), state)
+  state.tickets = state.tickets.map((t, i) => ({ ...t, actualStatus: i % 2 ? 'backlog' : 'done' }))
+  assert.equal(advanceSimulation(state, 1, noRoll).developers[0].activeTicketID, undefined)
+})
+
+test('resuming work reserves active tickets and prevents duplicate claims', () => {
+  const state = createSelectionState()
+  state.developers.unshift({ id: 'busy', name: 'Busy', activeTicketID: 'resume-1', productivity: 1 })
+  state.developers.push({ id: 'other', name: 'Other', productivity: 1 })
+  let calls = 0
+  const result = advanceSimulation(state, 1, () => { calls++; return 0.9 })
+  assert.equal(result.developers[0].activeTicketID, 'resume-1')
+  assert.equal(result.developers[1].activeTicketID, 'resume-2')
+  assert.equal(result.developers[2].activeTicketID, 'ticket-1')
+  assert.equal(calls, 1)
+})
+
+test('category probability does not depend on ticket counts and exhausted work is excluded', () => {
+  const state = createSelectionState()
+  state.tickets.unshift({ ...state.tickets[0], id: 'exhausted', completedWork: 10 })
+  state.tickets.push(...Array.from({ length: 10 }, (_, i) => ({ ...state.tickets[1], id: `more-todo-${i}` })))
+  assert.equal(advanceSimulation(state, 1, () => 0.5).developers[0].activeTicketID, 'resume-2')
+})
+
+test('uniform In Progress indexing handles interval boundaries with and without a category draw', () => {
+  for (const both of [false, true]) {
+    for (const [value, index] of [[0, 0], [0.3333333333333333, 1], [0.6666666666666666, 2], [0.9999999999999999, 2]]) {
+      const state = createSelectionState()
+      state.tickets.push({ ...state.tickets[2], id: 'resume-3' })
+      if (!both) state.tickets = state.tickets.filter(t => t.actualStatus === 'in_progress')
+      let calls = 0
+      const result = advanceSimulation(state, 1, () => {
+        calls++
+        return both && calls === 1 ? 0.5 : value
+      })
+      assert.equal(result.developers[0].activeTicketID, `resume-${index + 1}`)
+      assert.equal(calls, both ? 2 : 1)
+    }
+  }
+})
+
+test('seeded state replays identical transitions and serialized continuation', () => {
+  const state = createSelectionState()
+  state.randomState = 12345
+  const original = structuredClone(state)
+  const first = advanceSimulation(state, 1)
+  assert.deepEqual(advanceSimulation(state, 1), first)
+  assert.deepEqual(state, original)
+  assert.notEqual(first.randomState, state.randomState)
+  let replay = JSON.parse(JSON.stringify(first)) as GameState
+  let continued = first
+  for (let i = 0; i < 15; i++) {
+    replay = advanceSimulation(replay, 1)
+    continued = advanceSimulation(continued, 1)
+    assert.deepEqual(replay, continued)
+  }
+  assert.equal(advanceSimulation(first, 1).randomState, first.randomState)
+  assert.equal(advanceSimulation(state, 0).randomState, state.randomState)
+})
