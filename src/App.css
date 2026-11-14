@@ -22,6 +22,58 @@
   background: #fff6e7;
 }
 
+.development-toolbar {
+  position: fixed;
+  z-index: 10;
+  right: 12px;
+  bottom: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 8px;
+  max-width: calc(100vw - 24px);
+  padding: 8px;
+  border: 1px solid #cbd2d9;
+  border-radius: 6px;
+  background: #fff;
+}
+
+.development-menu summary {
+  cursor: pointer;
+  padding: 6px 10px;
+  border: 1px solid #526170;
+  border-radius: 4px;
+}
+
+.development-menu summary:focus-visible,
+.development-panel input:focus-visible {
+  outline: 3px solid #245da8;
+  outline-offset: 3px;
+}
+
+.development-panel {
+  position: fixed;
+  right: 12px;
+  bottom: 100px;
+  width: min(440px, calc((100vw - 36px) / 2));
+  max-height: min(70vh, 600px);
+  overflow: auto;
+  padding: 12px;
+  border: 1px solid #8a601a;
+  border-radius: 6px;
+  background: #fff6e7;
+  box-shadow: 0 4px 18px #0003;
+}
+
+.development-menu:first-child .development-panel {
+  right: calc(24px + min(440px, (100vw - 36px) / 2));
+}
+
+.development-toolbar .diagnostics-toggle {
+  margin: 0;
+  align-items: center;
+}
+
 .seed-controls {
   display: flex;
   align-items: center;
@@ -132,6 +184,15 @@
 }
 
 @media (max-width: 700px) {
+  .development-panel {
+    width: min(440px, calc(100vw - 24px));
+  }
+
+  .development-menu:first-child .development-panel {
+    right: 12px;
+    bottom: 140px;
+  }
+
   .board {
     grid-template-columns: 1fr;
   }

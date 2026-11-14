@@ -24,6 +24,38 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
+      const header = html.match(/<header>(.*?)<\/header>/)?.[1] ?? ''
+      assert.match(header, /Simulation time: 0 seconds/)
+      assert.match(header, /role="status">Paused/)
+      assert.match(header, />Resume<\/button>/)
+      assert.equal((html.match(/>Resume<\/button>/g) ?? []).length, mode === 'development' ? 2 : 1)
+      if (mode === 'development') {
+        const panels = [...html.matchAll(/<details([^>]*)><summary>([^<]+)<\/summary>/g)]
+        assert.deepEqual(panels.map((panel) => panel[2]), ['Simulation Controls', 'Team Diagnostics'])
+        // Separate unnamed disclosures start closed and are not an exclusive accordion group.
+        for (const panel of panels) {
+          assert.doesNotMatch(panel[1], /\bopen(?:\s|=|$)/)
+          assert.doesNotMatch(panel[1], /\bname=/)
+        }
+        assert.ok(html.includes('Close Simulation Controls'))
+        assert.ok(html.includes('Close Team Diagnostics'))
+        assert.ok(html.includes('aria-label="Simulation Controls"'))
+        assert.ok(html.includes('aria-label="Team Diagnostics"'))
+        assert.match(html, /<\/details><button type="button" aria-label="Resume simulation">Resume<\/button>/)
+        const { DevelopmentUI } = await server!.ssrLoadModule('/src/components/DevelopmentUI.tsx')
+        const { exampleGameState } = await server!.ssrLoadModule('/src/data/exampleGameState.ts')
+        for (const [isPaused, label] of [[true, 'Resume'], [false, 'Pause']] as const) {
+          const toolbar = renderToStaticMarkup(createElement(DevelopmentUI, {
+            state: exampleGameState,
+            isPaused,
+            dispatch: () => {},
+          }, () => null))
+          assert.match(toolbar, new RegExp(`<\\/details><button type="button" aria-label="${label} simulation">${label}<\\/button>`))
+          const disclosures = [...toolbar.matchAll(/<details([^>]*)>/g)]
+          assert.equal(disclosures.length, 2)
+          assert.ok(disclosures.every((panel) => !/\bopen(?:\s|=|$)/.test(panel[1])))
+        }
+      }
       for (const playerText of ['Kanban board', 'Backlog', 'To Do', 'In Progress', 'Done',
         'Reported progress:', 'Assigned to:', 'Developers', 'Productivity:', 'Resume',
         'Simulation time: 0 seconds']) {

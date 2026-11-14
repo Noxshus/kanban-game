@@ -45,7 +45,7 @@ visibility, not access to data: the entire simulation runs on the client.
 |---|---|---|---|
 | Development-only | Diagnostic toggle and selector: `src/components/DevelopmentUI.tsx` | Visible; diagnostics enabled initially | Absent; authoritative selector not invoked by App |
 | Development-only | Step +1s, Restart, RNG state display and seed form: `src/components/DevelopmentControls.tsx` | Visible; Step/seed paused-only | Absent |
-| Development-only | Authoritative team totals/rate: `TeamDiagnostics` in `src/components/Diagnostics.tsx` | Visible when diagnostics enabled | Absent |
+| Development-only | Authoritative team totals/rate: `TeamDiagnostics` in `src/components/Diagnostics.tsx` | Visible when Team Diagnostics panel is open | Absent |
 | Development-only | Ticket size, actual completed/remaining work, ETA, active developer/rate: `TicketDiagnostics` in `src/components/Diagnostics.tsx` | Visible when enabled | Absent |
 | Development-only | Actual active work and ownership counts: `DeveloperDiagnostics` in `src/components/Diagnostics.tsx` | Visible when enabled | Absent |
 | Player-facing | Four-column board, ticket IDs/titles, reported status/progress, assignees: `src/components/GameBoard.tsx`, `src/store/playerView.ts` | Visible | Visible |
@@ -53,7 +53,7 @@ visibility, not access to data: the entire simulation runs on the client.
 | Player-facing (provisional) | Pause/Resume, clock, initially paused run: `src/App.tsx`, `src/store/simulationControls.ts` | Visible | Visible |
 | Player-facing | Existing simulation behavior; no ordinary navigation implemented yet: `src/game/advanceSimulation.ts` | Runs on resume | Runs on resume |
 | Undecided / future | Which diagnostics become player unlocks or unreliable reports: `GAME_DESIGN.md` section 4.3.1 | No unlock UI implemented | No unlock UI implemented |
-| Deferred | Diagnostic overlay presentation (#19): `src/components/DevelopmentUI.tsx` is the boundary | Current inline layout | Absent |
+| Development-only | Simulation Controls and Team Diagnostics overlay panels (#19): `src/components/DevelopmentUI.tsx` | Independently openable from the floating toolbar | Absent |
 
 There is no decision trace or other debugging UI in the current source. Diagnostic
 components may share rendering code with the board; production absence is a rendering
