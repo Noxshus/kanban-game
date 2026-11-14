@@ -117,7 +117,7 @@ They may:
 
 Developer behaviour will eventually be influenced by individual attributes and competencies.
 
-### 4.2.1. Work selection (next prototype rule)
+### 4.2.1. Work selection (implemented prototype rule)
 
 When a developer becomes idle, they may take an eligible **To Do** ticket or resume an unfinished **In Progress** ticket that no other developer is actively working on. **Backlog** and **Done** are not eligible under ordinary behaviour.
 
@@ -127,11 +127,11 @@ If both To Do and unclaimed In Progress tickets are available, the developer mak
 
 This is intentionally a **two-stage decision**: the category-selection roll must not be weighted by the number of tickets in each category. Future developer attributes (e.g. a proposed **Judgement** attribute) may influence both the category choice and which particular ticket is considered worthwhile, but no attribute or specific weighting mechanic is confirmed yet.
 
-These rolls take place **when choosing new work**, not every simulation tick; developers do not repeatedly switch tickets because of a new roll. No two developers work on the same ticket under the current prototype rules.
+These selection rolls take place **when choosing new work**, not every simulation tick. Developers currently continue their existing work without rerolling; the separate spontaneous task-switching mechanic in issue #16 will introduce an explicit exception to this. No two developers work on the same ticket under the current prototype rules.
 
 This equal probability is a **temporary baseline**, not a permanent statement about every developer's behaviour. Later developer attributes, preferences, management abilities or situational factors may change selection probabilities. Those details remain undecided.
 
-Implementation is tracked in GitHub issue #14 and should not be presented as already implemented until verified. Random selection should be controllable in tests so the simulation remains reliably testable.
+**Implemented and independently reviewed in GitHub issue #14 (commit `953a722`).** Selection randomness uses a deterministic 32-bit linear congruential generator (LCG) whose state is stored in `GameState.randomState`; the simulation advances that state without external random side effects. Identical starting states and elapsed-time calls produce identical decisions, including under React StrictMode updater replay. A test-only RNG override permits controlled boundary tests. The seeded sequence is not intended to be cryptographically secure.
 
 ### 4.2.2. Spontaneous task switching (proposed prototype mechanic)
 
@@ -259,7 +259,7 @@ Record significant decisions here as the project evolves.
 | Backlog separate from committed work | Confirmed | Backlog is potential work; only committed or already-started work is eligible for normal selection |
 | Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
 | In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
-| Resume vs start choice | Prototype decision | 50/50 category roll when both are eligible; then uniform random In Progress ticket selection; first eligible To Do ticket otherwise. Implementation pending #14 |
+| Resume vs start choice | Prototype decision | Implemented in #14 (`953a722`): 50/50 category roll when both are eligible, uniform random In Progress ticket selection, first eligible To Do ticket otherwise; reproducible game-state RNG |
 | Spontaneous task switching | Proposed prototype mechanic | 1% per one-second tick to switch to a different eligible ticket; balancing and exact update semantics pending #16 |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
