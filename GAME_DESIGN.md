@@ -133,6 +133,14 @@ This equal probability is a **temporary baseline**, not a permanent statement ab
 
 Implementation is tracked in GitHub issue #14 and should not be presented as already implemented until verified. Random selection should be controllable in tests so the simulation remains reliably testable.
 
+### 4.2.2. Spontaneous task switching (proposed prototype mechanic)
+
+In a future iteration, developers who are already working may independently have a **1% chance per simulation tick** to stop their current work and switch to a **different eligible ticket**. The abandoned ticket retains its completed work and remains **In Progress**, even if no developer is actively working on it. Developers must not switch to Backlog, Done or work currently claimed by another developer. If no alternative eligible ticket exists, they continue their current work.
+
+The initial reference tick is a **one-second simulation update**, *not* a browser render. The probability, timing of the roll relative to work progression, and treatment of larger/fractional time steps must be specified and tested before implementation; the probability will likely be adjusted through balancing. A future developer attribute may modify this tendency, but the attribute and formulas are not yet decided.
+
+This mechanic is tracked in **GitHub issue #16** and is **not yet implemented**. It is distinct from the 50/50 choice made when selecting work while idle (issue #14).
+
 The exact future developer attributes and richer decision-making systems remain undecided.
 
 ### 4.3. Information and Deduction
@@ -224,6 +232,7 @@ The following questions remain unresolved:
 - What resources does the player accumulate?
 - How will developer attributes (e.g. proposed Judgement) and circumstances affect the provisional 50/50 category decision and random selection among unfinished tickets?
 - Should unclaimed In Progress work or To Do work receive any default preference beyond the initial neutral rule?
+- How should spontaneous switching probability scale with elapsed simulation time and individual developer attributes?
 - How are developer competencies represented?
 - What RPG attributes does the player possess?
 - How does the player investigate discrepancies?
@@ -251,6 +260,7 @@ Record significant decisions here as the project evolves.
 | Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
 | In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
 | Resume vs start choice | Prototype decision | 50/50 category roll when both are eligible; then uniform random In Progress ticket selection; first eligible To Do ticket otherwise. Implementation pending #14 |
+| Spontaneous task switching | Proposed prototype mechanic | 1% per one-second tick to switch to a different eligible ticket; balancing and exact update semantics pending #16 |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
 | Developer personality system | Proposed | Not yet committed |
