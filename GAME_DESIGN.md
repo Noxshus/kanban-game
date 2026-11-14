@@ -163,6 +163,8 @@ They are **development diagnostics**, not a commitment that the eventual player 
 
 The prototype also begins paused with diagnostics shown by default to support manual verification; this is a development convenience, not a final gameplay decision.
 
+**Implemented development controls (#10 and #18, commit `9c0bbac`):** While paused, a developer can advance the simulation by exactly one simulated second, apply a validated unsigned 32-bit RNG seed, or restart from a fresh copy of the example state (resetting time, work, assignments and RNG to the initial values, and leaving the simulation paused). The controls use the same pure simulation transition as normal play and are shown only in Vite development mode; this is a build mode, **not a separate hosted development environment**. The legacy true-state diagnostics are not yet consistently gated in production; issue #20 tracks that audit, and issue #19 tracks moving large diagnostic sections into overlays.
+
 ### 4.4. Player Attributes and Abilities
 
 The player has RPG-like attributes that influence their effectiveness as a manager.
@@ -263,6 +265,7 @@ Record significant decisions here as the project evolves.
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Diagnostics and paused initial state | Prototype decision | True values visible by default while validating; future player visibility may be unlockable or unreliable |
+| Step, restart and RNG development controls | Implemented developer tooling | #10/#18 (`9c0bbac`): single-second paused step, complete restart, validated seeded replay; Vite development-mode gated; consistency audit pending #20 |
 | Developer personality system | Proposed | Not yet committed |
 | Multiple management layers | Proposed | Not yet committed |
 
