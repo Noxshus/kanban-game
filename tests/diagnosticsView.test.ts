@@ -112,3 +112,30 @@ test('diagnostics update live through completion and remain separate from player
   assert.ok(finished.tickets.slice(5).every(ticket => ticket.estimatedSeconds === null))
 })
 
+test('untouched zero-sized Backlog does not count as completed or receive a zero-second ETA', () => {
+  const state = structuredClone(exampleGameState)
+  state.tickets = [{ ...state.tickets[5], requiredWork: 0, completedWork: 0 }]
+  const original = structuredClone(state)
+  const view = getDiagnosticsView(state)
+  assert.equal(view.team.completedTickets, 0)
+  assert.equal(view.team.totalTickets, 1)
+  assert.equal(view.tickets[0].remainingWork, 0)
+  assert.equal(view.tickets[0].estimatedSeconds, null)
+  assert.deepEqual(state, original)
+})
+
+test('diagnostics ignore stale active-ticket references to Backlog', () => {
+  const state = structuredClone(exampleGameState)
+  state.tickets = [state.tickets[5]]
+  state.developers[0].activeTicketID = state.tickets[0].id
+  const original = structuredClone(state)
+  const view = getDiagnosticsView(state)
+  assert.equal(view.developers[0].activeTicket, null)
+  assert.equal(view.developers[0].workRate, 0)
+  assert.equal(view.team.activeDevelopers, 0)
+  assert.equal(view.team.workRate, 0)
+  assert.equal(view.tickets[0].activeDeveloperName, null)
+  assert.equal(view.tickets[0].workRate, 0)
+  assert.equal(view.tickets[0].estimatedSeconds, null)
+  assert.deepEqual(state, original)
+})

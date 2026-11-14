@@ -25,7 +25,9 @@ export function getDiagnosticsView(state: GameState) {
     const activeDeveloper = developers.find((developer) => developer.activeTicket?.id === ticket.id)
     const remainingWork = Math.max(0, ticket.requiredWork - ticket.completedWork)
     const workRate = activeDeveloper?.workRate ?? 0
-    const complete = ticket.actualStatus === 'done' || remainingWork === 0
+    // Backlog is uncommitted, so zero remaining work does not imply completion.
+    const complete = ticket.actualStatus !== 'backlog'
+      && (ticket.actualStatus === 'done' || remainingWork === 0)
     return {
       id: ticket.id,
       requiredWork: ticket.requiredWork,
@@ -43,7 +45,8 @@ export function getDiagnosticsView(state: GameState) {
     developers,
     team: {
       completedTickets: state.tickets.filter((ticket) =>
-        ticket.actualStatus === 'done' || ticket.completedWork >= ticket.requiredWork,
+        ticket.actualStatus !== 'backlog'
+          && (ticket.actualStatus === 'done' || ticket.completedWork >= ticket.requiredWork),
       ).length,
       totalTickets: tickets.length,
       activeDevelopers: developers.filter((developer) => developer.activeTicket !== null).length,
