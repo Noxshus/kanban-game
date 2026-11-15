@@ -4,7 +4,7 @@ import { compareRank } from '../game/rank.ts'
 
 export type PlayerTicket = Pick<
   Ticket,
-  'id' | 'title' | 'rank' | 'reportedStatus' | 'reportedProgress' | 'assignedDeveloperId'
+  'id' | 'title' | 'rank' | 'workDomain' | 'reportedStatus' | 'reportedProgress' | 'assignedDeveloperId'
 >
 
 export function getPlayerView(state: GameState) {
@@ -14,6 +14,7 @@ export function getPlayerView(state: GameState) {
     tickets: state.tickets.map((ticket): PlayerTicket => ({
       id: ticket.id,
       title: ticket.title,
+      workDomain: ticket.workDomain,
       rank: ticket.rank,
       reportedStatus: ticket.reportedStatus,
       reportedProgress: clampReportedProgress(ticket.reportedProgress),

@@ -136,6 +136,15 @@
   margin: 8px 0;
 }
 
+.ticket-domain {
+  display: inline-block;
+  padding: 2px 6px;
+  border: 1px solid #cbd2d9;
+  border-radius: 4px;
+  color: #36434f;
+  font-size: 0.875rem;
+}
+
 .ticket[draggable="true"] { cursor: grab; }
 .ticket.drop-before { box-shadow: 0 -4px #245da8; }
 .ticket.drop-after { box-shadow: 0 4px #245da8; }

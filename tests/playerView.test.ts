@@ -13,6 +13,7 @@ test('player view exposes only reported ticket information and public developer 
     id: 'ticket-1',
     rank: 1,
     title: 'Build the navigation menu',
+    workDomain: 'frontend',
     reportedStatus: 'in_progress',
     reportedProgress: 15,
     assignedDeveloperId: 'developer-1',
@@ -21,7 +22,7 @@ test('player view exposes only reported ticket information and public developer 
     assert.equal('actualStatus' in ticket, false)
     assert.equal('completedWork' in ticket, false)
     assert.equal('requiredWork' in ticket, false)
-    assert.equal('workDomain' in ticket, false)
+    assert.equal(ticket.workDomain, state.tickets.find(source => source.id === ticket.id)?.workDomain)
   }
   assert.deepEqual(view.developers[0], { id: 'developer-1', name: 'Alex', productivity: 1 })
   assert.ok(view.developers.every(developer => !('competencies' in developer)))

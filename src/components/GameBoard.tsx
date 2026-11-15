@@ -143,6 +143,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                         } : undefined}>
                         <span className="ticket-id">{ticket.id}</span>
                         <h4>{ticket.title}</h4>
+                        <span className="ticket-domain">{ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</span>
                         <p>{assignee ? `Assigned to: ${assignee.name}` : 'Unassigned'}</p>
                         <label className="ticket-progress">
                           <span>Reported progress: {Math.round(ticket.reportedProgress)}%</span>
