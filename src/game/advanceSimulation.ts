@@ -1,7 +1,7 @@
-import type { GameState, Ticket } from './types'
+import type { Developer, GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
-import { compareRank } from './rank.ts'
+import { selectWork, validateSelectionAttributes } from './selectWork.ts'
 import { getWorkCompleted } from './productivity.ts'
 
 export function advanceSimulation(
@@ -43,6 +43,7 @@ export function advanceSimulation(
   }
 
   if (elapsedSeconds > 0) {
+    developers.forEach(validateSelectionAttributes)
     const claimedTickets = new Set<string>()
     const isComplete = (ticket: Ticket) =>
       ticket.actualStatus === 'done' || ticket.completedWork >= ticket.requiredWork
@@ -58,18 +59,14 @@ export function advanceSimulation(
       }
     }
 
-    const selectTicket = (excludedId?: string) => {
+    const selectTicket = (developer: Developer, excludedId?: string) => {
       const eligible = tickets.filter((candidate) =>
-        candidate.id !== excludedId && !isComplete(candidate) && !claimedTickets.has(candidate.id),
+        candidate.id !== excludedId && !isComplete(candidate) && !claimedTickets.has(candidate.id)
+          && (candidate.actualStatus === 'todo' || candidate.actualStatus === 'in_progress'),
       )
-      const todo = eligible.filter((candidate) => candidate.actualStatus === 'todo').sort(compareRank)[0]
-      const inProgress = eligible.filter((candidate) => candidate.actualStatus === 'in_progress')
-      // Provisional category choice, independent of category size; roll only for new work.
-      // Inject random values in tests. Call boundaries still determine when new selections occur.
-      const chooseInProgress = inProgress.length > 0 && (!todo || draw() >= 0.5)
-      return chooseInProgress
-        ? inProgress[inProgress.length === 1 ? 0 : Math.floor(draw() * inProgress.length)]
-        : todo
+      const decision = selectWork(eligible, developer, draw)
+      if (decision) developer.lastSelection = decision
+      return decision ? ticketsById.get(decision.selectedId) : undefined
     }
 
     // Existing workers get one switch opportunity before any work. Keep their claim
@@ -78,7 +75,7 @@ export function advanceSimulation(
     for (const developer of developers) {
       const current = ticketsById.get(developer.activeTicketID ?? '')
       if (!current || draw() >= switchProbability) continue
-      const replacement = selectTicket(current.id)
+      const replacement = selectTicket(developer, current.id)
       if (!replacement) continue
       current.actualStatus = 'in_progress'
       claimedTickets.delete(current.id)
@@ -88,7 +85,7 @@ export function advanceSimulation(
 
     for (const developer of developers) {
       if (developer.activeTicketID !== undefined) continue
-      const ticket = selectTicket()
+      const ticket = selectTicket(developer)
       if (ticket) {
         developer.activeTicketID = ticket.id
         claimedTickets.add(ticket.id)

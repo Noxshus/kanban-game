@@ -30,8 +30,10 @@
   display: flex;
   flex-wrap: wrap;
   justify-content: flex-end;
+  align-items: center;
   gap: 8px;
-  max-width: calc(100vw - 24px);
+  width: max-content;
+  max-width: min(360px, calc(100vw - 24px));
   padding: 8px;
   border: 1px solid #cbd2d9;
   border-radius: 6px;
@@ -54,7 +56,7 @@
 .development-panel {
   position: fixed;
   right: 12px;
-  bottom: 100px;
+  bottom: calc(var(--development-toolbar-height, 120px) + 24px);
   width: min(440px, calc((100vw - 36px) / 2));
   max-height: min(70vh, 600px);
   overflow: auto;
@@ -224,7 +226,6 @@
 
   .development-menu:first-child .development-panel {
     right: 12px;
-    bottom: 140px;
   }
 
   .board {

@@ -43,6 +43,17 @@ export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView
       <p>Active work: {developer.activeTicket
         ? `${developer.activeTicket.id}: ${developer.activeTicket.title}` : 'Idle'}</p>
       <p>Assigned tickets (ownership): {developer.assignedTicketCount}</p>
+      <p>Judgement: {format(developer.judgement)}; Discipline: {format(developer.discipline)}</p>
+      <details>
+        <summary>Most recent work selection</summary>
+        {developer.lastSelection ? <>
+          <p>Manager candidate: {developer.lastSelection.managerChoice.id}, Rank {developer.lastSelection.managerChoice.rank}, reported progress {format(developer.lastSelection.managerChoice.reportedProgress)}%</p>
+          <p>Opportunity candidate: {developer.lastSelection.opportunity.id}, Rank {developer.lastSelection.opportunity.rank}, reported progress {format(developer.lastSelection.opportunity.reportedProgress)}%</p>
+          <p>Decision attributes: Judgement {format(developer.lastSelection.judgement)}, Discipline {format(developer.lastSelection.discipline)}</p>
+          <p>Override probability: {format(developer.lastSelection.overrideProbability * 100)}%; RNG draw: {developer.lastSelection.draw === null ? 'None (candidates agree)' : developer.lastSelection.draw}</p>
+          <p>Selected ticket: {developer.lastSelection.selectedId}</p>
+        </> : <p>No selection yet</p>}
+      </details>
     </div>
   )
 }

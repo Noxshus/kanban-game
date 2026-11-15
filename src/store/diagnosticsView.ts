@@ -17,6 +17,9 @@ export function getDiagnosticsView(state: GameState) {
       name: developer.name,
       productivity: developer.productivity,
       competencies: { ...developer.competencies },
+      judgement: developer.judgement,
+      discipline: developer.discipline,
+      lastSelection: developer.lastSelection ? structuredClone(developer.lastSelection) : null,
       activeTicket: activeTicket ? { id: activeTicket.id, title: activeTicket.title } : null,
       workRate: activeTicket ? getEffectiveProductivity(developer, activeTicket) : 0,
       assignedTicketCount: state.tickets.filter((candidate) =>

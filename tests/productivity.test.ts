@@ -12,7 +12,7 @@ function domainScenario(workDomain: WorkDomain, frontend: number, backend: numbe
     randomState: 1,
     simulationTime: 0,
     developers: [{ id: 'engineer', name: 'Engineer', activeTicketID: 'work', productivity,
-      competencies: { frontend, backend } }],
+      competencies: { frontend, backend }, judgement: 5, discipline: 5 }],
     tickets: [{ id: 'work', title: 'Domain work', rank: 1, workDomain,
       actualStatus: 'in_progress', reportedStatus: 'todo', reportedProgress: 0,
       assignedDeveloperId: 'engineer', completedWork: 0, requiredWork: 100 }],

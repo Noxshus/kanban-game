@@ -32,6 +32,20 @@ export interface Developer {
   productivity: number
   // Independent non-negative competencies; not mutually exclusive job classes.
   competencies: Record<WorkDomain, number>
+  judgement: number
+  discipline: number
+  // One immutable decision snapshot survives later progress/rank changes; never an event log.
+  lastSelection?: SelectionDecision
+}
+
+export interface SelectionDecision {
+  managerChoice: { id: string; rank: number; reportedProgress: number }
+  opportunity: { id: string; rank: number; reportedProgress: number }
+  judgement: number
+  discipline: number
+  overrideProbability: number
+  draw: number | null
+  selectedId: string
 }
 
 export interface GameState {

@@ -9,7 +9,7 @@ function createState(): GameState {
     randomState: 1,
     simulationTime: 10,
     developers: [
-      { id: 'dev-1', name: 'Alex', activeTicketID: 'ticket-1', productivity: 2, competencies: { frontend: 5, backend: 5 } },
+      { id: 'dev-1', name: 'Alex', activeTicketID: 'ticket-1', productivity: 2, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5 },
     ],
     tickets: [
       {
@@ -108,7 +108,7 @@ test('does not mutate input, including nested objects', () => {
 test('prevents duplicate active work when collaboration is disabled', () => {
   const state = createState()
   state.developers.push({
-    id: 'dev-2', name: 'Sam', activeTicketID: 'ticket-1', productivity: 1, competencies: { frontend: 5, backend: 5 },
+    id: 'dev-2', name: 'Sam', activeTicketID: 'ticket-1', productivity: 1, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5,
   })
   const result = advanceSimulation(state, 2)
   assert.equal(result.tickets[0].completedWork, 5)
@@ -148,7 +148,7 @@ test('reserves existing active work before idle developers select in ticket orde
   const state = createState()
   const originalTicket = state.tickets[0]
   state.tickets.push({ ...originalTicket, id: 'ticket-2', assignedDeveloperId: 'someone-else' })
-  state.developers.unshift({ id: 'idle', name: 'Idle', productivity: 1, competencies: { frontend: 5, backend: 5 } })
+  state.developers.unshift({ id: 'idle', name: 'Idle', productivity: 1, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5 })
   const result = advanceSimulation(state, 1)
   assert.equal(result.developers[0].activeTicketID, 'ticket-2')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
@@ -244,29 +244,12 @@ function createSelectionState(): GameState {
     { ...state.tickets[0], id: 'resume-1', actualStatus: 'in_progress', reportedStatus: 'backlog' },
     { ...state.tickets[0], id: 'resume-2', actualStatus: 'in_progress' },
   )
+  state.tickets.forEach((ticket, index) => { ticket.rank = index + 1 })
+  state.tickets[2].reportedProgress = 90
   return state
 }
 
 const noRoll = () => { throw new Error('Unexpected random roll') }
-
-test('50/50 threshold selects the first ticket in the chosen category', () => {
-  for (const [roll, expected] of [[0, 'ticket-1'], [0.499999, 'ticket-1'], [0.5, 'resume-1'], [0.999999, 'resume-1']] as const) {
-    const state = createSelectionState()
-    const original = structuredClone(state)
-    let calls = 0
-    const result = advanceSimulation(state, 1, () => { calls++; return calls === 1 ? roll : 0 })
-    assert.equal(calls, roll < 0.5 ? 1 : 2)
-    assert.equal(result.developers[0].activeTicketID, expected)
-    const chosen = result.tickets.find(t => t.id === expected)!
-    assert.equal(chosen.completedWork, 3)
-    assert.equal(chosen.assignedDeveloperId, 'dev-1')
-    assert.equal(chosen.reportedStatus, 'in_progress')
-    assert.equal(chosen.reportedProgress, 30)
-    assert.deepEqual(state, original)
-    const continued = advanceSimulation(result, 1, () => 0.99)
-    assert.equal(continued.developers[0].activeTicketID, expected)
-  }
-})
 
 test('a single eligible ticket is selected without rolling', () => {
   for (const status of ['todo', 'in_progress'] as const) {
@@ -286,38 +269,14 @@ test('no eligible work and zero elapsed time never roll', () => {
 
 test('resuming work reserves active tickets and prevents duplicate claims', () => {
   const state = createSelectionState()
-  state.developers.unshift({ id: 'busy', name: 'Busy', activeTicketID: 'resume-1', productivity: 1, competencies: { frontend: 5, backend: 5 } })
-  state.developers.push({ id: 'other', name: 'Other', productivity: 1, competencies: { frontend: 5, backend: 5 } })
+  state.developers.unshift({ id: 'busy', name: 'Busy', activeTicketID: 'resume-1', productivity: 1, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5 })
+  state.developers.push({ id: 'other', name: 'Other', productivity: 1, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5 })
   let calls = 0
   const result = advanceSimulation(state, 1, () => { calls++; return 0.9 })
   assert.equal(result.developers[0].activeTicketID, 'resume-1')
-  assert.equal(result.developers[1].activeTicketID, 'resume-2')
-  assert.equal(result.developers[2].activeTicketID, 'ticket-1')
-  assert.equal(calls, 2)
-})
-
-test('category probability does not depend on ticket counts and exhausted work is excluded', () => {
-  const state = createSelectionState()
-  state.tickets.unshift({ ...state.tickets[0], id: 'exhausted', completedWork: 10 })
-  state.tickets.push(...Array.from({ length: 10 }, (_, i) => ({ ...state.tickets[1], id: `more-todo-${i}` })))
-  assert.equal(advanceSimulation(state, 1, () => 0.5).developers[0].activeTicketID, 'resume-2')
-})
-
-test('uniform In Progress indexing handles interval boundaries with and without a category draw', () => {
-  for (const both of [false, true]) {
-    for (const [value, index] of [[0, 0], [0.3333333333333333, 1], [0.6666666666666666, 2], [0.9999999999999999, 2]]) {
-      const state = createSelectionState()
-      state.tickets.push({ ...state.tickets[2], id: 'resume-3' })
-      if (!both) state.tickets = state.tickets.filter(t => t.actualStatus === 'in_progress')
-      let calls = 0
-      const result = advanceSimulation(state, 1, () => {
-        calls++
-        return both && calls === 1 ? 0.5 : value
-      })
-      assert.equal(result.developers[0].activeTicketID, `resume-${index + 1}`)
-      assert.equal(calls, both ? 2 : 1)
-    }
-  }
+  assert.equal(result.developers[1].activeTicketID, 'ticket-1')
+  assert.equal(result.developers[2].activeTicketID, 'todo-2')
+  assert.equal(calls, 1)
 })
 
 test('seeded state replays identical transitions and serialized continuation', () => {
@@ -382,7 +341,7 @@ test('successful switch roll without alternatives retains active work', () => {
 test('multiple switches resolve in developer order without duplicate claims or double work', () => {
   const state = switchingState()
   state.tickets.push({ ...state.tickets[0], id: 'other-active', completedWork: 5 })
-  state.developers.push({ id: 'dev-2', name: 'Sam', productivity: 1, activeTicketID: 'other-active', competencies: { frontend: 5, backend: 5 } })
+  state.developers.push({ id: 'dev-2', name: 'Sam', productivity: 1, activeTicketID: 'other-active', competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5 })
   const result = advanceSimulation(state, 1, () => 0)
   assert.equal(result.developers[0].activeTicketID, 'alternative')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
@@ -392,16 +351,17 @@ test('multiple switches resolve in developer order without duplicate claims or d
   assert.equal(result.tickets[2].actualStatus, 'in_progress')
 })
 
-test('switch replacements reuse category and uniform In Progress selection', () => {
+test('switch replacements reuse the reported-progress contest', () => {
   const state = switchingState()
   state.tickets.push(
     { ...state.tickets[0], id: 'resume-a' },
     { ...state.tickets[0], id: 'resume-b' },
   )
-  const values = [0, 0.5, 0.999999]
+  state.tickets[3].reportedProgress = 90
+  const values = [0, 0]
   let calls = 0
   const result = advanceSimulation(state, 1, () => values[calls++])
-  assert.equal(calls, 3)
+  assert.equal(calls, 2)
   assert.equal(result.developers[0].activeTicketID, 'resume-b')
   assert.equal(result.tickets[0].completedWork, 1)
 })

@@ -41,8 +41,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.match(header, />Resume<\/button>/)
       assert.equal((html.match(/>Resume<\/button>/g) ?? []).length, mode === 'development' ? 2 : 1)
       if (mode === 'development') {
-        const panels = [...html.matchAll(/<details([^>]*)><summary>([^<]+)<\/summary>/g)]
-        assert.deepEqual(panels.map((panel) => panel[2]), ['Simulation Controls', 'Team Diagnostics'])
+        const panels = [...html.matchAll(/<details([^>]*)><summary[^>]*>([^<]+)<\/summary>/g)]
+        assert.deepEqual(panels.slice(0, 2).map((panel) => panel[2]), ['Simulation', 'Team'])
         // Separate unnamed disclosures start closed and are not an exclusive accordion group.
         for (const panel of panels) {
           assert.doesNotMatch(panel[1], /\bopen(?:\s|=|$)/)
@@ -59,6 +59,26 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
         const { getDiagnosticsView } = await server!.ssrLoadModule('/src/store/diagnosticsView.ts')
         const { DeveloperDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
+        const { advanceSimulation } = await server!.ssrLoadModule('/src/game/advanceSimulation.ts')
+        const conflict = structuredClone(exampleGameState)
+        conflict.tickets[4].reportedProgress = 90
+        const conflictResult = advanceSimulation(conflict, 1, () => 0.5)
+        const conflictHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
+          developer: getDiagnosticsView(conflictResult).developers[2],
+        }))
+        // Jordan is 5/5: score = 4*0.9 - 2.5 = 1.1, probability ~75.03%.
+        for (const text of ['Manager candidate: ticket-3', 'Opportunity candidate: ticket-5',
+          'Override probability: 75.03%', 'RNG draw: 0.5', 'Selected ticket: ticket-5']) {
+          assert.ok(conflictHtml.includes(text), text)
+        }
+        const selectedState = advanceSimulation(exampleGameState, 1, () => 0.99)
+        const selectionHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
+          developer: getDiagnosticsView(selectedState).developers[2],
+        }))
+        for (const text of ['Manager candidate: ticket-3', 'Opportunity candidate: ticket-3',
+          'Override probability: 0%', 'None (candidates agree)', 'Selected ticket: ticket-3']) {
+          assert.ok(selectionHtml.includes(text))
+        }
         const highCompetency = structuredClone(exampleGameState)
         highCompetency.developers[0].competencies.frontend = 100
         const diagnosticHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
@@ -70,6 +90,9 @@ test('Vite development shows diagnostics; production retains only the player UI'
           view: getPlayerView(exampleGameState), diagnostics: null,
         }))
         assert.ok(!withoutDiagnostics.includes('role="tooltip"'))
+        for (const text of ['Judgement:', 'Discipline:', 'Most recent work selection', 'Manager candidate:', 'RNG draw:']) {
+          assert.ok(!withoutDiagnostics.includes(text))
+        }
         for (const label of ['Work domain:', 'Frontend competency:', 'Backend competency:', 'Effective productivity:', 'Base productivity:']) {
           assert.ok(!withoutDiagnostics.includes(label))
         }
@@ -96,7 +119,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
-        'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:']) {
+        'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Discipline:', 'Most recent work selection']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)
       }
     } finally {

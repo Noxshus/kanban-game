@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react'
-import type { Dispatch, ReactNode } from 'react'
+import { useEffect, useRef, useState } from 'react'
+import type { CSSProperties, Dispatch, ReactNode } from 'react'
 import type { GameState } from '../game/types'
 import type { SimulationAction } from '../store/simulationControls'
 import { getDiagnosticsView } from '../store/diagnosticsView'
@@ -20,6 +20,16 @@ export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
   const [showDiagnostics, setShowDiagnostics] = useState(true)
   const simulationPanel = useRef<HTMLDetailsElement>(null)
   const teamPanel = useRef<HTMLDetailsElement>(null)
+  const toolbar = useRef<HTMLDivElement>(null)
+  const [toolbarHeight, setToolbarHeight] = useState(120)
+  useEffect(() => {
+    const element = toolbar.current
+    if (!element) return
+    // Reserve the actual wrapped height, including browser zoom/font changes.
+    const observer = new ResizeObserver(() => setToolbarHeight(element.getBoundingClientRect().height))
+    observer.observe(element)
+    return () => observer.disconnect()
+  }, [])
   const diagnostics = showDiagnostics ? getDiagnosticsView(state) : null
 
   function closePanel(panel: HTMLDetailsElement | null) {
@@ -30,16 +40,17 @@ export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
 
   return (
     <>
-      <div className="development-toolbar" aria-label="Development tools">
+      <div ref={toolbar} className="development-toolbar" aria-label="Development tools"
+        style={{ '--development-toolbar-height': `${toolbarHeight}px` } as CSSProperties}>
         <details ref={simulationPanel} className="development-menu">
-          <summary>Simulation Controls</summary>
+          <summary aria-label="Simulation Controls" title="Simulation Controls">Simulation</summary>
           <div className="development-panel" role="region" aria-label="Simulation Controls">
             <button type="button" onClick={() => closePanel(simulationPanel.current)}>Close Simulation Controls</button>
             <DevelopmentControls isPaused={isPaused} randomState={state.randomState} dispatch={dispatch} />
           </div>
         </details>
         <details ref={teamPanel} className="development-menu">
-          <summary>Team Diagnostics</summary>
+          <summary aria-label="Team Diagnostics" title="Team Diagnostics">Team</summary>
           <div className="development-panel" role="region" aria-label="Team Diagnostics">
             <button type="button" onClick={() => closePanel(teamPanel.current)}>Close Team Diagnostics</button>
             <TeamDiagnostics team={getDiagnosticsView(state).team} />
@@ -51,11 +62,13 @@ export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
         </button>
       <label className="diagnostics-toggle">
         <input type="checkbox" checked={showDiagnostics}
+          aria-label="Show development diagnostics (true simulation values)"
           onChange={(event) => setShowDiagnostics(event.target.checked)} />
-        Show development diagnostics (true simulation values)
+        Diagnostics
       </label>
       </div>
       {children(diagnostics)}
+      <div aria-hidden="true" style={{ height: toolbarHeight + 24 }} />
     </>
   )
 }
