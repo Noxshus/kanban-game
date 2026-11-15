@@ -70,8 +70,9 @@ Follow [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) for the Chat
 ## Working with the project
 
 - Inspect existing code before modifying it.
+- At the beginning and end of an implementation, inspect `git status --short` and identify **all** issue-related changed/untracked files, including test changes; flag unrelated scratch files. Do not provide a partial hard-coded list as if it covered the entire change.
 - Do not overwrite existing work without reason.
-- Do not commit or push changes unless asked.
+- **Do not commit, push, pull or rebase during normal implementation or independent review.** After the user explicitly authorises a *separate* post-review release handoff, Codex may stage/commit/synchronise/push the approved issue only, following `docs/DEVELOPMENT_WORKFLOW.md`. Verify no issue-related unstaged files remain; never force-push, discard unknown changes or resolve conflicts unilaterally.
 - Do not introduce game mechanics beyond the explicitly requested scope.
 
 
