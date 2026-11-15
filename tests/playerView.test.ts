@@ -21,8 +21,10 @@ test('player view exposes only reported ticket information and public developer 
     assert.equal('actualStatus' in ticket, false)
     assert.equal('completedWork' in ticket, false)
     assert.equal('requiredWork' in ticket, false)
+    assert.equal('workDomain' in ticket, false)
   }
   assert.deepEqual(view.developers[0], { id: 'developer-1', name: 'Alex', productivity: 1 })
+  assert.ok(view.developers.every(developer => !('competencies' in developer)))
   assert.equal(view.simulationTime, state.simulationTime)
   state.tickets[0].completedWork = 0
   state.tickets[0].actualStatus = 'todo'

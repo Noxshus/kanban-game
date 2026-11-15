@@ -9,12 +9,13 @@ function createState(): GameState {
     randomState: 1,
     simulationTime: 10,
     developers: [
-      { id: 'dev-1', name: 'Alex', activeTicketID: 'ticket-1', productivity: 2 },
+      { id: 'dev-1', name: 'Alex', activeTicketID: 'ticket-1', productivity: 2, competencies: { frontend: 5, backend: 5 } },
     ],
     tickets: [
       {
         id: 'ticket-1',
         title: 'Example task', rank: 10,
+        workDomain: 'frontend',
         actualStatus: 'todo',
         reportedStatus: 'todo',
         requiredWork: 10,
@@ -107,7 +108,7 @@ test('does not mutate input, including nested objects', () => {
 test('prevents duplicate active work when collaboration is disabled', () => {
   const state = createState()
   state.developers.push({
-    id: 'dev-2', name: 'Sam', activeTicketID: 'ticket-1', productivity: 1,
+    id: 'dev-2', name: 'Sam', activeTicketID: 'ticket-1', productivity: 1, competencies: { frontend: 5, backend: 5 },
   })
   const result = advanceSimulation(state, 2)
   assert.equal(result.tickets[0].completedWork, 5)
@@ -147,7 +148,7 @@ test('reserves existing active work before idle developers select in ticket orde
   const state = createState()
   const originalTicket = state.tickets[0]
   state.tickets.push({ ...originalTicket, id: 'ticket-2', assignedDeveloperId: 'someone-else' })
-  state.developers.unshift({ id: 'idle', name: 'Idle', productivity: 1 })
+  state.developers.unshift({ id: 'idle', name: 'Idle', productivity: 1, competencies: { frontend: 5, backend: 5 } })
   const result = advanceSimulation(state, 1)
   assert.equal(result.developers[0].activeTicketID, 'ticket-2')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
@@ -285,8 +286,8 @@ test('no eligible work and zero elapsed time never roll', () => {
 
 test('resuming work reserves active tickets and prevents duplicate claims', () => {
   const state = createSelectionState()
-  state.developers.unshift({ id: 'busy', name: 'Busy', activeTicketID: 'resume-1', productivity: 1 })
-  state.developers.push({ id: 'other', name: 'Other', productivity: 1 })
+  state.developers.unshift({ id: 'busy', name: 'Busy', activeTicketID: 'resume-1', productivity: 1, competencies: { frontend: 5, backend: 5 } })
+  state.developers.push({ id: 'other', name: 'Other', productivity: 1, competencies: { frontend: 5, backend: 5 } })
   let calls = 0
   const result = advanceSimulation(state, 1, () => { calls++; return 0.9 })
   assert.equal(result.developers[0].activeTicketID, 'resume-1')
@@ -381,7 +382,7 @@ test('successful switch roll without alternatives retains active work', () => {
 test('multiple switches resolve in developer order without duplicate claims or double work', () => {
   const state = switchingState()
   state.tickets.push({ ...state.tickets[0], id: 'other-active', completedWork: 5 })
-  state.developers.push({ id: 'dev-2', name: 'Sam', productivity: 1, activeTicketID: 'other-active' })
+  state.developers.push({ id: 'dev-2', name: 'Sam', productivity: 1, activeTicketID: 'other-active', competencies: { frontend: 5, backend: 5 } })
   const result = advanceSimulation(state, 1, () => 0)
   assert.equal(result.developers[0].activeTicketID, 'alternative')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')

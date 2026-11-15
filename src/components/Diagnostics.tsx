@@ -1,7 +1,8 @@
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { useId } from 'react'
 
-function format(value: number) {
+function format(value: number | null) {
+  if (value === null) return 'Unavailable (numeric range exceeded)'
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
@@ -19,12 +20,13 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
         </span>
       </span>
       <p>Rank: {ticket.rank}</p>
+      <p>Work domain: {ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
       <p>Actual work: {format(ticket.completedWork)} / {format(ticket.requiredWork)} work units</p>
       <p>Remaining: {format(ticket.remainingWork)} work units</p>
       <p>Active developer: {ticket.activeDeveloperName ?? 'None'}</p>
       <p>Active work rate: {format(ticket.workRate)} work units/second</p>
-      <p>ETA: {ticket.estimatedSeconds === null ? 'Unavailable (no active work rate)'
+      <p>ETA: {ticket.estimatedSeconds === null ? 'Unavailable (no representable active rate or ETA)'
         : `${format(ticket.estimatedSeconds)} simulated seconds`}</p>
     </div>
   )
@@ -33,6 +35,11 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
 export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView['developers'][number] }) {
   return (
     <div className="diagnostics">
+      <p>Base productivity: {format(developer.productivity)} work units/second</p>
+      <p>Frontend competency: {format(developer.competencies.frontend)}</p>
+      <p>Backend competency: {format(developer.competencies.backend)}</p>
+      <p>Effective productivity: {developer.activeTicket
+        ? `${format(developer.workRate)} work units/second` : 'Unavailable (idle)'}</p>
       <p>Active work: {developer.activeTicket
         ? `${developer.activeTicket.id}: ${developer.activeTicket.title}` : 'Idle'}</p>
       <p>Assigned tickets (ownership): {developer.assignedTicketCount}</p>

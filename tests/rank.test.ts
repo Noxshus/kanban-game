@@ -58,12 +58,12 @@ test('invalid moves and malformed ranks are no-ops', () => {
 
 test('To Do selection uses rank after actual eligibility and active claims', () => {
   const state = structuredClone(exampleGameState)
-  state.developers = [{id:'idle',name:'Idle',productivity:1}]
+  state.developers = [{id:'idle',name:'Idle',productivity:1,competencies:{frontend:5,backend:5}}]
   state.tickets.find(t=>t.id==='ticket-5')!.rank = 1
   state.tickets.find(t=>t.id==='ticket-1')!.rank = 5
   const result = advanceSimulation(state,1,()=>0)
   assert.equal(result.developers[0].activeTicketID,'ticket-5')
-  state.developers.unshift({id:'busy',name:'Busy',productivity:1,activeTicketID:'ticket-5'})
+  state.developers.unshift({id:'busy',name:'Busy',productivity:1,activeTicketID:'ticket-5',competencies:{frontend:5,backend:5}})
   const claimed = advanceSimulation(state,1,()=>0.4)
   assert.equal(claimed.developers[1].activeTicketID,'ticket-3')
 })

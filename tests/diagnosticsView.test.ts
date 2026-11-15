@@ -10,13 +10,13 @@ test('derives authoritative ticket, developer and team metrics without mutation'
   const original = structuredClone(state)
   const view = getDiagnosticsView(state)
   assert.deepEqual(view.tickets[0], {
-    id: 'ticket-1', comparison: view.tickets[0].comparison, rank: 1, requiredWork: 10, completedWork: 4, remainingWork: 6,
-    activeDeveloperName: 'Alex', workRate: 1, estimatedSeconds: 6,
+    id: 'ticket-1', comparison: view.tickets[0].comparison, rank: 1, workDomain: 'frontend', requiredWork: 10, completedWork: 4, remainingWork: 6,
+    activeDeveloperName: 'Alex', workRate: 1.5, estimatedSeconds: 4,
   })
-  assert.equal(view.tickets[1].estimatedSeconds, 5)
+  assert.equal(view.tickets[1].estimatedSeconds, 10)
   assert.deepEqual(view.team, {
     completedTickets: 0, totalTickets: 7, activeDevelopers: 2, totalDevelopers: 3,
-    completedWork: 6, requiredWork: 48, workRate: 2.2,
+    completedWork: 6, requiredWork: 48, workRate: 2.1,
   })
   assert.equal(view.developers[0].assignedTicketCount, 1)
   assert.deepEqual(view.developers[0].activeTicket, { id: 'ticket-1', title: 'Build the navigation menu' })
@@ -72,7 +72,7 @@ test('duplicate active references do not inflate team rates', () => {
   state.developers[1].activeTicketID = 'ticket-1'
   const view = getDiagnosticsView(state)
   assert.equal(view.team.activeDevelopers, 1)
-  assert.equal(view.team.workRate, 1)
+  assert.equal(view.team.workRate, 1.5)
   assert.equal(view.developers[1].activeTicket, null)
 })
 
@@ -100,7 +100,7 @@ test('diagnostics update live through completion and remain separate from player
   assert.deepEqual(getPlayerView(state), player)
   // These reporting assertions expect uninterrupted work, independent of the example seed.
   state = advanceSimulation(state, 1, () => 0.99)
-  assert.equal(getDiagnosticsView(state).tickets[0].completedWork, 5)
+  assert.equal(getDiagnosticsView(state).tickets[0].completedWork, 5.5)
   assert.equal(getDiagnosticsView(state).team.activeDevelopers, 3)
   for (let i = 0; i < 30; i++) state = advanceSimulation(state, 1, () => 0.99)
   const finished = getDiagnosticsView(state)

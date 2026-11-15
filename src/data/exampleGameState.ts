@@ -9,23 +9,27 @@ export const exampleGameState: GameState = {
       name: 'Alex',
       activeTicketID: 'ticket-1',
       productivity: 1,
+      competencies: { frontend: 10, backend: 0 },
     },
     {
       id: 'developer-2',
       name: 'Sam',
       activeTicketID: 'ticket-2',
       productivity: 1.2,
+      competencies: { frontend: 0, backend: 10 },
     },
     {
       id: 'developer-3',
       name: 'Jordan',
       productivity: 0.8,
+      competencies: { frontend: 6, backend: 6 },
     },
   ],
   tickets: [
     {
       id: 'ticket-1', rank: 1,
       title: 'Build the navigation menu',
+      workDomain: 'frontend',
       actualStatus: 'in_progress',
       reportedStatus: 'in_progress',
       assignedDeveloperId: 'developer-1',
@@ -36,6 +40,7 @@ export const exampleGameState: GameState = {
     {
       id: 'ticket-2', rank: 2,
       title: 'Fix the search filter',
+      workDomain: 'frontend',
       actualStatus: 'in_progress',
       reportedStatus: 'todo',
       assignedDeveloperId: 'developer-2',
@@ -46,6 +51,7 @@ export const exampleGameState: GameState = {
     {
       id: 'ticket-3', rank: 3,
       title: 'Update the help page',
+      workDomain: 'frontend',
       actualStatus: 'todo',
       reportedStatus: 'todo',
       requiredWork: 5,
@@ -55,6 +61,7 @@ export const exampleGameState: GameState = {
     {
       id: 'ticket-4', rank: 4,
       title: 'Add form validation',
+      workDomain: 'backend',
       actualStatus: 'todo',
       reportedStatus: 'todo',
       requiredWork: 12,
@@ -64,6 +71,7 @@ export const exampleGameState: GameState = {
     {
       id: 'ticket-5', rank: 5,
       title: 'Correct the page heading',
+      workDomain: 'frontend',
       actualStatus: 'todo',
       reportedStatus: 'todo',
       requiredWork: 3,
@@ -72,11 +80,13 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-6', rank: 6, title: 'Improve keyboard navigation',
+      workDomain: 'frontend',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 6, completedWork: 0, reportedProgress: 0,
     },
     {
       id: 'ticket-7', rank: 7, title: 'Review error messages',
+      workDomain: 'backend',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 4, completedWork: 0, reportedProgress: 0,
     },

@@ -1,8 +1,10 @@
 export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
+export type WorkDomain = 'frontend' | 'backend'
 
 export interface Ticket {
   id: string
   title: string
+  workDomain: WorkDomain
   // Global position 1..N (1 highest): managerial intent, not guaranteed developer compliance.
   rank: number
 
@@ -28,6 +30,8 @@ export interface Developer {
 
   activeTicketID?: string
   productivity: number
+  // Independent non-negative competencies; not mutually exclusive job classes.
+  competencies: Record<WorkDomain, number>
 }
 
 export interface GameState {

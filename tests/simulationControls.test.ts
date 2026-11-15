@@ -56,6 +56,7 @@ test('every restart has fresh nested data, even after a prior run was mutated', 
   const first = createSimulationSession()
   first.game.tickets[0].completedWork = 99
   first.game.developers[0].activeTicketID = 'changed'
+  first.game.developers[0].competencies.frontend = 0
   const second = simulationReducer(first, { type: 'restart' })
   assert.deepEqual(second.game, original)
   second.game.tickets[0].title = 'Changed again'
@@ -63,6 +64,7 @@ test('every restart has fresh nested data, even after a prior run was mutated', 
   assert.deepEqual(third.game, original)
   assert.notStrictEqual(third.game.tickets[0], second.game.tickets[0])
   assert.notStrictEqual(third.game.developers[0], second.game.developers[0])
+  assert.notStrictEqual(third.game.developers[0].competencies, second.game.developers[0].competencies)
   assert.deepEqual(exampleGameState, original)
 })
 

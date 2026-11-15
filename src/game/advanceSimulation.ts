@@ -2,6 +2,7 @@ import type { GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
 import { compareRank } from './rank.ts'
+import { getWorkCompleted } from './productivity.ts'
 
 export function advanceSimulation(
   state: GameState,
@@ -102,10 +103,11 @@ export function advanceSimulation(
       // Keep the fields separate so future reporting can intentionally diverge.
       ticket.assignedDeveloperId = developer.id
 
-      ticket.completedWork = Math.min(
-        ticket.requiredWork,
-        ticket.completedWork + Math.max(0, developer.productivity) * elapsedSeconds,
-      )
+      const work = getWorkCompleted(developer, ticket, elapsedSeconds)
+      // Bound the increment before addition so even a large finite increment
+      // cannot overflow completedWork on the way to a finite ticket requirement.
+      ticket.completedWork = work >= ticket.requiredWork - ticket.completedWork
+        ? ticket.requiredWork : ticket.completedWork + work
       ticket.actualStatus = ticket.completedWork >= ticket.requiredWork ? 'done' : 'in_progress'
     }
 

@@ -53,10 +53,22 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const { exampleGameState } = await server!.ssrLoadModule('/src/data/exampleGameState.ts')
         const { GameBoard } = await server!.ssrLoadModule('/src/components/GameBoard.tsx')
         const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
+        const { getDiagnosticsView } = await server!.ssrLoadModule('/src/store/diagnosticsView.ts')
+        const { DeveloperDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
+        const highCompetency = structuredClone(exampleGameState)
+        highCompetency.developers[0].competencies.frontend = 100
+        const diagnosticHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
+          developer: getDiagnosticsView(highCompetency).developers[0],
+        }))
+        assert.ok(diagnosticHtml.includes('Frontend competency: 100</p>'))
+        assert.ok(!diagnosticHtml.includes(' / 10'))
         const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
           view: getPlayerView(exampleGameState), diagnostics: null,
         }))
         assert.ok(!withoutDiagnostics.includes('role="tooltip"'))
+        for (const label of ['Work domain:', 'Frontend competency:', 'Backend competency:', 'Effective productivity:', 'Base productivity:']) {
+          assert.ok(!withoutDiagnostics.includes(label))
+        }
         assert.ok(!withoutDiagnostics.includes('>Mismatch</button>'))
         assert.ok(!withoutDiagnostics.includes('>Match</button>'))
         for (const [isPaused, label] of [[true, 'Resume'], [false, 'Pause']] as const) {
@@ -79,7 +91,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
-        'Active work:', 'Assigned tickets (ownership):']) {
+        'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
+        'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)
       }
     } finally {
