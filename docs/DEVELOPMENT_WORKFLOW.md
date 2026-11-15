@@ -4,7 +4,7 @@ This is the standing working agreement for building Kanban Game with ChatGPT, Co
 
 ## Responsibilities and handoffs
 
-- **User:** Confirms gameplay decisions and desired priorities, runs Codex locally, performs hands-on verification, and commits/pushes after reviews. Uses **Windows Command Prompt (`cmd.exe`)**, not PowerShell.
+- **User:** Confirms gameplay decisions and priorities, runs Codex locally and performs hands-on verification. After review, **explicitly authorises release**; they may either run Git themselves or delegate the bounded Git operations to Codex. Uses **Windows Command Prompt (`cmd.exe`)**, not PowerShell.
 - **ChatGPT:** Helps shape issues and design, proactively manages GitHub issues and agreed Markdown documentation, recommends a model/effort appropriate to each task, prepares Codex prompts, evaluates findings, and checks pushed code and deployment status. Do not assume access to local unpushed code.
 - **Codex (implementation conversation):** Reads the relevant issue, `AGENTS.md`, and `GAME_DESIGN.md`; makes focused local changes and runs validation. **Do not commit, push, rebase, or close issues unless explicitly requested.**
 - **Codex (independent review conversation):** For substantial changes, inspect uncommitted changes against HEAD including untracked files. Report defects separately from suggestions; do not edit files or Git state.
@@ -22,11 +22,11 @@ Do not advance workflow steps on assumption. A later prompt may subsume an earli
 
 1. Discuss scope and confirm design decisions. Record actionable implementation tasks and newly agreed decisions in GitHub issues immediately. Update `GAME_DESIGN.md` **before** local implementation begins, or **after** the implementation has been committed and pushed. Never commit overlapping Markdown changes to GitHub while Codex has local work in progress. Keep proposed ideas distinct from approved rules.
 2. ChatGPT recommends Codex model and effort and drafts a focused implementation prompt. Codex reads the issue and project instructions.
-3. Codex implements locally, adds meaningful tests, and runs `npm test`, `npm run lint`, and `npm run build`. Windows CMD equivalents are `npm.cmd` when needed; do not give PowerShell-specific commands.
+3. Codex implements locally, adds meaningful tests, and runs `npm test`, `npm run lint`, and `npm run build`. At the start, **inspect `git status --short`** and flag pre-existing changes. At the end, **enumerate every changed/untracked file using `git status --short`**, identify which belong to the issue and which are unrelated, and warn about scratch files. Windows CMD equivalents are `npm.cmd` when needed; do not give PowerShell-specific commands.
 4. User manually verifies the behaviour. ChatGPT helps evaluate unexpected results.
-5. For **substantial simulation, RNG, state, or architectural changes**, run an independent review in a fresh Codex conversation before committing. For small UI edits, use a narrower proportionate review; avoid exhaustive review by default.
+5. For **substantial simulation, RNG, state, or architectural changes**, run an independent review in a fresh Codex conversation before committing. For small UI edits, use a narrower proportionate review; avoid exhaustive review by default. The independent reviewer should also inspect `git status --short` (including untracked files) and explicitly identify **every issue-related modified file**, not only those named in the implementation prompt.
 6. Triage confirmed findings. Fix material issues; explicitly log accepted deferred issues rather than repeatedly resurfacing them. Re-run relevant checks. Capture nonblocking enhancements as focused issues.
-7. User checks `git status`, commits local work, synchronises with remote, and pushes. The project should already be synchronised **before** Codex starts work, so rebasing at this stage should ordinarily be conflict-free. If the remote did change, use `git pull --rebase origin main` only **after committing** local changes; pause and resolve conflicts if any. Never force-push as a workaround, skip an implementation commit, or rebase mid-implementation.
+7. **After explicit release approval**, use a single bounded Git handoff, preferably delegated to Codex if the user wants less command-line housekeeping. Inspect `git status --short`, stage **every issue-related changed/new file** (do not rely on a guessed static filename list), check `git diff --cached --stat` and `git status --short` **before committing**, and stop if issue-related unstaged changes remain. Exclude scratch files and unrelated local work. Commit, then synchronise using `git pull --rebase origin main` only after a clean working tree, and push. If a conflict or other unexpected condition occurs, stop and report without force-pushing, skipping a commit, stashing/discarding user files, or silently choosing a conflict side. Local and remote should already be synchronised before Codex begins.
 8. ChatGPT verifies pushed source and GitHub Actions deployment, closes completed issues after successful verification, and only **then** reconciles any queued design-document updates. If ChatGPT makes post-push Markdown commits, explicitly tell the user to pull them on a clean tree **before starting the next local Codex task**. Do not claim tests ran locally if only repository source or build status was inspected.
 
 ## Prevent concurrent GitHub/working-copy edits
@@ -40,6 +40,37 @@ Do not advance workflow steps on assumption. A later prompt may subsume an earli
 5. **Before editing repository files via GitHub:** ChatGPT should check whether a local Codex task or unpushed changes are in progress based on the conversation. If status is uncertain, prefer issue comments rather than risking a remote commit.
 
 The rule covers **all direct repository-file edits**, not just `GAME_DESIGN.md`. It does **not** prevent issue updates, which do not change Git history.
+
+## Low-friction Git handoff (optional, user-authorised)
+
+Git bookkeeping should not occupy the user's game-design time. **The default implementation and review conversations remain read-only with respect to Git history:** no commit, push, pull or rebase. After the user manually verifies a change and the independent review approves it, ChatGPT can provide a **separate, explicit release instruction** authorising Codex to handle that issue's Git handoff end to end. The user must explicitly run/authorise it; this is never implied by an implementation prompt.
+
+**Shipping checks:**
+- Read `git status --short` and inspect the tracked/untracked changes. Stage all and only files belonging to the approved issue, including tests or newly created files that the earlier suggested list may have omitted. **Do not blindly `git add -A`** when unrelated scratch files or work might exist.
+- Compare `git diff --cached --name-only` and `git status --short`. **If any issue-related file is still unstaged, do not commit.** Flag unrelated/unknown files; do not delete them without approval.
+- Re-run appropriate checks if anything has changed since review. Commit with a descriptive message, confirm the working tree is clean, then `git pull --rebase origin main` and `git push origin main`.
+- **Stop and ask** on conflicts, unexpected dirty state, failing checks, permissions/auth failures, divergence, or anything that might overwrite someone else's work. No `--force`, `rebase --skip`, automatic stashing, `reset --hard`, or unapproved file deletion.
+- Return final commit SHA, push destination and status. ChatGPT then confirms the actual remote commit and GitHub Pages deployment, handles pending documentation, and closes the issue.
+
+**Reusable approved shipping prompt (after review; replace issue number and commit description):**
+
+```text
+The implementation for issue #NUMBER has passed manual verification and independent review.
+You are explicitly authorised to perform its local Git release operations.
+
+Check git status --short and the diff (including untracked files); identify all files changed for this issue,
+including tests missing from any prior file list. Do not stage unrelated/scratch files.
+Stage exactly the approved issue's changes. Inspect git diff --cached --stat and git status --short,
+and ensure no issue-related changes remain unstaged. If anything is ambiguous, stop and ask.
+
+Commit with a descriptive message. Verify the working tree is clean.
+Then git pull --rebase origin main and git push origin main.
+Never force-push, skip a commit, discard/stash unknown changes, or silently resolve conflicts.
+If any command fails or the state is unexpected, stop and report the exact issue.
+Return the commit SHA and push result. Do not close GitHub issues.
+```
+
+This would have avoided the #46 omitted-test-file rebase blocker. It also keeps Git privileges **bounded to an explicitly approved release**, rather than allowing implementation agents to push autonomously.
 
 ## Model and effort guidance
 
