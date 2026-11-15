@@ -51,6 +51,10 @@ Do not treat proposed mechanics or open design questions as approved implementat
 
 Follow [docs/DEVELOPMENT_WORKFLOW.md](docs/DEVELOPMENT_WORKFLOW.md) for the ChatGPT/Codex/GitHub implementation, review, testing and commit process. For substantial changes, review in a separate Codex conversation before committing; use known deferred-issue references to keep reviews proportionate. Do not assume a proposed prompt has been executed without explicit user confirmation.
 
+## Concurrent-edit prevention
+
+**Do not create competing remote Markdown commits while local implementation is underway.** During a Codex task, ChatGPT records newly agreed design decisions in GitHub issues/comments only; any documentation changes required immediately must be made in the **local working copy**. Direct GitHub repository-file edits are deferred until after the user has committed and pushed the local task. Synchronise a clean checkout with `git pull --rebase origin main` **before** starting a new Codex task. See `docs/DEVELOPMENT_WORKFLOW.md` for the full handoff and rebase conflict procedure.
+
 ## Development practices
 
 - Use TypeScript throughout.
