@@ -5,7 +5,7 @@ This is the standing working agreement for building Kanban Game with ChatGPT, Co
 ## Responsibilities and handoffs
 
 - **User:** Confirms gameplay decisions and priorities, runs Codex locally and performs hands-on verification. After review, **explicitly authorises release**; they may either run Git themselves or delegate the bounded Git operations to Codex. Uses **Windows Command Prompt (`cmd.exe`)**, not PowerShell.
-- **ChatGPT:** Helps shape issues and design, proactively manages GitHub issues and agreed Markdown documentation, recommends a model/effort appropriate to each task, prepares Codex prompts, evaluates findings, and checks pushed code and deployment status. Do not assume access to local unpushed code.
+- **ChatGPT:** Helps shape issues and design, proactively manages GitHub issues and agreed Markdown documentation, prepares Codex prompts with the **user's standing Sol + High Codex setting** (without suggesting alternate models/effort), evaluates findings, and checks pushed code and deployment status. Do not assume access to local unpushed code.
 - **Codex (implementation conversation):** Reads the relevant issue, `AGENTS.md`, and `GAME_DESIGN.md`; makes focused local changes and runs validation. **Do not commit, push, rebase, or close issues unless explicitly requested.**
 - **Codex (independent review conversation):** For substantial changes, inspect uncommitted changes against HEAD including untracked files. Report defects separately from suggestions; do not edit files or Git state.
 
@@ -21,13 +21,13 @@ Do not advance workflow steps on assumption. A later prompt may subsume an earli
 ## Standard workflow
 
 1. Discuss scope and confirm design decisions. Record actionable implementation tasks and newly agreed decisions in GitHub issues immediately. Update `GAME_DESIGN.md` **before** local implementation begins, or **after** the implementation has been committed and pushed. Never commit overlapping Markdown changes to GitHub while Codex has local work in progress. Keep proposed ideas distinct from approved rules.
-2. ChatGPT recommends Codex model and effort and drafts a focused implementation prompt. Codex reads the issue and project instructions.
+2. ChatGPT drafts a focused implementation prompt without recommending Codex models or effort levels: the user has chosen **Sol + High for all Codex tasks**, including routine changes and independent reviews, unless they explicitly change that preference. Codex reads the issue and project instructions.
 3. Codex implements locally, adds meaningful tests, and runs `npm test`, `npm run lint`, and `npm run build`. At the start, **inspect `git status --short`** and flag pre-existing changes. At the end, **enumerate every changed/untracked file using `git status --short`**, identify which belong to the issue and which are unrelated, and warn about scratch files. Windows CMD equivalents are `npm.cmd` when needed; do not give PowerShell-specific commands.
 4. User manually verifies the behaviour. ChatGPT helps evaluate unexpected results.
 5. For **substantial simulation, RNG, state, or architectural changes**, run an independent review in a fresh Codex conversation before committing. For small UI edits, use a narrower proportionate review; avoid exhaustive review by default. The independent reviewer should also inspect `git status --short` (including untracked files) and explicitly identify **every issue-related modified file**, not only those named in the implementation prompt.
 6. Triage confirmed findings. Fix material issues; explicitly log accepted deferred issues rather than repeatedly resurfacing them. Re-run relevant checks. Capture nonblocking enhancements as focused issues.
 7. **After explicit release approval**, use a single bounded Git handoff, preferably delegated to Codex if the user wants less command-line housekeeping. Inspect `git status --short`, stage **every issue-related changed/new file** (do not rely on a guessed static filename list), check `git diff --cached --stat` and `git status --short` **before committing**, and stop if issue-related unstaged changes remain. Exclude scratch files and unrelated local work. Commit, then synchronise using `git pull --rebase origin main` only after a clean working tree, and push. If a conflict or other unexpected condition occurs, stop and report without force-pushing, skipping a commit, stashing/discarding user files, or silently choosing a conflict side. Local and remote should already be synchronised before Codex begins.
-8. ChatGPT verifies pushed source and GitHub Actions deployment, closes completed issues after successful verification, and only **then** reconciles any queued design-document updates. If ChatGPT makes post-push Markdown commits, explicitly tell the user to pull them on a clean tree **before starting the next local Codex task**. Do not claim tests ran locally if only repository source or build status was inspected.
+8. ChatGPT verifies pushed source and GitHub Actions deployment, reconciles pending agreed design/workflow document updates, **then closes the completed issue** once the release and applicable documentation sync have been verified. If ChatGPT makes post-push Markdown commits, explicitly tell the user to pull them on a clean tree **before starting the next local Codex task**. Do not claim tests ran locally if only repository source or build status was inspected.
 
 ## Prevent concurrent GitHub/working-copy edits
 
@@ -72,18 +72,11 @@ Return the commit SHA and push result. Do not close GitHub issues.
 
 This would have avoided the #46 omitted-test-file rebase blocker. It also keeps Git privileges **bounded to an explicitly approved release**, rather than allowing implementation agents to push autonomously.
 
-## Model and effort guidance
+## Fixed Codex model and effort preference
 
-These are guidelines, not requirements; names and availability may change.
+**Standing user choice (2026-11-15):** Use **Sol + High** for **every Codex task**, including implementation, small UI edits, review and Git release tasks. The user explicitly prioritises quality over response time or token use. **Do not suggest alternate Codex models or effort settings in prompts**, or continue giving per-task model recommendations. Only revisit this choice if the user asks to change it.
 
-| Task | Suggested default |
-| --- | --- |
-| ChatGPT design, planning and milestone review | GPT-6 Medium; High for difficult systems design |
-| Codex routine scoped UI or cleanup | Terra Medium; Low for trivial changes |
-| Codex simulation / data model / RNG implementation | Sol Medium; High for complex architecture |
-| Independent Codex review | Sol High for substantial simulation/architecture changes; Sol Medium or narrower review for routine UI |
-
-Keep review scope proportionate to the risk and the time/token cost.
+This is a **Codex-specific preference**; it does not mandate any particular ChatGPT model or alter the requirement that independent reviews remain read-only unless separately authorised. Keep review **scope** proportionate to actual risks even when the reviewer uses Sol + High.
 
 ## Review policy: scope and known issues
 
