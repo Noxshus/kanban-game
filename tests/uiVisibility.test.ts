@@ -93,7 +93,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         for (const text of ['Judgement:', 'Discipline:', 'Most recent work selection', 'Manager candidate:', 'RNG draw:']) {
           assert.ok(!withoutDiagnostics.includes(text))
         }
-        for (const label of ['Work domain:', 'Frontend competency:', 'Backend competency:', 'Effective productivity:', 'Base productivity:']) {
+        for (const label of ['Work domain:', 'Frontend competency:', 'Backend competency:', 'Effective productivity:', 'Base productivity:', 'Uninterrupted work duration:', 'Focus bonus:']) {
           assert.ok(!withoutDiagnostics.includes(label))
         }
         assert.ok(!withoutDiagnostics.includes('>Mismatch</button>'))
@@ -119,7 +119,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
-        'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Discipline:', 'Most recent work selection']) {
+        'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Discipline:', 'Most recent work selection', 'Uninterrupted work duration:', 'Focus bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)
       }
     } finally {

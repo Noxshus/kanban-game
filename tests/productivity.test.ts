@@ -1,3 +1,4 @@
+import { close, expectedWork } from './helpers/focusExpectation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -103,7 +104,7 @@ test('competencies above 10 increase work rate and diagnostics without a cap', (
   for (const [competency, expected] of [[20, 5], [100, 21]] as const) {
     const state = domainScenario('frontend', competency, 0)
     assert.equal(getEffectiveProductivity(state.developers[0], state.tickets[0]), expected)
-    assert.equal(advanceSimulation(state, 1).tickets[0].completedWork, expected)
+    close(advanceSimulation(state, 1).tickets[0].completedWork, expectedWork(expected, 1))
     assert.equal(getDiagnosticsView(state).developers[0].competencies.frontend, competency)
     assert.equal(getDiagnosticsView(state).developers[0].workRate, expected)
   }
@@ -114,11 +115,11 @@ test('matched and mismatched curated scenarios select the relevant competency fo
   const backend = domainScenario('backend', 10, 0)
   const matched = advanceSimulation(frontend, 1)
   const mismatched = advanceSimulation(backend, 1)
-  assert.equal(matched.tickets[0].completedWork, 3)
-  assert.equal(mismatched.tickets[0].completedWork, 1)
+  close(matched.tickets[0].completedWork, expectedWork(3, 1))
+  close(mismatched.tickets[0].completedWork, expectedWork(1, 1))
   assert.equal(matched.randomState, mismatched.randomState)
   const fullStack = domainScenario('backend', 6, 6)
-  assert.equal(advanceSimulation(fullStack, 0.5).tickets[0].completedWork, 1.1)
+  close(advanceSimulation(fullStack, 0.5).tickets[0].completedWork, expectedWork(2.2, 0.5))
 })
 
 test('high base productivity overcomes poor fit without a cap, and zero expertise still completes', () => {
@@ -140,7 +141,7 @@ test('higher-ranked poor fit is still selected ahead of lower-ranked matching wo
   state.tickets.push({ ...state.tickets[0], id: 'better-fit', rank: 2, workDomain: 'frontend' })
   const result = advanceSimulation(state, 1)
   assert.equal(result.developers[0].activeTicketID, 'work')
-  assert.equal(result.tickets[0].completedWork, 1)
+  close(result.tickets[0].completedWork, expectedWork(1, 1))
   assert.equal(result.tickets[1].completedWork, 0)
 })
 
@@ -152,7 +153,7 @@ test('switching uses the replacement domain rate and never progresses the abando
   assert.equal(result.developers[0].activeTicketID, 'replacement')
   assert.equal(result.tickets[0].completedWork, 0)
   assert.equal(result.tickets[0].actualStatus, 'in_progress')
-  assert.equal(result.tickets[1].completedWork, 1)
+  close(result.tickets[1].completedWork, expectedWork(1, 1))
 })
 
 test('domain rates feed diagnostics, team totals and ETAs without changing base productivity', () => {
@@ -165,7 +166,7 @@ test('domain rates feed diagnostics, team totals and ETAs without changing base 
   assert.equal(view.tickets[0].estimatedSeconds, 100)
   assert.equal(view.team.workRate, 1)
   const advanced = advanceSimulation(state, 1)
-  assert.equal(advanced.tickets[0].completedWork - state.tickets[0].completedWork, view.team.workRate)
+  close(advanced.tickets[0].completedWork - state.tickets[0].completedWork, expectedWork(view.team.workRate!, 1))
 })
 
 test('mixed-domain replay is immutable, survives serialization and never duplicates active claims', () => {

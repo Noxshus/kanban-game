@@ -3,6 +3,7 @@ import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
 import { selectWork, validateSelectionAttributes } from './selectWork.ts'
 import { getWorkCompleted } from './productivity.ts'
+import { getAverageFocusMultiplier, getFocusDuration } from './focus.ts'
 
 export function advanceSimulation(
   state: GameState,
@@ -54,6 +55,7 @@ export function advanceSimulation(
       const ticket = ticketsById.get(developer.activeTicketID ?? '')
       if (!ticket || ticket.actualStatus === 'backlog' || isComplete(ticket) || claimedTickets.has(ticket.id)) {
         delete developer.activeTicketID
+        delete developer.focusStreak
       } else {
         claimedTickets.add(ticket.id)
       }
@@ -80,6 +82,7 @@ export function advanceSimulation(
       current.actualStatus = 'in_progress'
       claimedTickets.delete(current.id)
       developer.activeTicketID = replacement.id
+      delete developer.focusStreak
       claimedTickets.add(replacement.id)
     }
 
@@ -100,7 +103,13 @@ export function advanceSimulation(
       // Keep the fields separate so future reporting can intentionally diverge.
       ticket.assignedDeveloperId = developer.id
 
-      const work = getWorkCompleted(developer, ticket, elapsedSeconds)
+      const duration = getFocusDuration(developer, ticket.id)
+      const multiplier = getAverageFocusMultiplier(duration, elapsedSeconds, developer.discipline)
+      const work = getWorkCompleted(developer, ticket, elapsedSeconds) * multiplier
+      // Match domain-productivity policy: unrepresentable actual work rejects
+      // the pure transition rather than silently completing via Infinity.
+      if (!Number.isFinite(work)) throw new RangeError('Focused work exceeds the numeric range')
+      developer.focusStreak = { ticketId: ticket.id, duration: duration + elapsedSeconds }
       // Bound the increment before addition so even a large finite increment
       // cannot overflow completedWork on the way to a finite ticket requirement.
       ticket.completedWork = work >= ticket.requiredWork - ticket.completedWork
@@ -129,7 +138,10 @@ export function advanceSimulation(
     // Subsequent work starts on the next tick, with no leftover-time chaining within a tick.
     for (const developer of developers) {
       const ticket = ticketsById.get(developer.activeTicketID ?? '')
-      if (ticket?.actualStatus === 'done') delete developer.activeTicketID
+      if (ticket?.actualStatus === 'done') {
+        delete developer.activeTicketID
+        delete developer.focusStreak
+      }
     }
   }
 

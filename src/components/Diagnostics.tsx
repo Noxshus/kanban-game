@@ -38,6 +38,8 @@ export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView
       <p>Base productivity: {format(developer.productivity)} work units/second</p>
       <p>Frontend competency: {format(developer.competencies.frontend)}</p>
       <p>Backend competency: {format(developer.competencies.backend)}</p>
+      <p>Uninterrupted work duration: {format(developer.focusDuration)} seconds</p>
+      <p>Focus bonus: {format(developer.focusBonus * 100)}%; multiplier: {format(developer.focusMultiplier)}×</p>
       <p>Effective productivity: {developer.activeTicket
         ? `${format(developer.workRate)} work units/second` : 'Unavailable (idle)'}</p>
       <p>Active work: {developer.activeTicket

@@ -1,6 +1,7 @@
 import type { GameState } from '../game/types'
 import { compareTicket } from './ticketComparison.ts'
 import { getEffectiveProductivity } from '../game/productivity.ts'
+import { getFocusBonus, getFocusDuration } from '../game/focus.ts'
 
 // Authoritative development information stays separate from player reports so visibility can evolve.
 export function getDiagnosticsView(state: GameState) {
@@ -12,6 +13,10 @@ export function getDiagnosticsView(state: GameState) {
       && ticket.completedWork < ticket.requiredWork && !claimed.has(ticket.id)
       ? ticket : undefined
     if (activeTicket) claimed.add(activeTicket.id)
+    const focusDuration = activeTicket ? getFocusDuration(developer, activeTicket.id) : 0
+    const focusBonus = getFocusBonus(focusDuration, developer.discipline)
+    const domainRate = activeTicket ? getEffectiveProductivity(developer, activeTicket) : 0
+    const focusedRate = domainRate === null ? null : domainRate * (1 + focusBonus)
     return {
       id: developer.id,
       name: developer.name,
@@ -21,7 +26,10 @@ export function getDiagnosticsView(state: GameState) {
       discipline: developer.discipline,
       lastSelection: developer.lastSelection ? structuredClone(developer.lastSelection) : null,
       activeTicket: activeTicket ? { id: activeTicket.id, title: activeTicket.title } : null,
-      workRate: activeTicket ? getEffectiveProductivity(developer, activeTicket) : 0,
+      focusDuration,
+      focusBonus,
+      focusMultiplier: 1 + focusBonus,
+      workRate: focusedRate !== null && Number.isFinite(focusedRate) ? focusedRate : null,
       assignedTicketCount: state.tickets.filter((candidate) =>
         candidate.assignedDeveloperId === developer.id,
       ).length,

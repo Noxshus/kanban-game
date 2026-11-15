@@ -34,6 +34,8 @@ export interface Developer {
   competencies: Record<WorkDomain, number>
   judgement: number
   discipline: number
+  // Missing means zero streak; ticket identity prevents carrying focus between tickets.
+  focusStreak?: { ticketId: string; duration: number }
   // One immutable decision snapshot survives later progress/rank changes; never an event log.
   lastSelection?: SelectionDecision
 }

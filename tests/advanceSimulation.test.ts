@@ -1,3 +1,4 @@
+import { close, expectedWork } from './helpers/focusExpectation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
@@ -29,7 +30,7 @@ function createState(): GameState {
 test('advances time and work using productivity, including fractional seconds', () => {
   const result = advanceSimulation(createState(), 1.5)
   assert.equal(result.simulationTime, 11.5)
-  assert.equal(result.tickets[0].completedWork, 4)
+  close(result.tickets[0].completedWork, 1 + expectedWork(2, 1.5))
   assert.equal(result.tickets[0].actualStatus, 'in_progress')
 })
 
@@ -58,7 +59,7 @@ test('idle developers and missing active references select available work', () =
     state.developers[0].activeTicketID = activeTicketID
     state.tickets[0].assignedDeveloperId = 'dev-1'
     const result = advanceSimulation(state, 1)
-    assert.equal(result.tickets[0].completedWork, 3)
+    close(result.tickets[0].completedWork, 1 + expectedWork(2, 1))
     assert.equal(result.developers[0].activeTicketID, 'ticket-1')
     assert.equal(result.tickets[0].assignedDeveloperId, 'dev-1')
   }
@@ -111,14 +112,14 @@ test('prevents duplicate active work when collaboration is disabled', () => {
     id: 'dev-2', name: 'Sam', activeTicketID: 'ticket-1', productivity: 1, competencies: { frontend: 5, backend: 5 }, judgement: 5, discipline: 5,
   })
   const result = advanceSimulation(state, 2)
-  assert.equal(result.tickets[0].completedWork, 5)
+  close(result.tickets[0].completedWork, 1 + expectedWork(2, 2))
   assert.equal(result.developers[1].activeTicketID, undefined)
 })
 
 test('automatically reports progress and lifecycle column changes', () => {
   const state = createState()
   const result = advanceSimulation(state, 1.5)
-  assert.equal(result.tickets[0].reportedProgress, 40)
+  close(result.tickets[0].reportedProgress, (1 + expectedWork(2, 1.5)) * 10)
   assert.equal(result.tickets[0].reportedStatus, 'in_progress')
   const completed = advanceSimulation(result, 100)
   assert.equal(completed.tickets[0].reportedProgress, 100)
@@ -152,8 +153,8 @@ test('reserves existing active work before idle developers select in ticket orde
   const result = advanceSimulation(state, 1)
   assert.equal(result.developers[0].activeTicketID, 'ticket-2')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
-  assert.equal(result.tickets[0].completedWork, 3)
-  assert.equal(result.tickets[1].completedWork, 2)
+  close(result.tickets[0].completedWork, 1 + expectedWork(2, 1))
+  close(result.tickets[1].completedWork, 1 + expectedWork(1, 1))
   assert.equal(result.tickets[1].assignedDeveloperId, 'idle')
 })
 
@@ -166,7 +167,7 @@ test('completion releases active work and subsequent calls select the next ticke
   assert.equal(completed.tickets[1].completedWork, 0)
   const next = advanceSimulation(completed, 1)
   assert.equal(next.developers[0].activeTicketID, 'ticket-2')
-  assert.equal(next.tickets[1].completedWork, 2)
+  close(next.tickets[1].completedWork, expectedWork(2, 1))
 })
 
 test('empty queues leave developers idle and still advance time', () => {
@@ -317,8 +318,8 @@ test('one-percent switching boundary applies work only to the final ticket', () 
     assert.equal(calls, 1)
     const switched = roll < 0.01
     assert.equal(result.developers[0].activeTicketID, switched ? 'alternative' : 'ticket-1')
-    assert.equal(result.tickets[0].completedWork, switched ? 1 : 3)
-    assert.equal(result.tickets[1].completedWork, switched ? 2 : 0)
+    close(result.tickets[0].completedWork, switched ? 1 : 1 + expectedWork(2, 1))
+    close(result.tickets[1].completedWork, switched ? expectedWork(2, 1) : 0)
     assert.equal(result.tickets[0].actualStatus, 'in_progress')
     assert.equal(result.tickets[0].assignedDeveloperId, 'dev-1')
     assert.equal(result.tickets[0].reportedStatus, 'in_progress')
@@ -334,7 +335,7 @@ test('successful switch roll without alternatives retains active work', () => {
   const result = advanceSimulation(state, 1, () => { calls++; return 0 })
   assert.equal(calls, 1)
   assert.equal(result.developers[0].activeTicketID, 'ticket-1')
-  assert.equal(result.tickets[0].completedWork, 3)
+  close(result.tickets[0].completedWork, 1 + expectedWork(2, 1))
   assert.deepEqual(result.tickets[1], state.tickets[1])
 })
 
@@ -345,8 +346,8 @@ test('multiple switches resolve in developer order without duplicate claims or d
   const result = advanceSimulation(state, 1, () => 0)
   assert.equal(result.developers[0].activeTicketID, 'alternative')
   assert.equal(result.developers[1].activeTicketID, 'ticket-1')
-  assert.equal(result.tickets[0].completedWork, 2)
-  assert.equal(result.tickets[1].completedWork, 2)
+  close(result.tickets[0].completedWork, 1 + expectedWork(1, 1))
+  close(result.tickets[1].completedWork, expectedWork(2, 1))
   assert.equal(result.tickets[2].completedWork, 5)
   assert.equal(result.tickets[2].actualStatus, 'in_progress')
 })
@@ -389,5 +390,5 @@ test('large durations process independent one-second ticks; fractional probabili
   assert.equal(advanceSimulation(state, 0.5, () => 0.006).developers[0].activeTicketID, 'ticket-1')
   const switched = advanceSimulation(state, 0.5, () => 0.004)
   assert.equal(switched.developers[0].activeTicketID, 'alternative')
-  assert.equal(switched.tickets[1].completedWork, 1)
+  close(switched.tickets[1].completedWork, expectedWork(2, 0.5))
 })

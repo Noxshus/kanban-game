@@ -1,3 +1,4 @@
+import { close, expectedWork } from './helpers/focusExpectation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -100,7 +101,7 @@ test('diagnostics update live through completion and remain separate from player
   assert.deepEqual(getPlayerView(state), player)
   // These reporting assertions expect uninterrupted work, independent of the example seed.
   state = advanceSimulation(state, 1, () => 0.99)
-  assert.equal(getDiagnosticsView(state).tickets[0].completedWork, 5.5)
+  close(getDiagnosticsView(state).tickets[0].completedWork, 4 + expectedWork(1.5, 1, 2))
   assert.equal(getDiagnosticsView(state).team.activeDevelopers, 3)
   for (let i = 0; i < 30; i++) state = advanceSimulation(state, 1, () => 0.99)
   const finished = getDiagnosticsView(state)
