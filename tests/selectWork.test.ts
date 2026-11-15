@@ -1,208 +1,164 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { selectWork } from '../src/game/selectWork.ts'
-import { advanceSimulation } from '../src/game/advanceSimulation.ts'
+import { scoreCandidates, nominateCandidate, assessWork, selectWork } from '../src/game/selectWork.ts'
+import { projectCompletion } from '../src/game/completionTime.ts'
+import { getAverageFlowMultiplier } from '../src/game/flow.ts'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
-import { nextRandom } from '../src/game/random.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
+import { advanceSimulation } from '../src/game/advanceSimulation.ts'
+import { close } from './helpers/flowExpectation.ts'
 
-function scenario() {
-  const state = structuredClone(exampleGameState)
-  state.developers = [{ ...state.developers[0], activeTicketID: undefined, judgement: 8, discipline: 2 }]
-  const ticket = state.tickets[0]
-  state.tickets = [
-    { ...ticket, id: 'backlog', rank: 1, actualStatus: 'backlog' as const, reportedProgress: 100 },
-    { ...ticket, id: 'manager', rank: 2, actualStatus: 'todo' as const, reportedProgress: 10, completedWork: 0 },
-    { ...ticket, id: 'done', rank: 3, actualStatus: 'done' as const, reportedProgress: 100 },
-    { ...ticket, id: 'opportunity', rank: 4, reportedStatus: 'todo' as const, reportedProgress: 90, completedWork: 0 },
-  ]
-  return state
+function scenario(currentWork=100,alternativeWork=50) {
+ const state=structuredClone(exampleGameState)
+ state.developers=[{...state.developers[0],focus:5,judgement:0,productivity:1,competencies:{frontend:5,backend:5},assessmentClock:{elapsed:0,remaining:1000}}]
+ state.tickets=[{...state.tickets[0],rank:1,requiredWork:currentWork,completedWork:0,reportedProgress:0},
+ {...state.tickets[0],id:'alternative',rank:2,actualStatus:'todo',reportedStatus:'todo',requiredWork:alternativeWork,completedWork:0,reportedProgress:100}]
+ return state
 }
+function compare(state:ReturnType<typeof scenario>,draw=0.5){return assessWork(state.tickets[0],state.tickets[1],state.tickets,state.developers[0],'reconsideration',()=>draw)}
 
-test('Judgement, Discipline and opportunity strength affect the sigmoid independently', () => {
-  const state = scenario()
-  const developer = state.developers[0]
-  const candidates = [state.tickets[1], state.tickets[3]]
-  const highJudgement = selectWork(candidates, developer, () => 0.5)!
-  assert.equal(highJudgement.selectedId, 'opportunity')
-  assert.ok(Math.abs(highJudgement.overrideProbability - 1 / (1 + Math.exp(-2.8))) < 1e-14)
-  developer.judgement = 2; developer.discipline = 8
-  const disciplined = selectWork(candidates, developer, () => 0.5)!
-  assert.equal(disciplined.selectedId, 'manager')
-  assert.ok(disciplined.overrideProbability < highJudgement.overrideProbability)
-  candidates[1].reportedProgress = 11
-  const marginal = selectWork(candidates, developer, () => 0.5)!
-  assert.ok(marginal.overrideProbability < disciplined.overrideProbability)
+test('candidate nomination uses half inverse eligible ordinal and half normalized public progress',()=>{
+ const state=scenario();state.tickets[0].rank=2;state.tickets[0].reportedProgress=20;state.tickets[1].rank=7;state.tickets[1].reportedProgress=90
+ const scores=scoreCandidates([...state.tickets].reverse())
+ close(scores[0].score,0.6);close(scores[1].score,0.7)
+ assert.equal(nominateCandidate(state.tickets)?.id,'alternative')
+ state.tickets[0].reportedProgress=0;state.tickets[1].reportedProgress=50
+ assert.equal(nominateCandidate([...state.tickets].reverse())?.id,'ticket-1')
+ state.tickets[1].completedWork=49
+ assert.deepEqual(scoreCandidates(state.tickets),scoreCandidates(state.tickets.map(t=>({...t,completedWork:0}))))
+ state.tickets[1].reportedProgress=Infinity;assert.equal(scoreCandidates(state.tickets)[1].opportunityScore,1)
+ state.tickets[1].reportedProgress=NaN;assert.equal(scoreCandidates(state.tickets)[1].opportunityScore,0)
 })
 
-test('conflicts consume exactly one draw and use strict less-than at the probability boundary', () => {
-  const state = scenario()
-  const candidates = [state.tickets[1], state.tickets[3]]
-  // Independently force score = 0: 0.35*(0-0) + 4*(75-12.5)/100 - 2.5.
-  state.developers[0].judgement = 0
-  state.developers[0].discipline = 0
-  candidates[0].reportedProgress = 12.5
-  candidates[1].reportedProgress = 75
-  const p = 0.5
-  for (const [draw, id] of [[0, 'opportunity'], [p - Number.EPSILON, 'opportunity'], [p, 'manager'], [0.999999, 'manager']] as const) {
-    let calls = 0
-    const decision = selectWork(candidates, state.developers[0], () => { calls++; return draw })!
-    assert.equal(decision.selectedId, id)
-    assert.equal(decision.draw, draw)
-    assert.equal(decision.overrideProbability, p)
-    assert.equal(calls, 1)
-  }
+test('completion projection inverts integrated Flow and retains current versus fresh alternative Flow',()=>{
+ const state=scenario(), developer=state.developers[0], ticket=state.tickets[0]
+ for(const duration of [0,10,100]) {
+  developer.flowStreak={ticketId:ticket.id,duration}
+  const p=projectCompletion(developer,ticket,true)
+  close(p.seconds!*getAverageFlowMultiplier(duration,p.seconds!,developer.focus),100)
+ }
+ assert.ok(projectCompletion(developer,ticket,true).seconds!<projectCompletion(developer,ticket).seconds!)
+ ticket.workDomain='backend';developer.competencies.backend=10
+ assert.ok(projectCompletion(developer,ticket).seconds!<projectCompletion(developer,{...ticket,workDomain:'frontend'}).seconds!)
 })
 
-test('independent calibration scores verify all attribute/gap combinations and diagnostic outcomes', () => {
-  // Scores calculated from the issue specification, independently of selectWork.
-  for (const [judgement, discipline, managerProgress, opportunityProgress, expectedScore] of [
-    [8, 2, 10, 90, 2.8], [8, 8, 10, 90, 0.7], [2, 8, 10, 90, -1.4],
-    [8, 2, 50, 51, -0.36], [8, 8, 50, 51, -2.46], [2, 8, 50, 51, -4.56],
-  ]) {
-    const expectedProbability = 1 / (1 + Math.exp(-expectedScore))
-    for (const [draw, selectedId] of [[expectedProbability / 2, 'opportunity'], [(1 + expectedProbability) / 2, 'manager']] as const) {
-      const state = scenario()
-      Object.assign(state.developers[0], { judgement, discipline })
-      state.tickets[1].reportedProgress = managerProgress
-      state.tickets[3].reportedProgress = opportunityProgress
-      let calls = 0
-      const result = advanceSimulation(state, 1, () => { calls++; return draw })
-      assert.equal(calls, 1)
-      const decision = getDiagnosticsView(result).developers[0].lastSelection!
-      assert.ok(Math.abs(decision.overrideProbability - expectedProbability) < 1e-14)
-      assert.equal(decision.draw, draw)
-      assert.equal(decision.selectedId, selectedId)
-      assert.equal(result.developers[0].activeTicketID, selectedId)
-      assert.deepEqual(decision.managerChoice, { id: 'manager', rank: 2, reportedProgress: managerProgress })
-      assert.deepEqual(decision.opportunity, { id: 'opportunity', rank: 4, reportedProgress: opportunityProgress })
-    }
-  }
+test('independent logarithmic efficiency, soft Rank preference and logistic error determine outcome',()=>{
+ const state=scenario(),decision=compare(state,0.75)
+ const stay=projectCompletion(state.developers[0],state.tickets[0],true).seconds!
+ const change=projectCompletion(state.developers[0],state.tickets[1]).seconds!
+ close(decision.efficiencyAdvantage!,Math.log(stay)-Math.log(change))
+ close(decision.rankPreference,-0.125)
+ close(decision.complexity,2)
+ close(decision.noiseScale,2)
+ close(decision.error,2*Math.log(3))
+ close(decision.perceivedAdvantage!,Math.log(stay)-Math.log(change)-0.125+2*Math.log(3))
+ assert.equal(decision.outcome,'switch')
+ assert.equal(decision.selectedId,'alternative')
 })
 
-test('switch replacements use the same independently calculated probability after a separate switch draw', () => {
-  for (const draw of [0.1, 0.99]) {
-    const state = scenario()
-    Object.assign(state.tickets[0], { actualStatus: 'in_progress', reportedProgress: 100 })
-    state.developers[0].activeTicketID = 'backlog'
-    const values = [0.009, draw]
-    let calls = 0
-    const result = advanceSimulation(state, 1, () => values[calls++])
-    const expectedProbability = 1 / (1 + Math.exp(-2.8))
-    const expectedId = draw < expectedProbability ? 'opportunity' : 'manager'
-    const decision = result.developers[0].lastSelection!
-    assert.equal(calls, 2)
-    assert.ok(Math.abs(decision.overrideProbability - expectedProbability) < 1e-14)
-    assert.equal(decision.draw, draw)
-    assert.equal(decision.selectedId, expectedId)
-    assert.equal(result.developers[0].activeTicketID, expectedId)
-    assert.equal(result.tickets[0].completedWork, state.tickets[0].completedWork)
-  }
+test('soft priority favours higher-ranked slightly slower work but cannot overrule substantial inefficiency',()=>{
+ const state=scenario(100,101);state.tickets[0].rank=2;state.tickets[1].rank=1
+ const slight=compare(state)
+ assert.ok(slight.efficiencyAdvantage!<0);assert.equal(slight.outcome,'switch')
+ state.tickets[1].requiredWork=10000
+ assert.equal(compare(state).outcome,'stay')
+ const fast=scenario(10000,1)
+ assert.equal(compare(fast).outcome,'switch')
 })
 
-test('seeded idle and switch outcomes match independently advanced LCG draws and sigmoid', () => {
-  const step = (seed: number) => (1664525 * seed + 1013904223) >>> 0
-  for (const switching of [false, true]) {
-    const state = scenario()
-    state.randomState = switching ? 1972 : 1
-    const first = step(state.randomState)
-    if (switching) {
-      assert.ok(first / 2 ** 32 < 0.01)
-      state.tickets[0].actualStatus = 'in_progress'
-      state.developers[0].activeTicketID = 'backlog'
-    }
-    const expectedSeed = switching ? step(first) : first
-    const expectedDraw = expectedSeed / 2 ** 32
-    const expectedId = expectedDraw < 1 / (1 + Math.exp(-2.8)) ? 'opportunity' : 'manager'
-    const result = advanceSimulation(state, 1)
-    assert.equal(result.randomState, expectedSeed)
-    assert.equal(result.developers[0].lastSelection?.draw, expectedDraw)
-    assert.equal(result.developers[0].lastSelection?.selectedId, expectedId)
-    assert.deepEqual(result, advanceSimulation(structuredClone(state), 1))
+test('both incorrect stays and switches are possible; high Judgement improves accuracy in either direction',()=>{
+ for(const [current,other] of [[100,50],[50,100]]) {
+  const state=scenario(current,other)
+  const target=compare(state).outcome
+  assert.equal(compare(state,target==='switch'?0.001:0.999).outcome,target==='switch'?'stay':'switch')
+  const counts=[]
+  for(const judgement of [0,10,100,10000]) {
+   state.developers[0].judgement=judgement
+   let correct=0
+   for(let i=0;i<500;i++)if(compare(state,(i+0.5)/500).outcome===target)correct++
+   counts.push(correct)
   }
+  assert.ok(counts.every((count,i)=>i===0||count>=counts[i-1]))
+  assert.ok(counts[3]>counts[0]);assert.equal(counts[3],500)
+ }
 })
 
-test('empty, single, tied-progress and agreeing candidates need no override draw', () => {
-  const state = scenario()
-  const noRoll = () => { throw new Error('Unexpected draw') }
-  const developer = state.developers[0]
-  assert.equal(selectWork([], developer, noRoll), undefined)
-  const manager = state.tickets[1]
-  const other = { ...state.tickets[3], reportedProgress: manager.reportedProgress }
-  for (const candidates of [[manager], [other, manager], [{ ...manager, reportedProgress: 100 }, other]]) {
-    const decision = selectWork(candidates, developer, noRoll)!
-    assert.equal(decision.selectedId, 'manager')
-    assert.equal(decision.draw, null)
-    assert.equal(decision.overrideProbability, 0)
-  }
+test('Focus only affects actual Flow trajectories, never uncertainty or the rank preference',()=>{
+ const state=scenario()
+ const low=compare(state,0.75)
+ state.developers[0].focus=1000
+ const high=compare(state,0.75)
+ assert.equal(high.noiseScale,low.noiseScale);assert.equal(high.error,low.error)
+ assert.equal(high.rankPreference,low.rankPreference)
+ state.developers[0].flowStreak={ticketId:'ticket-1',duration:1e5}
+ assert.ok(compare(state).efficiencyAdvantage!<high.efficiencyAdvantage!)
 })
 
-test('global Rank governs either workflow stage regardless of storage and reported column', () => {
-  for (const managerStatus of ['todo', 'in_progress'] as const) {
-    const state = scenario()
-    state.tickets[1].actualStatus = managerStatus
-    state.tickets[1].reportedStatus = 'backlog'
-    state.tickets[3].actualStatus = managerStatus === 'todo' ? 'in_progress' : 'todo'
-    state.tickets.reverse()
-    const result = advanceSimulation(state, 1, () => 0.99)
-    assert.equal(result.developers[0].lastSelection?.managerChoice.id, 'manager')
-    assert.equal(result.developers[0].activeTicketID, 'manager')
-  }
+test('high Judgement correctness targets the management-weighted outcome, including a slower priority choice',()=>{
+ const state=scenario(100,101);state.tickets[0].rank=2;state.tickets[1].rank=1
+ assert.ok(compare(state).efficiencyAdvantage!<0)
+ assert.ok(compare(state).perceivedAdvantage!>0)
+ assert.equal(compare(state,0.01).outcome,'stay')
+ state.developers[0].judgement=100000
+ assert.equal(compare(state,0.01).outcome,'switch')
 })
 
-test('large finite attributes remain stable and invalid values are rejected', () => {
-  const state = scenario()
-  const candidates = [state.tickets[1], state.tickets[3]]
-  for (const [judgement, discipline, expected] of [[Number.MAX_VALUE, 0, 1], [0, Number.MAX_VALUE, 0], [Number.MAX_VALUE, Number.MAX_VALUE, 1 / (1 + Math.exp(-0.7))]]) {
-    const decision = selectWork(candidates, { ...state.developers[0], judgement, discipline }, () => 0.5)!
-    assert.ok(Math.abs(decision.overrideProbability - expected) < 1e-14)
-  }
-  for (const key of ['judgement', 'discipline'] as const) {
-    for (const value of [-1, NaN, Infinity, -Infinity]) {
-      state.developers[0][key] = value
-      assert.throws(() => advanceSimulation(state, 1), RangeError)
-    }
-    state.developers[0][key] = 5
-  }
+test('nomination snapshot is distinct from the final Rank-prior ordinal pool including current work',()=>{
+ const state=scenario()
+ const decision=compare(state)
+ assert.equal(decision.nomination?.id,'alternative')
+ assert.equal(decision.nomination?.rankScore,1)
+ assert.equal(decision.alternative?.rankScore,0.5)
 })
 
-test('eligibility is actual-state based across columns, while appraisal uses only normalized reports', () => {
-  for (const progress of [90, 150, Infinity]) {
-    const state = scenario()
-    state.tickets[3].reportedProgress = progress
-    state.tickets[3].completedWork = 0
-    const before = structuredClone(state)
-    const result = advanceSimulation(state, 1, () => 0)
-    assert.equal(result.developers[0].activeTicketID, 'opportunity')
-    assert.equal(result.developers[0].lastSelection?.managerChoice.rank, 2)
-    assert.equal(result.developers[0].lastSelection?.opportunity.reportedProgress, Math.min(progress, 100))
-    assert.deepEqual(state, before)
-    const actualChanged = structuredClone(state)
-    actualChanged.tickets[1].completedWork = 9
-    assert.deepEqual(advanceSimulation(actualChanged, 1, () => 0).developers[0].lastSelection,
-      result.developers[0].lastSelection)
-  }
-  const state = scenario()
-  state.tickets[3].reportedProgress = NaN
-  assert.equal(advanceSimulation(state, 1, () => { throw new Error('Unexpected draw') }).developers[0].activeTicketID, 'manager')
+test('ties stay at neutral error; impossible work, RNG endpoints and huge finite attributes are explicit',()=>{
+ const state=scenario(100,100)
+ // Equal times still have the explicit ordinal Rank preference; no noise at u=0.5.
+ assert.equal(compare(state).error,0)
+ assert.equal(compare(state).outcome,'stay')
+ for(const u of [0,1])assert.ok(Number.isFinite(compare(state,u).error))
+ state.developers[0].judgement=Number.MAX_VALUE;state.developers[0].focus=Number.MAX_VALUE
+ assert.ok(Number.isFinite(compare(state).noiseScale))
+ state.developers[0].productivity=0
+ const impossible=compare(state)
+ assert.equal(impossible.efficiencyAdvantage,0);assert.equal(impossible.staySeconds,null)
+ assert.equal(impossible.switchSeconds,null)
+ for(const value of [-1,NaN,Infinity]) {
+  state.developers[0].judgement=value;assert.throws(()=>compare(state),RangeError)
+ }
 })
 
-test('seeded conflict replay, claims, latest diagnostic snapshot and player exclusions', () => {
-  const state = scenario()
-  state.developers.push({ ...state.developers[0], id: 'other' })
-  const result = advanceSimulation(state, 1)
-  assert.equal(result.randomState, nextRandom(state.randomState).state)
-  assert.deepEqual(result, advanceSimulation(state, 1))
-  assert.notEqual(result.developers[0].activeTicketID, result.developers[1].activeTicketID)
-  assert.deepEqual(advanceSimulation(JSON.parse(JSON.stringify(result)), 1), advanceSimulation(result, 1))
-  const decision = structuredClone(result.developers[0].lastSelection)
-  const continued = advanceSimulation(result, 1, () => 0.99)
-  assert.deepEqual(continued.developers[0].lastSelection, decision)
-  const diagnostic = getDiagnosticsView(continued)
-  assert.deepEqual(diagnostic.developers[0].lastSelection, decision)
-  assert.deepEqual(continued.developers[0].lastSelection, decision)
-  for (const developer of getPlayerView(continued).developers) {
-    for (const key of ['judgement', 'discipline', 'lastSelection']) assert.equal(key in developer, false)
-  }
+test('idle pickup compares reported-score nominee with fastest fresh-Flow alternative using one draw',()=>{
+ const state=scenario(1000,1);state.tickets[1].reportedProgress=0
+ let calls=0
+ const decision=selectWork(state.tickets,state.developers[0],()=>{calls++;return 0.5})!
+ assert.equal(calls,1);assert.equal(decision.current.id,'ticket-1')
+ assert.equal(decision.selectedId,'alternative');assert.equal(decision.kind,'pickup')
+ assert.equal(selectWork([state.tickets[0]],state.developers[0],()=>{throw Error('Unnecessary draw')})!.draw,null)
+ const bestNominee=scenario(1,1000);bestNominee.tickets[1].reportedProgress=0
+ assert.equal(selectWork(bestNominee.tickets,bestNominee.developers[0],()=>0.999)!.selectedId,'alternative')
+})
+
+test('log projections remain comparable across incremental scales without overflowing time ratios',()=>{
+ for(const scale of [1e-200,1,1e200]) {
+  const state=scenario(100*scale,50*scale);state.developers[0].productivity=scale
+  close(compare(state).efficiencyAdvantage!,compare(scenario()).efficiencyAdvantage!)
+ }
+ const state=scenario(100,50);state.developers[0].productivity=1e308;state.developers[0].competencies.frontend=100
+ const p=projectCompletion(state.developers[0],state.tickets[0])
+ assert.ok(Number.isFinite(p.logSeconds));assert.ok(p.seconds!>0)
+ state.tickets[0].requiredWork=Number.MAX_VALUE;state.developers[0].productivity=Number.MIN_VALUE
+ assert.equal(projectCompletion(state.developers[0],state.tickets[0]).seconds,null)
+ assert.ok(Number.isFinite(projectCompletion(state.developers[0],state.tickets[0]).logSeconds))
+})
+
+test('diagnostics retain actual decisions read-only and player selectors omit all assessment/Flow data',()=>{
+ const state=scenario();state.developers[0].assessmentClock.remaining=0
+ const result=advanceSimulation(state,0.1,()=>0.5)
+ const before=structuredClone(result)
+ const diagnostic=getDiagnosticsView(result).developers[0]
+ assert.deepEqual(diagnostic.lastAssessment,result.developers[0].lastAssessment)
+ assert.deepEqual(result,before)
+ assert.deepEqual(Object.keys(getPlayerView(result).developers[0]).sort(),['id','name','productivity'])
 })

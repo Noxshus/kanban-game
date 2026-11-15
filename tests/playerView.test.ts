@@ -41,16 +41,16 @@ test('player view bounds reported percentages without mutating the state', () =>
   }
 })
 
-test('example backlog autonomously moves through player-visible columns to completion', async () => {
+test('example committed work progresses through player-visible columns while Backlog stays untouched', async () => {
   const { advanceSimulation } = await import('../src/game/advanceSimulation.ts')
   let state = structuredClone(exampleGameState)
   const original = structuredClone(state)
-  // These lifecycle assertions expect uninterrupted work, independent of the example seed.
+  // Inject a stable sequence to verify the new candidate/pickup path.
   state = advanceSimulation(state, 1, () => 0.99)
   const started = getPlayerView(state)
   assert.equal(started.tickets.find(t => t.id === 'ticket-2')?.reportedStatus, 'in_progress')
-  assert.equal(started.tickets.find(t => t.id === 'ticket-3')?.reportedStatus, 'in_progress')
-  assert.equal(started.tickets.find(t => t.id === 'ticket-3')?.assignedDeveloperId, 'developer-3')
+  assert.equal(started.tickets.find(t => t.id === 'ticket-5')?.reportedStatus, 'in_progress')
+  assert.equal(started.tickets.find(t => t.id === 'ticket-5')?.assignedDeveloperId, 'developer-3')
   for (let second = 1; second < 30; second++) state = advanceSimulation(state, 1, () => 0.99)
   for (const ticket of state.tickets.slice(0, 5)) {
     assert.equal(ticket.actualStatus, 'done')

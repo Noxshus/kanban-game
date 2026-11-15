@@ -9,20 +9,20 @@ export const exampleGameState: GameState = {
       name: 'Alex',
       activeTicketID: 'ticket-1',
       productivity: 1,
-      competencies: { frontend: 10, backend: 0 }, judgement: 8, discipline: 2,
+      competencies: { frontend: 10, backend: 0 }, judgement: 8, focus: 2,
     },
     {
       id: 'developer-2',
       name: 'Sam',
       activeTicketID: 'ticket-2',
       productivity: 1.2,
-      competencies: { frontend: 0, backend: 10 }, judgement: 2, discipline: 8,
+      competencies: { frontend: 0, backend: 10 }, judgement: 2, focus: 8,
     },
     {
       id: 'developer-3',
       name: 'Jordan',
       productivity: 0.8,
-      competencies: { frontend: 6, backend: 6 }, judgement: 5, discipline: 5,
+      competencies: { frontend: 6, backend: 6 }, judgement: 5, focus: 5,
     },
   ],
   tickets: [

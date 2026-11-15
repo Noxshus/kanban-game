@@ -1,4 +1,4 @@
-import { close, expectedWork } from './helpers/focusExpectation.ts'
+import { close, expectedWork } from './helpers/flowExpectation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'

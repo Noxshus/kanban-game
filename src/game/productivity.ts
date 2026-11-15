@@ -1,6 +1,6 @@
 import type { Developer, Ticket } from './types'
 
-function getModifier(
+export function getDomainModifier(
   developer: Developer,
   ticket: Pick<Ticket, 'workDomain'>,
 ): number {
@@ -16,17 +16,23 @@ function getModifier(
   return 0.5 + competency / 10
 }
 
+// Log rate remains representable even when the ordinary rate over/underflows.
+export function getLogDomainRate(developer: Developer, ticket: Pick<Ticket, 'workDomain'>) {
+  const modifier = getDomainModifier(developer, ticket)
+  return developer.productivity > 0 ? Math.log(developer.productivity) + Math.log(modifier) : -Infinity
+}
+
 // An unrepresentable rate is unavailable, not a balancing cap or infinite work.
 export function getEffectiveProductivity(developer: Developer, ticket: Pick<Ticket, 'workDomain'>): number | null {
-  const rate = Math.max(0, developer.productivity) * getModifier(developer, ticket)
-  return Number.isFinite(rate) ? rate : null
+  const rate = Math.max(0, developer.productivity) * getDomainModifier(developer, ticket)
+  return Number.isFinite(rate) && !(rate === 0 && developer.productivity > 0) ? rate : null
 }
 
 export function getWorkCompleted(developer: Developer, ticket: Pick<Ticket, 'workDomain'>, elapsedSeconds: number): number {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
     throw new RangeError('Elapsed time must be finite and non-negative')
   }
-  const modifier = getModifier(developer, ticket)
+  const modifier = getDomainModifier(developer, ticket)
   const base = Math.max(0, developer.productivity)
   if (elapsedSeconds === 0) return 0
   const rate = base * modifier
@@ -36,5 +42,6 @@ export function getWorkCompleted(developer: Developer, ticket: Pick<Ticket, 'wor
   // If actual work itself overflows, reject the pure transition explicitly.
   // No Infinity reaches completion logic, and no artificial progression cap is imposed.
   if (!Number.isFinite(work)) throw new RangeError('Work over elapsed time exceeds the numeric range')
+  if (work === 0 && base > 0) throw new RangeError('Work over elapsed time is below the numeric range; use scaled accumulation')
   return work
 }

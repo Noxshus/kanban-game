@@ -2,7 +2,7 @@ import type { DiagnosticsView } from '../store/diagnosticsView'
 import { useId } from 'react'
 
 function format(value: number | null) {
-  if (value === null) return 'Unavailable (numeric range exceeded)'
+  if (value === null) return 'Unavailable (zero rate or outside numeric range)'
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
@@ -38,23 +38,38 @@ export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView
       <p>Base productivity: {format(developer.productivity)} work units/second</p>
       <p>Frontend competency: {format(developer.competencies.frontend)}</p>
       <p>Backend competency: {format(developer.competencies.backend)}</p>
-      <p>Uninterrupted work duration: {format(developer.focusDuration)} seconds</p>
-      <p>Focus bonus: {format(developer.focusBonus * 100)}%; multiplier: {format(developer.focusMultiplier)}×</p>
+      <p>Uninterrupted work duration: {format(developer.flowDuration)} seconds</p>
+      <p>Flow bonus: {format(developer.flowBonus * 100)}%; multiplier: {format(developer.flowMultiplier)}×</p>
       <p>Effective productivity: {developer.activeTicket
         ? `${format(developer.workRate)} work units/second` : 'Unavailable (idle)'}</p>
       <p>Active work: {developer.activeTicket
         ? `${developer.activeTicket.id}: ${developer.activeTicket.title}` : 'Idle'}</p>
       <p>Assigned tickets (ownership): {developer.assignedTicketCount}</p>
-      <p>Judgement: {format(developer.judgement)}; Discipline: {format(developer.discipline)}</p>
+      <p>Judgement: {format(developer.judgement)}; Focus: {format(developer.focus)}</p>
+      <p>Time since previous assessment: {format(developer.timeSinceLastAssessment)} seconds</p>
+      <p>Time until next reconsideration: {developer.timeUntilNextAssessment === null ? 'Not scheduled (starts when work advances)' : format(developer.timeUntilNextAssessment) + ' seconds'}</p>
       <details>
-        <summary>Most recent work selection</summary>
-        {developer.lastSelection ? <>
-          <p>Manager candidate: {developer.lastSelection.managerChoice.id}, Rank {developer.lastSelection.managerChoice.rank}, reported progress {format(developer.lastSelection.managerChoice.reportedProgress)}%</p>
-          <p>Opportunity candidate: {developer.lastSelection.opportunity.id}, Rank {developer.lastSelection.opportunity.rank}, reported progress {format(developer.lastSelection.opportunity.reportedProgress)}%</p>
-          <p>Decision attributes: Judgement {format(developer.lastSelection.judgement)}, Discipline {format(developer.lastSelection.discipline)}</p>
-          <p>Override probability: {format(developer.lastSelection.overrideProbability * 100)}%; RNG draw: {developer.lastSelection.draw === null ? 'None (candidates agree)' : developer.lastSelection.draw}</p>
-          <p>Selected ticket: {developer.lastSelection.selectedId}</p>
-        </> : <p>No selection yet</p>}
+        <summary>Most recent assessment</summary>
+        {developer.lastAssessment ? <>
+          <p>Assessment: {developer.lastAssessment.kind}; Judgement {format(developer.lastAssessment.judgement)}</p>
+          <p>Current candidate: {developer.lastAssessment.current.id}, Rank {developer.lastAssessment.current.rank}; Rank contribution {format(developer.lastAssessment.current.rankContribution)}, reported-opportunity contribution {format(developer.lastAssessment.current.opportunityContribution)}</p>
+          <p>Alternative candidate: {developer.lastAssessment.alternative
+            ? developer.lastAssessment.alternative.id + ', Rank ' + developer.lastAssessment.alternative.rank
+              + '; Rank contribution ' + format(developer.lastAssessment.alternative.rankContribution)
+              + ', reported-opportunity contribution ' + format(developer.lastAssessment.alternative.opportunityContribution) : 'None'}</p>
+          <p>Reported-score nominee: {developer.lastAssessment.nomination ? developer.lastAssessment.nomination.id
+            + '; Rank contribution ' + format(developer.lastAssessment.nomination.rankContribution)
+            + ', reported-opportunity contribution ' + format(developer.lastAssessment.nomination.opportunityContribution)
+            + ', nomination score ' + format(developer.lastAssessment.nomination.score) : 'None'}</p>
+          <p>Projected completion if staying: {format(developer.lastAssessment.staySeconds)} seconds</p>
+          <p>Projected completion if switching: {developer.lastAssessment.alternative ? format(developer.lastAssessment.switchSeconds) + ' seconds' : 'Not applicable'}</p>
+          <p>Flow at assessment: {format(developer.lastAssessment.flowDuration)} seconds; switching starts fresh Flow</p>
+          <p>Efficiency advantage: {developer.lastAssessment.efficiencyLimit ? 'Only ' + developer.lastAssessment.efficiencyLimit + ' can finish at a positive rate' : format(developer.lastAssessment.efficiencyAdvantage)}; priority preference: {format(developer.lastAssessment.rankPreference)}</p>
+          <p>Complexity: {format(developer.lastAssessment.complexity)}; noise scale: {format(developer.lastAssessment.noiseScale)}</p>
+          <p>RNG draw: {developer.lastAssessment.draw === null ? 'None (no alternative)' : developer.lastAssessment.draw}; sampled error: {format(developer.lastAssessment.error)}</p>
+          <p>Perceived advantage: {format(developer.lastAssessment.perceivedAdvantage)}</p>
+          <p>Decision: {developer.lastAssessment.outcome}; selected ticket: {developer.lastAssessment.selectedId}</p>
+        </> : <p>No assessment yet</p>}
       </details>
     </div>
   )

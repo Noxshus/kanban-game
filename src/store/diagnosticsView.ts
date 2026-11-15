@@ -1,7 +1,8 @@
 import type { GameState } from '../game/types'
 import { compareTicket } from './ticketComparison.ts'
 import { getEffectiveProductivity } from '../game/productivity.ts'
-import { getFocusBonus, getFocusDuration } from '../game/focus.ts'
+import { getFlowBonus, getFlowDuration } from '../game/flow.ts'
+import { isWorkComplete, remainingWorkNumber } from '../game/work.ts'
 
 // Authoritative development information stays separate from player reports so visibility can evolve.
 export function getDiagnosticsView(state: GameState) {
@@ -10,26 +11,28 @@ export function getDiagnosticsView(state: GameState) {
     const ticket = state.tickets.find((candidate) => candidate.id === developer.activeTicketID)
     // Match the engine's reservation rule: stale/completed references and duplicate claims are idle.
     const activeTicket = ticket && ticket.actualStatus !== 'done' && ticket.actualStatus !== 'backlog'
-      && ticket.completedWork < ticket.requiredWork && !claimed.has(ticket.id)
+      && !isWorkComplete(ticket) && !claimed.has(ticket.id)
       ? ticket : undefined
     if (activeTicket) claimed.add(activeTicket.id)
-    const focusDuration = activeTicket ? getFocusDuration(developer, activeTicket.id) : 0
-    const focusBonus = getFocusBonus(focusDuration, developer.discipline)
+    const flowDuration = activeTicket ? getFlowDuration(developer, activeTicket.id) : 0
+    const flowBonus = getFlowBonus(flowDuration, developer.focus)
     const domainRate = activeTicket ? getEffectiveProductivity(developer, activeTicket) : 0
-    const focusedRate = domainRate === null ? null : domainRate * (1 + focusBonus)
+    const flowRate = domainRate === null ? null : domainRate * (1 + flowBonus)
     return {
       id: developer.id,
       name: developer.name,
       productivity: developer.productivity,
       competencies: { ...developer.competencies },
       judgement: developer.judgement,
-      discipline: developer.discipline,
-      lastSelection: developer.lastSelection ? structuredClone(developer.lastSelection) : null,
+      focus: developer.focus,
+      lastAssessment: developer.lastAssessment ? structuredClone(developer.lastAssessment) : null,
       activeTicket: activeTicket ? { id: activeTicket.id, title: activeTicket.title } : null,
-      focusDuration,
-      focusBonus,
-      focusMultiplier: 1 + focusBonus,
-      workRate: focusedRate !== null && Number.isFinite(focusedRate) ? focusedRate : null,
+      flowDuration,
+      flowBonus,
+      flowMultiplier: 1 + flowBonus,
+      timeSinceLastAssessment: activeTicket ? developer.assessmentClock?.elapsed ?? 0 : 0,
+      timeUntilNextAssessment: activeTicket ? developer.assessmentClock?.remaining ?? null : null,
+      workRate: flowRate !== null && Number.isFinite(flowRate) ? flowRate : null,
       assignedTicketCount: state.tickets.filter((candidate) =>
         candidate.assignedDeveloperId === developer.id,
       ).length,
@@ -37,7 +40,7 @@ export function getDiagnosticsView(state: GameState) {
   })
   const tickets = state.tickets.map((ticket) => {
     const activeDeveloper = developers.find((developer) => developer.activeTicket?.id === ticket.id)
-    const remainingWork = Math.max(0, ticket.requiredWork - ticket.completedWork)
+    const remainingWork = remainingWorkNumber(ticket)
     const workRate = activeDeveloper ? activeDeveloper.workRate : 0
     // Backlog is uncommitted, so zero remaining work does not imply completion.
     const complete = ticket.actualStatus !== 'backlog'
@@ -54,7 +57,7 @@ export function getDiagnosticsView(state: GameState) {
       workRate,
       // No queue prediction: this estimate assumes the current active rate continues.
       estimatedSeconds: complete && remainingWork === 0 ? 0
-        : !complete && workRate !== null && workRate > 0 && Number.isFinite(remainingWork / workRate)
+        : !complete && remainingWork !== null && workRate !== null && workRate > 0 && Number.isFinite(remainingWork / workRate)
           ? remainingWork / workRate : null,
     }
   })
@@ -64,7 +67,7 @@ export function getDiagnosticsView(state: GameState) {
     team: {
       completedTickets: state.tickets.filter((ticket) =>
         ticket.actualStatus !== 'backlog'
-          && (ticket.actualStatus === 'done' || ticket.completedWork >= ticket.requiredWork),
+          && isWorkComplete(ticket),
       ).length,
       totalTickets: tickets.length,
       activeDevelopers: developers.filter((developer) => developer.activeTicket !== null).length,

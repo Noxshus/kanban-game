@@ -1,155 +1,210 @@
 import type { Developer, GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
-import { selectWork, validateSelectionAttributes } from './selectWork.ts'
-import { getWorkCompleted } from './productivity.ts'
-import { getAverageFocusMultiplier, getFocusDuration } from './focus.ts'
+import { assessWork, nominateCandidate, selectWork, validateSelectionAttributes } from './selectWork.ts'
+import { getFlowDuration } from './flow.ts'
+import { projectCompletion } from './completionTime.ts'
+import { sampleReconsideration } from './reconsideration.ts'
+import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from './work.ts'
+import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
 
-export function advanceSimulation(
-  state: GameState,
-  elapsedSeconds: number,
-  random?: () => number,
-): GameState {
-  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
-    throw new RangeError('elapsedSeconds must be a finite, non-negative number')
+export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number): GameState {
+  if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
+    throw new RangeError('Elapsed time and resulting simulation time must be finite and non-negative')
   }
-
-  // Whole seconds are real simulation ticks, including selection after earlier completions.
-  // A fractional remainder uses the equivalent survival probability; fractional partitions
-  // can change decision timing, so replay requires the same elapsed-time call sequence.
-  if (elapsedSeconds > 1) {
-    let result = state
-    for (let seconds = 0; seconds < Math.floor(elapsedSeconds); seconds++) {
-      result = advanceSimulation(result, 1, random)
-    }
-    const remainder = elapsedSeconds % 1
-    return remainder > 0 ? advanceSimulation(result, remainder, random) : result
-  }
-
-  const tickets = state.tickets.map((ticket) => ({
-    ...ticket,
-    reportedProgress: ticket.actualStatus === 'backlog'
-      ? ticket.reportedProgress : clampReportedProgress(ticket.reportedProgress),
-  }))
-  const developers = state.developers.map((developer) => ({ ...developer }))
-  const ticketsById = new Map(tickets.map((ticket) => [ticket.id, ticket]))
-  let randomState = state.randomState
-  // Keep RNG state local until return: StrictMode updater replays have no external effects.
-  // Test overrides control draws directly and leave the stored sequence unchanged.
+  const result = structuredClone(state)
+  if (elapsedSeconds === 0) return result
+  let now = eventTime(state.simulationTime, state.simulationTimeRemainder)
+  const end = addEventTime(now, elapsedSeconds)
+  requireTimeProgress(now.high, end.high, elapsedSeconds)
+  const { tickets, developers } = result
+  developers.forEach(validateSelectionAttributes)
+  const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = () => {
     if (random) return random()
-    const next = nextRandom(randomState)
-    randomState = next.state
+    const next = nextRandom(result.randomState)
+    result.randomState = next.state
     return next.value
   }
-
-  if (elapsedSeconds > 0) {
-    developers.forEach(validateSelectionAttributes)
-    const claimedTickets = new Set<string>()
-    const isComplete = (ticket: Ticket) =>
-      ticket.actualStatus === 'done' || ticket.completedWork >= ticket.requiredWork
-
-    // Reserve existing work before selection so idle developers cannot steal it.
-    // Array order resolves duplicate active references deterministically; collaboration is not enabled.
+  const complete = isWorkComplete
+  const claimed = new Set<string>()
+  const clearWork = (developer: Developer) => {
+    delete developer.activeTicketID
+    delete developer.flowStreak
+    delete developer.assessmentClock
+    delete developer.workSession
+  }
+  const schedule = (developer: Developer) => {
+    const dueTime = addEventTime(now, sampleReconsideration(draw()))
+    if (compareEventTime(dueTime, now) <= 0) throw new RangeError('Assessment deadline is below event-time numeric resolution')
+    developer.assessmentClock = { elapsed: 0, remaining: eventInterval(dueTime, now), originTime: now, dueTime }
+  }
+  for (const developer of developers) {
+    const ticket = byId.get(developer.activeTicketID ?? '')
+    if (!ticket || ticket.actualStatus === 'backlog' || complete(ticket) || claimed.has(ticket.id)) {
+      clearWork(developer)
+      continue
+    }
+    claimed.add(ticket.id)
+    if (developer.flowStreak && developer.flowStreak.ticketId !== ticket.id) {
+      delete developer.flowStreak
+      delete developer.assessmentClock
+      delete developer.workSession
+    }
+    if (!developer.assessmentClock) schedule(developer)
+    const { elapsed, remaining } = developer.assessmentClock!
+    if (!Number.isFinite(elapsed) || elapsed < 0 || !Number.isFinite(remaining) || remaining < 0) {
+      throw new RangeError('Assessment clock must be finite and non-negative')
+    }
+    const clock = developer.assessmentClock!
+    // Accept fixtures/old JSON clocks and deliberate clock edits, then anchor
+    // once. Public elapsed/remaining are derived views, never countdown inputs.
+    if (!clock.originTime || !clock.dueTime || clock.elapsed !== eventInterval(now, clock.originTime)
+        || clock.remaining !== Math.max(0, eventInterval(clock.dueTime, now))) {
+      clock.originTime = addEventTime(now, -elapsed)
+      clock.dueTime = addEventTime(now, remaining)
+    }
+  }
+  const eligible = (excludedId?: string) => tickets.filter(ticket => ticket.id !== excludedId
+    && !claimed.has(ticket.id) && !complete(ticket)
+    && (ticket.actualStatus === 'todo' || ticket.actualStatus === 'in_progress'))
+  const begin = (developer: Developer, ticket: Ticket) => {
+    developer.activeTicketID = ticket.id
+    developer.flowStreak = { ticketId: ticket.id, duration: 0 }
+    delete developer.workSession
+    claimed.add(ticket.id)
+    ticket.assignedDeveloperId = developer.id
+    ticket.actualStatus = 'in_progress'
+    ticket.reportedStatus = 'in_progress'
+    schedule(developer)
+  }
+  const decideDue = () => {
     for (const developer of developers) {
-      const ticket = ticketsById.get(developer.activeTicketID ?? '')
-      if (!ticket || ticket.actualStatus === 'backlog' || isComplete(ticket) || claimedTickets.has(ticket.id)) {
-        delete developer.activeTicketID
-        delete developer.focusStreak
-      } else {
-        claimedTickets.add(ticket.id)
+      if (developer.activeTicketID === undefined) {
+        const decision = selectWork(eligible(), developer, draw)
+        if (!decision) continue
+        developer.lastAssessment = decision
+        begin(developer, byId.get(decision.selectedId)!)
+      } else if (compareEventTime(developer.assessmentClock!.dueTime!, now) <= 0) {
+        const current = byId.get(developer.activeTicketID)!
+        const alternatives = eligible(current.id)
+        const nominated = nominateCandidate(alternatives)
+        const decision = assessWork(current, byId.get(nominated?.id ?? ''), [current, ...alternatives], developer, 'reconsideration', draw)
+        developer.lastAssessment = decision
+        if (decision.selectedId !== current.id) {
+          current.actualStatus = 'in_progress'
+          claimed.delete(current.id)
+          begin(developer, byId.get(decision.selectedId)!)
+        } else schedule(developer)
       }
     }
-
-    const selectTicket = (developer: Developer, excludedId?: string) => {
-      const eligible = tickets.filter((candidate) =>
-        candidate.id !== excludedId && !isComplete(candidate) && !claimedTickets.has(candidate.id)
-          && (candidate.actualStatus === 'todo' || candidate.actualStatus === 'in_progress'),
-      )
-      const decision = selectWork(eligible, developer, draw)
-      if (decision) developer.lastSelection = decision
-      return decision ? ticketsById.get(decision.selectedId) : undefined
-    }
-
-    // Existing workers get one switch opportunity before any work. Keep their claim
-    // until a replacement is secured, so failed switches never drop active work.
-    const switchProbability = elapsedSeconds === 1 ? 0.01 : 1 - 0.99 ** elapsedSeconds
-    for (const developer of developers) {
-      const current = ticketsById.get(developer.activeTicketID ?? '')
-      if (!current || draw() >= switchProbability) continue
-      const replacement = selectTicket(developer, current.id)
-      if (!replacement) continue
-      current.actualStatus = 'in_progress'
-      claimedTickets.delete(current.id)
-      developer.activeTicketID = replacement.id
-      delete developer.focusStreak
-      claimedTickets.add(replacement.id)
-    }
-
-    for (const developer of developers) {
-      if (developer.activeTicketID !== undefined) continue
-      const ticket = selectTicket(developer)
-      if (ticket) {
-        developer.activeTicketID = ticket.id
-        claimedTickets.add(ticket.id)
-      }
-    }
-
-    for (const developer of developers) {
-      const ticket = ticketsById.get(developer.activeTicketID ?? '')
-      if (!ticket) continue
-
-      // Temporary prototype rule: ownership follows active work, but remains recorded after completion.
-      // Keep the fields separate so future reporting can intentionally diverge.
-      ticket.assignedDeveloperId = developer.id
-
-      const duration = getFocusDuration(developer, ticket.id)
-      const multiplier = getAverageFocusMultiplier(duration, elapsedSeconds, developer.discipline)
-      const work = getWorkCompleted(developer, ticket, elapsedSeconds) * multiplier
-      // Match domain-productivity policy: unrepresentable actual work rejects
-      // the pure transition rather than silently completing via Infinity.
-      if (!Number.isFinite(work)) throw new RangeError('Focused work exceeds the numeric range')
-      developer.focusStreak = { ticketId: ticket.id, duration: duration + elapsedSeconds }
-      // Bound the increment before addition so even a large finite increment
-      // cannot overflow completedWork on the way to a finite ticket requirement.
-      ticket.completedWork = work >= ticket.requiredWork - ticket.completedWork
-        ? ticket.requiredWork : ticket.completedWork + work
-      ticket.actualStatus = ticket.completedWork >= ticket.requiredWork ? 'done' : 'in_progress'
-    }
-
+  }
+  const report = () => {
     for (const ticket of tickets) {
-      // Backlog is uncommitted work, even if reported state differs.
       if (ticket.actualStatus === 'backlog') continue
-      if (isComplete(ticket)) {
+      ticket.reportedProgress = clampReportedProgress(ticket.reportedProgress)
+      if (complete(ticket)) {
         ticket.actualStatus = 'done'
+        ticket.reportedStatus = 'done'
         ticket.reportedProgress = 100
-      } else if (claimedTickets.has(ticket.id)) {
-        ticket.reportedProgress = clampReportedProgress(
-          (ticket.completedWork / ticket.requiredWork) * 100,
-        )
-      }
-      // Temporary proof-of-concept reporting rule: start/finish reports follow actual work.
-      // Keep both fields separate so future reporting can diverge without changing the UI.
-      if (claimedTickets.has(ticket.id) || ticket.actualStatus === 'done') {
+      } else if (claimed.has(ticket.id)) {
         ticket.reportedStatus = ticket.actualStatus
-      }
-    }
-
-    // Subsequent work starts on the next tick, with no leftover-time chaining within a tick.
-    for (const developer of developers) {
-      const ticket = ticketsById.get(developer.activeTicketID ?? '')
-      if (ticket?.actualStatus === 'done') {
-        delete developer.activeTicketID
-        delete developer.focusStreak
+        ticket.reportedProgress = clampReportedProgress(ticket.completedWork / ticket.requiredWork * 100)
       }
     }
   }
-
-  return {
-    ...state,
-    randomState,
-    tickets,
-    developers,
-    simulationTime: state.simulationTime + elapsedSeconds,
+  report()
+  decideDue()
+  // Process globally ordered event boundaries, not independent per-developer
+  // timelines. Completion wins a simultaneous assessment; developer order breaks
+  // simultaneous claims. Unused time can progress the next naturally selected work.
+  while (compareEventTime(now, end) < 0) {
+    const active = developers.filter(developer => developer.activeTicketID !== undefined)
+    if (!active.length) break
+    for (const developer of active) {
+      const ticket = byId.get(developer.activeTicketID!)!
+      if (!validWorkSession(developer, ticket)) {
+        delete developer.workSession
+        developer.workSession = {
+          ticketId: ticket.id, requiredWork: ticket.requiredWork, productivity: developer.productivity,
+          competency: developer.competencies[ticket.workDomain], focus: developer.focus,
+          initialFlowDuration: getFlowDuration(developer, ticket.id), elapsed: 0,
+          originTime: now,
+          currentTime: now,
+          completionSeconds: projectCompletion(developer, ticket, true).seconds,
+          initialCompletedWork: ticket.completedWork,
+          ...(ticket.workRemainder ? { initialRemainder: structuredClone(ticket.workRemainder) } : {}),
+          lastCompletedWork: ticket.completedWork,
+        }
+      }
+      const session = developer.workSession!
+      if (!session.originTime) session.originTime = addEventTime(now, -session.elapsed)
+      if (!session.currentTime) session.currentTime = now
+    }
+    const completions = active.map(developer => {
+      const session = developer.workSession!
+      return session.completionSeconds === null ? null : addEventTime(session.originTime!, session.completionSeconds)
+    })
+    // Exact ordering of stored compensated instants: no broad epsilon merges
+    // near events, and true ties are independent of elapsed-call partitioning.
+    const boundaries = [...completions.filter(time => time !== null), ...active.map(developer => developer.assessmentClock!.dueTime!)]
+    const nextTime = boundaries.reduce((first, time) => compareEventTime(time, first) < 0 ? time : first, end)
+    const interval = eventInterval(nextTime, now)
+    if (interval <= 0) throw new RangeError('Event has no positive representable time interval')
+    for (let index = 0; index < active.length; index++) {
+      const developer = active[index]
+      const ticket = byId.get(developer.activeTicketID!)!
+      const clock = developer.assessmentClock!
+      const session = developer.workSession!
+      if (interval > 0) {
+        const elapsed = completions[index] && compareEventTime(nextTime, completions[index]!) === 0
+          ? session.completionSeconds! : eventInterval(nextTime, session.originTime!)
+        if (completions[index] && compareEventTime(nextTime, completions[index]!) < 0
+            && session.completionSeconds !== null && elapsed >= session.completionSeconds) {
+          throw new RangeError('Distinct completion events exceed session-time numeric resolution')
+        }
+        requireTimeProgress(session.elapsed, elapsed, interval)
+        // A very old Flow streak may round unchanged while the independently
+        // anchored work-session interval still advances and delivers real work.
+        if (!Number.isFinite(session.initialFlowDuration + elapsed)) throw new RangeError('Flow duration exceeds the numeric range')
+        // Re-evaluate one cumulative integral, rather than summing independently
+        // rounded segment integrals. A scheduled deadline never sets work done.
+        ticket.completedWork = session.initialCompletedWork
+        if (session.initialRemainder) ticket.workRemainder = structuredClone(session.initialRemainder)
+        else delete ticket.workRemainder
+        accumulateWork(ticket, integratedWork(developer, ticket, elapsed, session.initialFlowDuration))
+        session.elapsed = elapsed
+        session.currentTime = nextTime
+        session.lastCompletedWork = ticket.completedWork
+      }
+      const assessedElapsed = eventInterval(nextTime, clock.originTime!)
+      requireTimeProgress(clock.elapsed, assessedElapsed, interval)
+      developer.flowStreak = { ticketId: ticket.id, duration: session.initialFlowDuration + session.elapsed }
+      developer.assessmentClock = { ...clock, elapsed: assessedElapsed,
+        remaining: Math.max(0, eventInterval(clock.dueTime!, nextTime)) }
+      ticket.assignedDeveloperId = developer.id
+      ticket.actualStatus = complete(ticket) ? 'done' : 'in_progress'
+    }
+    const previous = now
+    now = nextTime
+    report()
+    // Release all completed claims before anybody makes a decision at this instant.
+    for (const developer of active) {
+      const ticket = byId.get(developer.activeTicketID!)!
+      if (complete(ticket)) { claimed.delete(ticket.id); clearWork(developer) }
+    }
+    // Pickups and reconsiderations share ONE engineer-ordered pass; neither
+    // decision type implicitly gets priority after completed claims are released.
+    decideDue()
+    if (compareEventTime(now, end) === 0) break
+    if (eventInterval(end, now) === eventInterval(end, previous)
+        && !completions.some(time => time && compareEventTime(time, now) === 0)) {
+      // Reject time resolution loss instead of hanging or inventing a minimum tick.
+      throw new RangeError('Event interval is below the elapsed-time numeric resolution')
+    }
   }
+  result.simulationTime = end.high
+  if (end.low !== 0) result.simulationTimeRemainder = end.low
+  else delete result.simulationTimeRemainder
+  return result
 }

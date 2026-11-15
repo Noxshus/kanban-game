@@ -1,4 +1,4 @@
-import { close, expectedWork } from './helpers/focusExpectation.ts'
+import { close, expectedWork } from './helpers/flowExpectation.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -13,7 +13,7 @@ function domainScenario(workDomain: WorkDomain, frontend: number, backend: numbe
     randomState: 1,
     simulationTime: 0,
     developers: [{ id: 'engineer', name: 'Engineer', activeTicketID: 'work', productivity,
-      competencies: { frontend, backend }, judgement: 5, discipline: 5 }],
+      competencies: { frontend, backend }, judgement: 5, focus: 5 }],
     tickets: [{ id: 'work', title: 'Domain work', rank: 1, workDomain,
       actualStatus: 'in_progress', reportedStatus: 'todo', reportedProgress: 0,
       assignedDeveloperId: 'engineer', completedWork: 0, requiredWork: 100 }],
@@ -39,7 +39,8 @@ test('overflowing intermediate rate still produces approximately 10.5 work over 
 test('actual work overflow is explicit and leaves the input unchanged; zero time stays safe', () => {
   const state = domainScenario('frontend', 100, 0, 1e308)
   const original = structuredClone(state)
-  assert.throws(() => advanceSimulation(state, 1), /Work over elapsed time exceeds/)
+  assert.equal(advanceSimulation(state, 1).tickets[0].completedWork, 100)
+  assert.throws(() => getWorkCompleted(state.developers[0], state.tickets[0], 1), RangeError)
   assert.deepEqual(state, original)
   assert.equal(getWorkCompleted(state.developers[0], state.tickets[0], 0), 0)
   assert.deepEqual(advanceSimulation(state, 0), original)
@@ -149,7 +150,8 @@ test('switching uses the replacement domain rate and never progresses the abando
   const state = domainScenario('frontend', 10, 0)
   state.tickets.push({ ...state.tickets[0], id: 'replacement', rank: 2, workDomain: 'backend',
     actualStatus: 'todo', assignedDeveloperId: undefined })
-  const result = advanceSimulation(state, 1, () => 0.009)
+  state.developers[0].assessmentClock = { elapsed: 10, remaining: 0 }
+  const result = advanceSimulation(state, 1, (() => { let calls=0; return () => calls++ === 0 ? 0.999 : 0.5 })())
   assert.equal(result.developers[0].activeTicketID, 'replacement')
   assert.equal(result.tickets[0].completedWork, 0)
   assert.equal(result.tickets[0].actualStatus, 'in_progress')

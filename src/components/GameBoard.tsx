@@ -163,6 +163,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
 
       <section aria-labelledby="developers-heading">
         <h2 id="developers-heading">Developers</h2>
+        <p>Focus builds Flow during uninterrupted work. Judgement helps engineers decide whether changing tasks is worthwhile.</p>
         <ul className="developer-list">
           {view.developers.map((developer) => {
             const diagnostic = diagnostics?.developers.find((item) => item.id === developer.id)
