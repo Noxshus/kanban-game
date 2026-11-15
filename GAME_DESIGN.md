@@ -86,7 +86,7 @@ Tickets move through workflow stages representing the software development proce
 
 The player may need to intervene to keep the board accurate and the team productive.
 
-**Player-defined ticket Rank (implemented prototype, #12):** Every ticket belongs to a single, globally ordered list with a unique, consecutive integer `rank` from 1 (highest) to N (lowest), regardless of Kanban column. Rank is the player's intended priority, not objective urgency or a guarantee developers follow it. Initially the player may drag tickets to reorder them **within the reported To Do column**, even if a ticket's hidden actual status differs. This changes only the ranks of the affected reported To Do tickets by permuting their positions in the global order; tickets in every other column retain their exact global rank, even when interleaved. When the current prototype selects To Do work, developers use the highest-ranked actually eligible ticket, skipping ineligible ones. Developer-specific judgments remain a future design question; cross-column dragging is deferred.
+**Player-defined ticket Rank (implemented prototype, #12):** Every ticket belongs to a single, globally ordered list with a unique, consecutive integer `rank` from 1 (highest) to N (lowest), regardless of Kanban column. Rank is the player's intended priority, not objective urgency or a guarantee developers follow it. Initially the player may drag tickets to reorder them **within the reported To Do column**, even if a ticket's hidden actual status differs. This changes only the ranks of the affected reported To Do tickets by permuting their positions in the global order; tickets in every other column retain their exact global rank, even when interleaved. Current engineers consider global Rank together with apparent reported progress when nominating eligible work; Judgement then evaluates a candidate. Cross-column dragging remains deferred.
 
 ### 4.1.1. Workflow stages (current prototype direction)
 
@@ -121,68 +121,84 @@ Developer behaviour will eventually be influenced by individual attributes and c
 
 **Wasted effort (agreed design direction, detailed mechanics open; #30):** Developers may attempt blocked work and expend time without useful progress, rather than always being prevented by dependency checks. Some tickets may also be fully executable yet deliver little or no actual value (red herrings). These are distinct possibilities: *ability to make progress* and *value of completing the work* should not be conflated. Players may not initially know which work is blocked or valueless. The effects on work/progress, reporting, dependencies and engineer judgment remain to be designed.
 
-### 4.2.1. Work selection (shipped prototype rule, #31; Judgement redesign pending #49)
+### 4.2.1. Autonomous work selection (implemented #31, redesigned prototype #49/#54; `6177a41`)
 
-Engineers choose work autonomously across **one combined set** of eligible actual **To Do** and unfinished, unclaimed **In Progress** tickets. Backlog and Done are excluded from normal selection; no two engineers may actively claim the same ticket. These are **actual-state eligibility and claim checks only**. The appraisal of a candidate's desirability must use the **same reported board signals visible to the manager**, not hidden actual progress or private engineer-specific beliefs.
+Engineers can work on tickets whose **actual** status is **To Do** or **In Progress**, provided they are unfinished and not actively claimed by another engineer. Backlog, Done and another engineer's active claim are excluded. Assignment means ownership and may differ from the ticket an engineer actively works on; abandoned tickets retain their completed work.
 
-**Manager's preferred candidate:** the eligible ticket with the **lowest numeric global Rank**, irrespective of its column. Rank is one unique consecutive 1..N ordering **across all columns**, including ineligible Backlog and Done tickets. Only eligible tickets enter the decision, without renumbering ranks per column or per candidate set.
-
-**Apparent completion opportunity:** the eligible ticket with the greatest **reported progress** (normalised from 0–100%). A tie in reported progress resolves to the ticket with the best global Rank. Progress on the board can be stale or wrong; this is a provisional, fallible proxy for approaching completion, **not** an objective measure of remaining work or overall value.
-
-If those choices agree, or only one candidate is available, select it **without drawing an override roll**. Under the **still-shipped #31 prototype**, if they disagree, compare the engineer's **Judgement** and **Discipline** and the strength of the apparent progress advantage:
+**Nominating a plausible candidate:** First, sort eligible tickets by the single global Rank ordering (including ineligible tickets in the stored 1..N ordering, but giving *eligible candidates* ordinal positions for scoring). For each candidate, calculate:
 
 ```text
-gap = (opportunity.reportedProgress - managerChoice.reportedProgress) / 100
-score = 0.35 * (Judgement - Discipline) + 4 * gap - 2.5
-P(override Rank) = 1 / (1 + exp(-score))
+rankScore = 1 / eligibleRankPosition
+apparentOpportunity = clamp(reportedProgress, 0, 100) / 100
+candidateScore = 0.5 * rankScore + 0.5 * apparentOpportunity
 ```
 
-One deterministic seeded RNG draw decides whether to take the apparent opportunity (`draw < P`) or respect the manager's Rank. Higher Judgement relative to Discipline raises the tendency to override; a larger apparent progress gap makes an override more persuasive. Non-negative, finite Judgement and Discipline attributes are **uncapped**; values around 0–10 are sample starting values, not a permanent scale. The constants are **provisional balancing parameters**. The implementation uses a numerically stable sigmoid and development-only snapshots of the most recent actual selection (including candidates, reported progress, probability, draw, and outcome), not an unbounded history.
+The highest-scoring ticket is nominated; ties favour better global Rank. This nomination uses **reported** information, which can be misleading, and preserves Rank as the player's soft managerial direction. The 50/50 weighting is **provisional**. Rank differences themselves do not add a distance-based modifier (#47).
 
-This rule **replaced the #14 temporary 50/50 To Do/In Progress category draw and uniform In Progress choice** in #31. The same selection rule applies when an idle engineer starts work and when a spontaneous switch seeks a replacement. RNG consumption therefore differs intentionally from older #14 fixtures; same starting state and elapsed-time call sequence remain replayable. The 1% spontaneous switch *trigger* remains a separate rule (#16).
+**Initial pickup:** An idle engineer starts with the public-information nominee and makes a single noisy comparison against the other eligible ticket with the fastest **actual** projected completion time (ties resolve by Rank). This privileged challenger discovery is an **explicit provisional limitation** of the first implementation: it differs from the reported-information nomination used during reconsideration, and its long-term role remains open under #49. The player-facing board never reveals those actual projections.
 
-**Important post-#31 design correction (#49, 2026-11-15):** The above probability and use of `Judgement − Discipline` describe **existing code only**, not the intended final attributes. **Discipline now represents beneficial uninterrupted focus** and has a separately shipped productivity effect (#51, §4.2.3); its old role as managerial obedience is superseded **in design but still present in this legacy selection implementation**. **Judgement** should improve an engineer's chance to recognise genuinely efficient work, not merely their willingness to ignore Rank; a future success check may compare Judgement with the **difficulty/complexity of a decision or ticket** so a modest stat does not trivialise long-term progression. Neither a probability curve nor a complexity scale has been approved. The proposed fixed `1 − exp(−Judgement/5)` check was explicitly rejected before implementation; **do not treat it as shipped**. The first provisional objective for eventual successful Judgement is shortest *actual* engineer-specific time to completion, with broader team value, blockers, dependencies and hidden information to be designed (#49/#45). Successful Judgement may receive explicit privileged information only under a carefully designed check, not through routine appraisal.
-
-**Other deferred selection refinements:** Numeric distance between global ranks (#47), competency-aware choice, blockers and actual team-value assessment (#45/#33/#30), separate private engineer perceptions, and personalities/preferences (#42). The board's imperfect reported information remains part of the core player experience.
-
-### 4.2.2. Spontaneous task switching (implemented prototype rule)
-
-Developers who are already working independently have a **1% chance per one-second simulation tick** to stop their current work and switch to a **different eligible ticket**. The abandoned ticket retains its completed work and remains **In Progress**, even if no developer is actively working on it. Developers must not switch to Backlog, Done or work currently claimed by another developer. If no alternative eligible ticket exists, they continue their current work.
-
-Switch checks occur **before work advances** in each simulated second; a developer progresses only the final chosen ticket during that tick. Each active developer receives an independent switch check using the existing deterministic game-state RNG; idle developers do not roll to switch. A successful switch excludes the previous ticket from replacement candidates and reuses the combined Judgement/Discipline work-selection rule above (#31). The implementation processes whole seconds as successive one-second ticks, and uses the equivalent probability **1 − 0.99^elapsedSeconds** for a fractional remainder. Splitting fractional time differently may change decision timing, so exact replays require the same elapsed-time call sequence. The 1% rate remains subject to balancing, and a future developer attribute may modify it; the attribute and formula are not yet decided.
-
-The spontaneous switch check is distinct from the one override draw made **only when** the new selector's manager and opportunity candidates disagree (#31).
-
-The exact future developer attributes and richer decision-making systems remain undecided.
-
-### 4.2.3. Uninterrupted Discipline focus (implemented #51, `74d098e`)
-
-**Discipline is a positive productivity attribute:** An engineer accumulates a **locked-in focus bonus** by continuously working on the **same ticket**. This multiplier stacks multiplicatively with the existing Frontend/Backend domain-adjusted productivity rather than changing competency or normal work eligibility. Even an engineer with **Discipline 0** builds focus; higher Discipline builds it faster. The bonus has **no hard cap or finite asymptote**, but marginal gains diminish strongly with uninterrupted work time.
-
-The first implemented, provisional balancing curve is:
+**Holistic Judgement assessment:** Rather than a binary pass/fail check or an obedience contest, the engineer compares staying on one task with taking an alternative. The comparison uses their actual remaining work, relevant domain-adjusted productivity and current **Flow** when staying, versus a fresh Flow ramp after switching. A soft Rank preference and seeded assessment uncertainty influence the outcome:
 
 ```text
-t = uninterrupted active working time in simulated seconds
-D = Discipline (finite and non-negative)
-focusBonus(t, D) = 0.25 * ln(1 + (1 + D / 5) * t / 10)
-instantaneousWorkRate(t) = domainAdjustedWorkRate * (1 + focusBonus(t, D))
+efficiencyAdvantage = ln(projectedTimeToStay / projectedTimeToSwitch)
+rankPreference = 0.25 * (rankScoreSwitch - rankScoreStay)
+perceivedAdvantage = efficiencyAdvantage + rankPreference + assessmentError
+perceivedAdvantage > 0  => switch; otherwise stay
 ```
 
-The constants are **early balancing values**, not permanent attribute scales or imposed progression ceilings. Work is advanced using an **integrated / interval-averaged focus multiplier** over elapsed time, rather than sampling the rate only at the beginning or end of a simulation step. This avoids needless variation when an uninterrupted interval is split into smaller steps; existing event/switch timing can still differ when the elapsed-call sequence changes.
+The rank scores for this final comparison are taken across eligible tickets **including the current ticket**. Positive efficiency advantage favours switching. A small priority preference can justify a modest efficiency trade-off, but Judgement is **not** obedience. The initial comparison has no accumulated Flow; a genuine reconsideration can retain Flow by staying. Both mistaken switches and mistaken stays are possible. Higher Judgement reduces uncertainty, rather than directly causing more or fewer switches.
 
-Each engineer has an independent uninterrupted-work streak. **Changing to a different ticket resets the full bonus to zero**, as does completing a ticket and becoming idle. Beginning an initial or new ticket starts from zero unless a test fixture explicitly supplies an existing streak. **Pausing, advancing zero simulated time, or changing managerial Rank without switching tickets does not erase focus.** A failed switch attempt also does not interrupt current work. The possibility of retaining some focus through later upgrades is **deferred to #50**.
+The shipped first-pass uncertainty calibration is:
 
-Focus duration, bonus, multiplier and effective instantaneous work rate are available in **development-only diagnostics**, not the player-facing production view. The existing **1% spontaneous switch trigger** and the **still-shipped #31 Judgement/Discipline selection formula** were intentionally left unchanged in #51. Their redesign is distinct work (#32/#49).
+```text
+situationalComplexity = 1 + log2(1 + alternativeCount)
+noiseScale = situationalComplexity / (1 + Judgement / 25)
+assessmentError = noiseScale * centredLogisticSeededDraw
+```
 
-**Future Judgement interaction (#32/#49):** Once the engineer can actively assess whether to *continue* versus *switch*, a correct decision must consider the accumulated bonus on the current ticket, the reset penalty on switching and the alternative ticket's prospective focus ramp. Otherwise apparently quicker work might be slower after losing momentum. This interaction is logged as a design requirement, **not yet a shipped choice algorithm**.
+**These are provisional prototype numbers, not the completed #49 redesign.** An alternative count is only a crude complexity proxy; the agreed next design stage is to model genuine *situational decision difficulty* (conflicting evidence, close trade-offs, Flow loss and priorities), then derive meaningful Judgement progression relative to that difficulty. Also revisit initial candidate discovery and possible double counting of Rank. Do not confuse this situational difficulty with private estimates of a ticket's intrinsic complexity (#52). Richer holistic team value, blockers and dependencies remain future work (#45/#33).
 
-**Domain expertise versus Judgement (#38; implemented prototype):** Every ticket has **one primary work domain**, initially **Frontend** or **Backend**; multi-disciplinary deliverables are made up of tickets at epic/initiative level. Engineers possess **separate Frontend and Backend competencies** rather than mutually exclusive job classifications, enabling full-stack engineers who are competent in both. Competencies are non-negative, finite and **uncapped**; example engineers initially range from 0 to 10, but this is not a permanent ceiling. Effective productivity is calculated as base productivity × (0.5 + relevant domain competency / 10), giving multipliers of ×0.5, ×1 and ×1.5 at competencies 0, 5 and 10 respectively, and continuing to scale above 10. These are provisional balancing values, not a fixed long-term growth curve. Poor skill fit slows ordinary work but does not make completion impossible; minimum-competency requirements are deferred to #40. **Ticket domains are now visible on normal Kanban cards in every reported column (#46), including production**. Engineer competency values and effective rates remain development-only for now; existing base productivity remains visible. Eventual broader player knowledge is undecided. Expertise does not yet affect ticket selection or spontaneous switching. **Judgement** is intended to be a separate beneficial measure of how accurately engineers assess suitable and worthwhile work; its implemented #31 selector remains provisional pending #49. Future specialisms (e.g. DBA versus a general Backend engineer) may apply additional domain-related modifiers (#39); their formulas and visibility are undecided.
+**Historical context:** The original #31 sigmoid `0.35 * (Judgement - Discipline) + 4 * reportedProgressGap - 2.5` and its manager-versus-opportunity override draw were **removed** in `6177a41`. Discipline was renamed to **Focus**, and there is no `Judgement - Focus` substitute. The earlier #14 category roll was already superseded by #31. Keep those older mechanics as history, not as a description of current gameplay.
 
-**Engineer-decision design sequence (PoC):** Ticket work domains and engineer competencies (#38) and the first Judgement/Discipline-based choice of work (#31) are implemented, supported by curated deterministic scenarios (#37). Remaining stages: (2) decide whether to continue or switch work (#32); (3) recognise blockers and decide whether to attempt blocked work (#33); (4) perform work with further variable competence and results (#34); (5) decide when and how accurately to report work (#35). Their numerical rules remain open until designed. Expand curated scenarios alongside these stages (#37), without making procedural generation a prerequisite.
+### 4.2.2. Periodic reconsideration (implemented #32; `6177a41`)
+
+The old #16 **1% per-second automatic switch trigger is retired**. While working, an engineer receives a **randomly scheduled opportunity to reconsider** the current task. The first-pass waiting-time distribution is:
+
+```text
+F(t) = P(reconsideration due by t) = 1 - exp(-(t / 25)^2)
+median wait ≈ 20.8 simulated seconds
+```
+
+The engine draws a deadline with deterministic seeded RNG instead of repeatedly rolling the cumulative probability. At that instant, the engineer nominates an eligible alternative using the **Rank plus reported-opportunity score** and makes the one holistic noisy Judgement comparison above. **Staying is a valid result**, not a failed switch; no eligible alternative means continuing work. Switching leaves the previous ticket's work intact and sets its actual status to In Progress.
+
+Two different concepts must remain separate: **time since the last assessment** resets when any reassessment happens, while **uninterrupted Flow duration** continues when the engineer stays and resets only when the active ticket changes or work completes. The reconsideration cadence is independent of Focus. Event-triggered reassessment (such as new priorities or resolved dependencies) is deferred.
+
+Work, projected completions and reassessments are processed at **chronological event boundaries**, including completing a ticket and starting another within one elapsed interval. Completed claims are released first; when different engineers must decide at the same instant, they are processed in **engineer order**. The implementation uses anchored, compensated event instants and consistent integrated work accounting to preserve reproducible decisions, claims and seeded RNG across equivalent elapsed-time partitions, including JSON restoration. Unsupported positive time/work increments are rejected explicitly instead of silently dropping progress. These numerical implementation details are subject to a future **read-only simplification review (#55)**; any behavioural trade-off must be separately agreed.
+
+### 4.2.3. Focus builds Flow (implemented #51 and naming #54; `74d098e`, `6177a41`)
+
+**Focus** is the permanent, beneficial engineer attribute determining how quickly **Flow** accumulates through uninterrupted work on the same ticket. **Flow** is the temporary productivity bonus. Even Focus 0 builds Flow; higher Focus builds it faster. The bonus has **no finite ceiling**, although marginal gains diminish strongly.
+
+The first implemented, provisional balancing curve (unchanged from #51 except for names) is:
+
+```text
+t = uninterrupted active work time in simulated seconds
+F = Focus (finite, non-negative)
+flowBonus(t, F) = 0.25 * ln(1 + (1 + F / 5) * t / 10)
+instantaneousWorkRate(t) = domainAdjustedWorkRate * (1 + flowBonus(t, F))
+```
+
+Work advances using the **integrated** Flow multiplier, not merely a sample of the instantaneous rate. Flow is tracked per engineer and ticket. **Switching tickets or completing work resets Flow to zero**; a reconsideration ending in **stay**, pausing, advancing zero time or changing managerial Rank **does not**. Partial Flow retention is a deferred upgrade (#50).
+
+Focus **does not directly penalise** Judgement, the reconsideration schedule or willingness to switch. However, a good Judgement comparison accounts for the *real productivity cost* of losing accumulated Flow and for how quickly a high-Focus engineer could rebuild Flow after switching. Flow duration, bonus, multiplier, time until assessment, projected completion times and detailed decision explanations remain **development-only diagnostics** (#53 tracks the eventual simple player-facing language).
+
+**Domain expertise versus Judgement (#38; implemented prototype):** Every ticket has **one primary work domain**, initially **Frontend** or **Backend**; multi-disciplinary deliverables are made up of tickets at epic/initiative level. Engineers possess **separate Frontend and Backend competencies** rather than mutually exclusive job classifications, enabling full-stack engineers who are competent in both. Competencies are non-negative, finite and **uncapped**; example engineers initially range from 0 to 10, but this is not a permanent ceiling. Effective productivity is calculated as base productivity × (0.5 + relevant domain competency / 10), giving multipliers of ×0.5, ×1 and ×1.5 at competencies 0, 5 and 10 respectively, and continuing to scale above 10. These are provisional balancing values, not a fixed long-term growth curve. Poor skill fit slows ordinary work but does not make completion impossible; minimum-competency requirements are deferred to #40. **Ticket domains are now visible on normal Kanban cards in every reported column (#46), including production**. Engineer competency values and effective rates remain development-only for now; existing base productivity remains visible. Eventual broader player knowledge is undecided. Domain-adjusted rates affect projected completion times in the shipped Judgement comparison, although the initial candidate-nomination score uses only Rank and reported progress. The richer Judgement difficulty and candidate-discovery redesign remains open under #49. Future specialisms (e.g. DBA versus a general Backend engineer) may apply additional domain-related modifiers (#39); their formulas and visibility are undecided.
+
+**Engineer-decision design sequence (PoC):** Work domains/competencies (#38), the initial selector (#31) and the first stay-versus-switch/reconsideration prototype (#32/#49/#54) are implemented with deterministic scenarios (#37). The deeper Judgement difficulty redesign remains open (#49). Later stages include recognising/attempting blocked work (#33), richer execution/results (#34), and deciding when/how accurately to report work (#35). Their numerical rules are not yet approved.
 
 **Future learning from past events (#36):** A periodic one-to-one review (monthly is only an example) might allow engineers to explain previous decisions, blockers and mistakes, with observations recorded in their profiles. The engineer's account is not automatically authoritative truth: statements, actual history, player inferences and verified player knowledge must remain distinguishable. Player attributes such as possible **Deduction** could influence how effectively the manager questions an account or identifies contradictions; names and mechanics are not yet confirmed. Design this later, once the behaviour being reviewed exists; do not add managerial interventions during the simulation-first phase.
 
-**PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Attribute-driven engineer behaviour is the next design focus.
+**PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Initial attribute-driven behaviour is implemented; richer decisions and reporting remain future design work.
 
 ### 4.3. Information and Deduction
 
@@ -282,7 +298,7 @@ The following questions remain unresolved:
 - What resources does the player accumulate?
 - How should Judgement overcome **decision complexity** at uncapped incremental attribute values, and how should that complexity be measured (ticket difficulty, relationships between candidates, blockers, dependencies and competing objectives)? The curve and scale are not yet approved (#49/#45).
 - Should any future status-specific or rank-distance preference supplement the combined work selection, after examining real behaviour (#47)?
-- How should spontaneous switching probability scale with elapsed simulation time and individual developer attributes?
+- Should scheduled reconsideration eventually respond to events, and how should the provisional 25-second waiting-time scale evolve with ticket durations and progression?
 - How should the provisional competency scale evolve, and what can players know about it?
 - What RPG attributes does the player possess?
 - How does the player investigate discrepancies?
@@ -310,26 +326,30 @@ Record significant decisions here as the project evolves.
 | Four columns in prototype | Prototype decision | Backlog / To Do / In Progress / Done; separate backlog screen deferred |
 | In Progress need not mean actively worked | Confirmed | Unclaimed unfinished tickets can be resumed by another developer |
 | Resume vs start choice | Superseded prototype (#14) | The old 50/50 category roll and uniform random In Progress selection were replaced by combined eligible-ticket selection in #31; see §4.2.1 |
-| Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second before work advances, proportional fractional-time handling; replacement now uses #31's combined selection; switch rate remains provisional |
+| Spontaneous automatic switching (#16) | Superseded by scheduled reconsideration (#32; `6177a41`) | Former 1%-per-second forced switching is retired; reassessments are timed and may result in staying. |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Player-set ticket Rank | Implemented prototype model (#12) | Unique global 1..N order; drag within reported To Do permutes only its rank slots, preserving other columns' ranks; managerial intent, not binding developer priority |
-| Attribute-driven engineer autonomy | Next design focus (#31–#35) | Begin with Judgement/Discipline; defer personalities and personal preferences to very late-stage #42 |
+| Attribute-driven engineer autonomy | Implemented initial prototype (#31/#32/#49/#54) | Judgement improves comparison quality; Focus builds Flow independently; deeper complexity/ability redesign remains #49, personalities deferred #42. |
 | Wasted work and red herrings | Agreed direction; design open (#30) | Engineers can attempt blocked work; some tickets can consume effort without delivering value |
 | Management interventions sequencing | Confirmed PoC sequencing | Defer new interventions until autonomous engineer behaviour and imperfect reporting demonstrate the tensions they should address |
 | Ticket work domains and future specialisms | Agreed initial scope (#38, #39) | One domain per ticket; independent Frontend/Backend competencies allow full-stack engineers; future specialist modifiers such as DBA; multi-disciplinary scope at epic level |
 | Competency effects on work rate | Implemented provisional model (#38) | Independent, non-negative, finite and uncapped Frontend/Backend competencies; base productivity × (0.5 + relevant competency / 10); poor fit reduces work rate but never prevents ordinary completion; no changes to selection or switching; competency diagnostics remain development-only; future minimum-competency gates deferred to #40 |
 | Public ticket-domain labels | Implemented (#46) | Frontend/Backend domain is visible on every normal Kanban card in both development and production; engineer competencies and effective rates remain development-only for now |
-| Engineer Judgement and Discipline selection | Shipped legacy prototype (#31); redesign deferred #49 | The current sigmoid still uses Judgement minus Discipline and reported-progress advantage, but obedience/contest semantics are superseded in design. Judgement should be a positive assessment skill with future decision complexity; no new check curve approved (#49/#45). |
-| Initial autonomous work-selection scope | Implemented (#31; `42dca871`) | Combined eligible To Do and unclaimed In Progress; public reported progress only for appraisal; one seeded override draw on conflict; private perceptions deferred |
-| Strength of apparent opportunity | Shipped legacy selection rule (#31) | Reported-progress gap still affects override probability; this remains current code until Judgement selection is redesigned (#49), not the final behaviour. |
-| Discipline locked-in focus productivity | Implemented (#51; `74d098e`) | Positive unbounded logarithmic focus ramp, including D=0; bonus multiplies domain-adjusted productivity, integrates over work intervals, resets fully on ticket switch/completion and remains in DEV diagnostics. Constants provisional. |
-| Partial focus retention on switching | Future upgrade idea (#50) | Current baseline is full reset; possible progression unlock could retain momentum. |
-| Judgement versus decision complexity | Open design (#49/#45) | A successful Judgement skill check may overcome ticket/decision complexity and recognise truly efficient work; no numeric formula or difficulty scale approved, and the earlier fixed high-success curve was rejected. |
+| Initial Judgement/Focus decision model | Implemented provisional model (#32/#49; `6177a41`) | Former Judgement−Discipline sigmoid retired. One noisy holistic stay/switch assessment considers efficiency, soft Rank and uncertainty. Real situational difficulty/uncapped progression design remains open #49. |
+| Initial autonomous work-selection scope | Implemented revised prototype (#31/#49; `6177a41`) | Combined eligible actual To Do and unclaimed In Progress; 50/50 inverse eligible Rank ordinal + reported-progress nomination; initial pickup uses a privileged fastest-actual-time challenger (provisional #49 boundary). |
+| Apparent opportunity signal | Implemented provisional model (#49) | Reported progress contributes 50% of the candidate-nomination score; unreliable reports remain possible. Former override-probability gap no longer applies. |
+| Focus builds Flow | Implemented (#51/#54; `74d098e` and `6177a41`) | Unbounded logarithmic Flow bonus, including Focus 0; Focus accelerates growth. Integrated productivity; Flow resets on switching/completion, not on reassessment/stay. DEV-only metrics; balance provisional. |
+| Partial Flow retention on switching | Future upgrade idea (#50) | Current baseline is full Flow reset; upgrades might preserve some momentum. |
+| Judgement versus situational difficulty | Shipped provisional model; deeper redesign open (#49/#45) | Alternative-count complexity and Judgement/noise scale are placeholders. Next: model what truly makes a choice difficult, then tune Judgement scaling; don't equate high Judgement with obedience. |
+| Scheduled reconsideration | Implemented provisional model (#32; `6177a41`) | Seeded Weibull-style waiting-time distribution `1-exp(-(t/25)^2)`, median ~20.8s; staying preserves Flow. Future event-driven triggers deferred. |
+| Numerical simulation event accounting | Shipped and independently verified (#32; `6177a41`) | Chronological completion/assessment deadlines, engineer-order ties, partition-stable RNG/claims and compensated work/time; unsupported precision throws. Simplification assessment deferred #55. |
+| Player-facing explanation of attributes | Explicit UX follow-up (#53) | Explain Judgement as better decisions, Focus as faster Flow building and Rank as managerial influence without requiring knowledge of formulas or hidden truth. |
+| Numerical engine simplification review | Deferred read-only assessment (#55) | Seek simplest maintainable engine that preserves gameplay guarantees; do not refactor merely to reduce lines of code. |
 | Numeric global Rank distance | Deferred (#47) | Ranks span all columns, including ineligible tickets; no rank-gap probability modifier in first selector |
 | Non-coding support roles | Future concept (#41) | Roles such as domain architect may improve others' effective competencies without contributing ticket code |
 | Engineer personality and profiles | Very late-stage future concept (#42) | Fully fledged autonomous personalities, profile history and potentially personality-driven self-selected avatars |
 | Pre-selection design review | Completed (#43) | Followed #38; clarified holistic Judgement, Discipline, shared reported board and observability before implementing #31 |
-| Engineer decision design sequence | Revised prerequisite (#38, then #31–#35) | Define ticket work domains and engineer expertise first, potentially bringing forward basic work-rate effects from #34; then selection, switching, blockers, richer execution and reporting; curated scenarios #37 |
+| Engineer decision design sequence | Initial selection and reconsideration implemented (#31/#32); later stages open | Domain skills #38, Focus/Flow #51/#54 and noisy reconsideration are shipped; blockers #33, work execution #34 and reporting #35 remain future. |
 | One-to-one review and engineer history | Future concept (#36) | Engineer accounts can be wrong; player Deduction or similar attributes may help uncover contradictions, with reported accounts distinct from verified knowledge |
 | Multiple management layers | Proposed | Not yet committed |
 
@@ -357,7 +377,7 @@ rejected as no-op drops rather than repaired by changing unrelated columns.
 The former 50/50 category decision and uniform In Progress selection have been **superseded by #31**.
 Selection considers eligible actual To Do and unclaimed unfinished In Progress tickets in
 one pool; the manager's preference is the lowest **global** rank of an eligible ticket,
-while an apparent near-completion opportunity may override it based on the **still-shipped legacy #31** Judgement/Discipline selector and **reported** progress. The intended long-term attribute meaning is different: Discipline now also produces a separate locked-in productivity bonus (#51), and the selection formula awaits redesign (#49). The numerical rank difference has no effect (#47).
+while apparent progress contributes to a **50/50 Rank/opportunity candidate score** (#32/#49). The engineer then makes a noisy stay-versus-switch comparison that also considers projected completion times, a soft Rank preference and accumulated **Flow**. **Focus** builds Flow and does not oppose Judgement. The first Judgement difficulty formula remains provisional pending deeper redesign (#49); numeric global-rank gaps remain deferred (#47).
 Rank and display order are exposed by the player view; actual status and work remain excluded. Native HTML drag/drop is used without a library;
 keyboard-only reordering remains deferred. Desktop drag/drop requires
 hands-on verification before commit; automated transition and rendering tests do
