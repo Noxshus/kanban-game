@@ -119,6 +119,8 @@ They may:
 
 Developer behaviour will eventually be influenced by individual attributes and competencies.
 
+**Wasted effort (agreed design direction, detailed mechanics open; #30):** Developers may attempt blocked work and expend time without useful progress, rather than always being prevented by dependency checks. Some tickets may also be fully executable yet deliver little or no actual value (red herrings). These are distinct possibilities: *ability to make progress* and *value of completing the work* should not be conflated. Players may not initially know which work is blocked or valueless. The effects on work/progress, reporting, dependencies and engineer judgment remain to be designed.
+
 ### 4.2.1. Work selection (implemented prototype rule)
 
 When a developer becomes idle, they may take an eligible **To Do** ticket or resume an unfinished **In Progress** ticket that no other developer is actively working on. **Backlog** and **Done** are not eligible under ordinary behaviour.
@@ -144,6 +146,8 @@ Switch checks occur **before work advances** in each simulated second; a develop
 The spontaneous switch check is distinct from the 50/50 choice made when selecting work while idle (see #14 and #16).
 
 The exact future developer attributes and richer decision-making systems remain undecided.
+
+**PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Attribute-driven engineer behaviour is the next design focus.
 
 ### 4.3. Information and Deduction
 
@@ -263,7 +267,9 @@ Record significant decisions here as the project evolves.
 | Spontaneous task switching | Implemented prototype rule | #16 (`3783299`): 1% chance per simulated second, check before work advances, replacement via #14 selection, proportional fractional-time handling; balancing remains provisional |
 | Accurate prototype reporting and assignments | Temporary validation rule | Keep actual and reported state conceptually separate for future unreliability |
 | Player-set ticket Rank | Agreed model; local implementation under refinement (#12) | Unique global 1..N order; drag within reported To Do permutes only its rank slots, preserving other columns' ranks; managerial intent, not binding developer priority |
-| Developer personality system | Proposed | Not yet committed |
+| Developer personality system | Next design focus | Attribute-driven autonomy and reporting behaviour before new player interventions; concrete attributes TBD |
+| Wasted work and red herrings | Agreed direction; design open (#30) | Engineers can attempt blocked work; some tickets can consume effort without delivering value |
+| Management interventions sequencing | Confirmed PoC sequencing | Defer new interventions until autonomous engineer behaviour and imperfect reporting demonstrate the tensions they should address |
 | Multiple management layers | Proposed | Not yet committed |
 
 ---
