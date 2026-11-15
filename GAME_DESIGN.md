@@ -147,6 +147,10 @@ The spontaneous switch check is distinct from the 50/50 choice made when selecti
 
 The exact future developer attributes and richer decision-making systems remain undecided.
 
+**Engineer-decision design sequence (PoC; design first, implementation sequential):** (1) choose work (#31); (2) continue or switch work (#32); (3) recognise blockers and decide whether to attempt blocked work (#33); (4) perform work with variable competence and results (#34); (5) decide when and how accurately to report work (#35). Attribute names, numerical effects and detailed rules remain open until each decision is designed. Expand curated deterministic scenarios alongside these stages (#37) rather than making procedural ticket generation a prerequisite.
+
+**Future learning from past events (#36):** A periodic one-to-one review (monthly is only an example) might allow engineers to explain previous decisions, blockers and mistakes, with observations recorded in their profiles. The engineer's account is not automatically authoritative truth: statements, actual history and verified player knowledge must remain distinguishable. Design this later, once the behaviour being reviewed exists; do not add managerial interventions during the simulation-first phase.
+
 **PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Attribute-driven engineer behaviour is the next design focus.
 
 ### 4.3. Information and Deduction
@@ -270,6 +274,8 @@ Record significant decisions here as the project evolves.
 | Developer personality system | Next design focus | Attribute-driven autonomy and reporting behaviour before new player interventions; concrete attributes TBD |
 | Wasted work and red herrings | Agreed direction; design open (#30) | Engineers can attempt blocked work; some tickets can consume effort without delivering value |
 | Management interventions sequencing | Confirmed PoC sequencing | Defer new interventions until autonomous engineer behaviour and imperfect reporting demonstrate the tensions they should address |
+| Engineer decision design sequence | Agreed order (#31–#35) | Work selection, switching, blockers, competency-driven execution, reporting; design each before implementation; curated scenarios #37 |
+| One-to-one review and engineer history | Future concept (#36) | Periodic retrospective discussion may reveal past problems; engineer statements must not be treated as automatically true |
 | Multiple management layers | Proposed | Not yet committed |
 
 ---
