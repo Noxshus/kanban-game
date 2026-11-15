@@ -173,6 +173,17 @@ The player should not begin with complete or reliably accurate knowledge of tick
 
 The current prototype exposes extra authoritative information for testing; those development-only displays are an implementation aid rather than a player-facing design commitment. See `AGENTS.md` and the relevant GitHub implementation issues for development UI conventions.
 
+### 4.3.2. Keep autonomous behaviour inferable (planned checkpoint #43)
+
+**Design risk, not yet resolved:** An internally rich simulation is not sufficient if the player cannot observe enough evidence to develop and test meaningful hypotheses about engineer behaviour. The board should remain imperfect, but uncertainty must not collapse into uninformed guessing. Slow work, a task switch, a blocker, poor ticket choice and stale reporting can produce similar visible symptoms; later reporting, retrospective one-to-ones (#36) or other discoveries may help the player distinguish them. Specific clues and unlocks are deliberately undecided, and managerial interventions remain deferred until the simulation creates problems worth solving.
+
+Before introducing attribute-driven work selection (#31), **complete and manually verify the initial competency implementation (#38), then hold design checkpoint #43** to revisit:
+- **Incremental progression:** A multiplicative competency modifier retains its relative effect at all productivity scales. Assess whether specialist advantages should remain proportionally important or later upgrades should mitigate mismatches, while keeping brute force viable. The initial #38 formula need not change.
+- **Engineer Judgement and information:** Distinguish actual work requirements/value, the engineer's beliefs about them, their estimate of their own capability, and the player's knowledge. Ignoring Rank might result from information, preferences or poor Judgement; these should not be conflated.
+- **Player observability:** Identify the minimum evidence and eventual learning paths needed for the player to reason about what happened, without making the Kanban board an infallible source of truth.
+
+These are **questions to evaluate**, not approval for new mechanics, changes to the in-progress #38 implementation, or immediate player interventions.
+
 ### 4.4. Player Attributes and Abilities
 
 The player has RPG-like attributes that influence their effectiveness as a manager.
@@ -280,6 +291,7 @@ Record significant decisions here as the project evolves.
 | Competency effects on work rate | Agreed prototype direction (#38) | Poor skill fit slows but does not prevent completion; future minimum-competency gates are deferred to #40 |
 | Non-coding support roles | Future concept (#41) | Roles such as domain architect may improve others' effective competencies without contributing ticket code |
 | Engineer personality and profiles | Future concept (#42) | Fully fledged autonomous personalities, profile history and potentially personality-driven self-selected avatars |
+| Pre-selection design review | Planned checkpoint (#43) | After #38 manual verification and before #31: progression/competency trade-off, engineer knowledge and Judgement, and inferable evidence for players |
 | Engineer decision design sequence | Revised prerequisite (#38, then #31–#35) | Define ticket work domains and engineer expertise first, potentially bringing forward basic work-rate effects from #34; then selection, switching, blockers, richer execution and reporting; curated scenarios #37 |
 | One-to-one review and engineer history | Future concept (#36) | Engineer accounts can be wrong; player Deduction or similar attributes may help uncover contradictions, with reported accounts distinct from verified knowledge |
 | Multiple management layers | Proposed | Not yet committed |
