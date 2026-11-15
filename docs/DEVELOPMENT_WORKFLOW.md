@@ -87,6 +87,12 @@ This is a **Codex-specific preference**; it does not mandate any particular Chat
 - Do not treat a lack of new interactive regression tests as a failing unit test: separate passing-test status from coverage suggestions. Use #24 for the current development overlay coverage gap.
 - Distinguish **confirmed defects**, **risks**, and **future improvements**. Never manufacture findings to fill severity categories.
 
+### Simulation-specific numerical review guardrails
+
+For changes to event scheduling, completion projections, integrated work or seeded decisions, add **targeted adversarial tests** as well as ordinary scenarios. Check event coincidences, both engineer-order permutations, genuinely distinct nearby deadlines, elapsed-time partitioning (including nonbinary fractions), matching decisions/claims/RNG, state cloning and JSON restoration, and numeric underflow/overflow or unsupported precision. Assertions should compare **discrete outcomes**, not only approximate work totals. A previously reproduced failure remains a release blocker until its exact reproduction passes.
+
+**Avoid reflexive numerical overengineering:** Treat complexity reductions as a separate, read-only assessment first. Distinguish observable gameplay guarantees from optional extreme-range precision; a simpler implementation is preferable only when it preserves agreed invariants or an explicit design decision changes them. This architectural review is tracked in #55 and should not destabilise an otherwise verified release.
+
 ## Concise reusable independent review prompt
 
 ```text
