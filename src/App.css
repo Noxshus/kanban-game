@@ -178,6 +178,27 @@
   font-size: 0.875rem;
 }
 
+.comparison-indicator { display: inline-block; position: relative; margin-left: 8px; }
+.comparison-indicator button { padding: 2px 6px; font-size: 0.8rem; font-weight: 600; }
+.comparison-match { color: #165b2a; border-color: #165b2a; }
+.comparison-mismatch { color: #9c1b1b; border-color: #9c1b1b; }
+.comparison-tooltip {
+  display: none;
+  position: absolute;
+  z-index: 20;
+  left: 0;
+  bottom: 100%;
+  width: min(300px, 70vw);
+  padding: 8px;
+  background: #fff;
+  color: #202a33;
+  border: 1px solid #526170;
+  box-shadow: 0 2px 8px #0003;
+}
+.comparison-tooltip span { display: block; }
+.comparison-indicator:hover .comparison-tooltip,
+.comparison-indicator:focus-within .comparison-tooltip { display: block; }
+
 .developer-list .diagnostics {
   flex-basis: 100%;
 }

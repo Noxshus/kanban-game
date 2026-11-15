@@ -1,13 +1,23 @@
 import type { DiagnosticsView } from '../store/diagnosticsView'
+import { useId } from 'react'
 
 function format(value: number) {
   return value.toLocaleString(undefined, { maximumFractionDigits: 2 })
 }
 
 export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets'][number] }) {
+  const tooltipId = useId()
   return (
     <div className="diagnostics ticket-diagnostics">
       <strong>Development diagnostics — true values</strong>
+      <span className="comparison-indicator">
+        <button type="button" className={ticket.comparison.matches ? 'comparison-match' : 'comparison-mismatch'} aria-describedby={tooltipId}>
+          {ticket.comparison.matches ? 'Match' : 'Mismatch'}
+        </button>
+        <span id={tooltipId} role="tooltip" className="comparison-tooltip">
+          {ticket.comparison.details.map((detail) => <span key={detail}>{detail}</span>)}
+        </span>
+      </span>
       <p>Rank: {ticket.rank}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
       <p>Actual work: {format(ticket.completedWork)} / {format(ticket.requiredWork)} work units</p>

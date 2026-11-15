@@ -24,6 +24,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
+      assert.equal(html.includes('>Mismatch</button>'), mode === 'development')
+      assert.equal(html.includes('role="tooltip"'), mode === 'development')
       assert.match(html, /<li[^>]*draggable="true"[^>]*><span class="ticket-id">ticket-2<\/span>/)
       assert.ok(!html.includes('Move ticket-2 up'))
       assert.ok(!html.includes('Move ticket-2 down'))
@@ -49,6 +51,14 @@ test('Vite development shows diagnostics; production retains only the player UI'
         assert.match(html, /<\/details><button type="button" aria-label="Resume simulation">Resume<\/button>/)
         const { DevelopmentUI } = await server!.ssrLoadModule('/src/components/DevelopmentUI.tsx')
         const { exampleGameState } = await server!.ssrLoadModule('/src/data/exampleGameState.ts')
+        const { GameBoard } = await server!.ssrLoadModule('/src/components/GameBoard.tsx')
+        const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
+        const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
+          view: getPlayerView(exampleGameState), diagnostics: null,
+        }))
+        assert.ok(!withoutDiagnostics.includes('role="tooltip"'))
+        assert.ok(!withoutDiagnostics.includes('>Mismatch</button>'))
+        assert.ok(!withoutDiagnostics.includes('>Match</button>'))
         for (const [isPaused, label] of [[true, 'Resume'], [false, 'Pause']] as const) {
           const toolbar = renderToStaticMarkup(createElement(DevelopmentUI, {
             state: exampleGameState,

@@ -1,4 +1,5 @@
 import type { GameState } from '../game/types'
+import { compareTicket } from './ticketComparison.ts'
 
 // Authoritative development information stays separate from player reports so visibility can evolve.
 export function getDiagnosticsView(state: GameState) {
@@ -30,6 +31,7 @@ export function getDiagnosticsView(state: GameState) {
       && (ticket.actualStatus === 'done' || remainingWork === 0)
     return {
       id: ticket.id,
+      comparison: compareTicket(ticket, state.developers),
       rank: ticket.rank,
       requiredWork: ticket.requiredWork,
       completedWork: ticket.completedWork,

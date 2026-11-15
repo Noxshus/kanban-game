@@ -10,7 +10,7 @@ test('derives authoritative ticket, developer and team metrics without mutation'
   const original = structuredClone(state)
   const view = getDiagnosticsView(state)
   assert.deepEqual(view.tickets[0], {
-    id: 'ticket-1', rank: 1, requiredWork: 10, completedWork: 4, remainingWork: 6,
+    id: 'ticket-1', comparison: view.tickets[0].comparison, rank: 1, requiredWork: 10, completedWork: 4, remainingWork: 6,
     activeDeveloperName: 'Alex', workRate: 1, estimatedSeconds: 6,
   })
   assert.equal(view.tickets[1].estimatedSeconds, 5)
