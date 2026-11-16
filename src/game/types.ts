@@ -1,4 +1,5 @@
 import type { EventTime } from './eventTime'
+import type { WorkAmount } from './work'
 
 export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export type WorkDomain = 'frontend' | 'backend'
@@ -53,6 +54,8 @@ export interface Developer {
     initialCompletedWork: number; initialRemainder?: Ticket['workRemainder']; lastCompletedWork: number
     originTime?: EventTime
     currentTime?: EventTime
+    // Ledger baseline for this integral; absent on older saves. Not a session history.
+    effortOrigin?: { total: WorkAmount; produced: WorkAmount }
   }
   // One immutable decision snapshot survives later progress/rank changes; never an event log.
   lastAssessment?: AssessmentDecision
@@ -98,4 +101,7 @@ export interface GameState {
   simulationTime: number
   // Retains ordinary additions' rounding so event origins do not drift by call partition.
   simulationTimeRemainder?: number
+  // Gross productive effort, independent of net ticket progress and current ownership.
+  // Missing means no known contributions; never infer historical engineer provenance.
+  workLog?: { developerId: string; ticketId: string; effort: WorkAmount }[]
 }

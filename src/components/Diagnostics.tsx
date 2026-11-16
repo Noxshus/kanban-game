@@ -26,6 +26,13 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
       <p>Initial engineer belief: {ticket.initialEffortEstimate
         ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + ticket.initialEffortEstimate.developerId + ')' : 'Unknown'}</p>
       <p>Published effort estimate: {formatEffort(ticket.reportedEffortEstimate ?? undefined)}; actual total effort: {formatEffort(ticket.requiredWork)} work units</p>
+      <details>
+        <summary>Productive effort by engineer</summary>
+        {ticket.contributions.length ? <ul>{ticket.contributions.map(contribution => (
+          <li key={contribution.developerId}>{contribution.developerName} ({contribution.developerId}): {contribution.effort === null
+            ? 'Below scalar display range (retained in ledger)' : formatEffort(contribution.effort) + ' work units'}</li>
+        ))}</ul> : <p>No recorded contributions; historical effort is unknown.</p>}
+      </details>
       <p>Actual work: {format(ticket.completedWork)} / {format(ticket.requiredWork)} work units</p>
       <p>Remaining: {format(ticket.remainingWork)} work units</p>
       <p>Active developer: {ticket.activeDeveloperName ?? 'None'}</p>

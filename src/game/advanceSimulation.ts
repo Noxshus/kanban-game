@@ -8,6 +8,7 @@ import { projectCompletion } from './completionTime.ts'
 import { sampleReconsideration } from './reconsideration.ts'
 import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from './work.ts'
 import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
+import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 
 export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
@@ -19,6 +20,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   const end = addEventTime(now, elapsedSeconds)
   requireTimeProgress(now.high, end.high, elapsedSeconds)
   const { tickets, developers } = result
+  validateWorkLog(result.workLog)
   developers.forEach(validateSelectionAttributes)
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = () => {
@@ -186,7 +188,9 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         ticket.completedWork = session.initialCompletedWork
         if (session.initialRemainder) ticket.workRemainder = structuredClone(session.initialRemainder)
         else delete ticket.workRemainder
-        accumulateWork(ticket, integratedWork(developer, ticket, elapsed, session.initialFlowDuration))
+        const produced = integratedWork(developer, ticket, elapsed, session.initialFlowDuration)
+        accumulateWork(ticket, produced)
+        recordProductiveEffort(result, developer, ticket, produced)
         session.elapsed = elapsed
         session.currentTime = nextTime
         session.lastCompletedWork = ticket.completedWork

@@ -19,6 +19,9 @@ function amount(value: number): WorkAmount {
   return normalize(value / 2 ** exponent, exponent)
 }
 
+// Reuse the engine's scaled quantity for durable effort, including subnormal work.
+export { amount as workAmount }
+
 function multiply(a: WorkAmount, b: WorkAmount): WorkAmount {
   return normalize(a.mantissa * b.mantissa, a.exponent + b.exponent)
 }

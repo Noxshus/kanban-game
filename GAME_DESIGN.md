@@ -218,6 +218,10 @@ Existing active claims without estimates are initialised on their first positive
 
 First-pickup publication is a **temporary pre-planning shortcut**, including its visible clue that work has been picked up. Sprint planning (#60) is intended before PoC/MVP and will move initial publication before work, without double publication. Later productive-work learning/revisions (#58) are separate and will be published immediately under the agreed temporary reporting shortcut; none of that revision behaviour is implemented here. Communication (#63/#35), overestimation (#59) and event-triggered reconsideration (#56) remain separate work.
 
+### 4.2.5. Durable productive-effort log (#65)
+
+The simulation retains cumulative **actual productive work units per engineer/ticket pair**, across sessions, switching, reassignment, completion and returning to earlier work. Past contributors remain recorded independently of current ownership. This is **gross effort invested**, separate from the ticket's net retained completed work: future work loss must not erase previously gained experience. Idle time, merely holding a ticket and intervals producing no work do not contribute. Older states start with no known contributions; existing progress is not attributed to an engineer retrospectively. Contributions survive saves and remain development-only diagnostics for now. This foundational ledger does not implement discovery, estimate revision (#58), work loss (#61), player reports or a timestamped event history.
+
 ### 4.3. Information and Deduction
 
 The player does not automatically know everything occurring within the development team.

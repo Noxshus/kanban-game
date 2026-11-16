@@ -30,6 +30,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
       const estimates = structuredClone(fixture)
+      estimates.workLog = [{ developerId: 'private-effort-contributor', ticketId: 'ticket-1', effort: { mantissa: 1, exponent: 5, correction: 0 } }]
       estimates.tickets.forEach((ticket, index) => {
         ticket.reportedStatus = (['backlog', 'todo', 'in_progress', 'done'] as const)[index % 4]
         ticket.reportedEffortEstimate = [8.5, 0, 1e-200, 1e200, undefined, 12, Number.MIN_VALUE][index]
@@ -42,7 +43,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
         'Estimated effort: 1E-200 work units', 'Estimated effort: 1E200 work units', 'Estimated effort: Unknown']) {
         assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)
       }
-      for (const text of ['private-original-author', '7654321', '9876543', 'Initial engineer belief:', 'actual total effort:']) {
+      for (const text of ['private-original-author', '7654321', '9876543', 'Initial engineer belief:', 'actual total effort:',
+        'private-effort-contributor', 'Productive effort by engineer']) {
         assert.ok(!visibleEstimates.includes(text), mode + ': leaked ' + text)
       }
       assert.equal((html.match(/class="ticket-domain"/g) ?? []).length, 7)
@@ -79,7 +81,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const { GameBoard } = await server!.ssrLoadModule('/src/components/GameBoard.tsx')
         const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
         const { getDiagnosticsView } = await server!.ssrLoadModule('/src/store/diagnosticsView.ts')
-        const { DeveloperDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
+        const { DeveloperDiagnostics, TicketDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
         const { advanceSimulation } = await server!.ssrLoadModule('/src/game/advanceSimulation.ts')
         const conflictResult = advanceSimulation(exampleGameState, 1, () => 0.5)
         const conflictHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
@@ -97,6 +99,14 @@ test('Vite development shows diagnostics; production retains only the player UI'
         }))
         assert.ok(diagnosticHtml.includes('Frontend competency: 100</p>'))
         assert.ok(!diagnosticHtml.includes(' / 10'))
+        const contributed = structuredClone(exampleGameState)
+        contributed.workLog = [{ developerId: 'developer-1', ticketId: 'ticket-1', effort: { mantissa: 1, exponent: 5, correction: 0 } }]
+        const contributionHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(contributed).tickets[0] }))
+        assert.match(contributionHtml, /<summary>Productive effort by engineer<\/summary>/)
+        assert.ok(contributionHtml.includes('Alex (developer-1): 32 work units'))
+        const advanced = advanceSimulation(contributed, 1, () => 0.5)
+        const liveHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(advanced).tickets[0] }))
+        assert.ok(!liveHtml.includes('Alex (developer-1): 32 work units'))
         const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
           view: getPlayerView(exampleGameState), diagnostics: null,
         }))
@@ -129,7 +139,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
-        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:',
+        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)

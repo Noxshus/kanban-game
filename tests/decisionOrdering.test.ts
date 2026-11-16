@@ -5,7 +5,13 @@ import { exampleGameState } from '../src/data/exampleGameState.ts'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
 import { projectCompletion } from '../src/game/completionTime.ts'
 import { remainingWorkNumber } from '../src/game/work.ts'
+import { effortNumber } from '../src/game/workLog.ts'
 import { close } from './helpers/flowExpectation.ts'
+
+function compareLogs(a: typeof exampleGameState, b: typeof exampleGameState) {
+  assert.deepEqual(a.workLog?.map(entry => [entry.developerId, entry.ticketId]), b.workLog?.map(entry => [entry.developerId, entry.ticketId]))
+  a.workLog?.forEach((entry, index) => close(effortNumber(entry.effort)!, effortNumber(b.workLog![index].effort)!))
+}
 
 function coincident(reverse = false) {
   const state = structuredClone(exampleGameState)
@@ -59,6 +65,7 @@ test('partitioning across decisions and completions preserves claims, RNG and nu
     const first = advanceSimulation(state, due / 2)
     const split = advanceSimulation(advanceSimulation(first, due / 2), 0.25)
     assert.equal(whole.randomState, split.randomState)
+    compareLogs(whole, split)
     assert.deepEqual(whole.developers.map(d => d.activeTicketID), split.developers.map(d => d.activeTicketID))
     assert.deepEqual(whole.tickets.map(t => t.actualStatus), split.tickets.map(t => t.actualStatus))
     for (let i = 0; i < whole.tickets.length; i++) close(remainingWorkNumber(whole.tickets[i])!, remainingWorkNumber(split.tickets[i])!)
@@ -75,6 +82,7 @@ test('three 0.3 advances and the remainder preserve the exact coincident-event d
     split = advanceSimulation(split, due + 0.25 - 0.9)
     assert.equal(whole.randomState, reverse ? 2165703038 : 1586005467)
     assert.equal(split.randomState, whole.randomState)
+    compareLogs(whole, split)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment?.outcome, d.lastAssessment?.selectedId]),
       whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment?.outcome, d.lastAssessment?.selectedId]))
     assert.deepEqual(split.tickets.map(t => [t.id, t.actualStatus, t.assignedDeveloperId]),
@@ -91,6 +99,7 @@ test('nonbinary partitions and JSON restoration retain mixed-event coincidence i
       for (const seconds of parts) split = JSON.parse(JSON.stringify(advanceSimulation(split, seconds)))
       split = advanceSimulation(split, due + 0.25 - parts.reduce((sum, part) => sum + part, 0))
       assert.equal(split.randomState, whole.randomState)
+      compareLogs(whole, split)
       assert.deepEqual(split.developers.map(d => [d.activeTicketID, d.lastAssessment?.kind, d.lastAssessment?.outcome]),
         whole.developers.map(d => [d.activeTicketID, d.lastAssessment?.kind, d.lastAssessment?.outcome]))
       assert.deepEqual(split.tickets.map(t => t.assignedDeveloperId), whole.tickets.map(t => t.assignedDeveloperId))
@@ -137,4 +146,21 @@ test('an assessment at a call boundary is processed once, with no repeated zero-
   const second = advanceSimulation(first, 0.1, random)
   assert.equal(draws, afterBoundary)
   assert.ok(second.developers[0].assessmentClock!.remaining > 0)
+})
+
+test('completion/assessment ties log ending work before new claims, in both engineer orders', () => {
+  for (const reverse of [false, true]) {
+    const { state, due } = coincident(reverse)
+    const atBoundary = advanceSimulation(state, due, () => 0.99)
+    assert.equal(atBoundary.developers[0].activeTicketID, 'contested')
+    assert.ok(!atBoundary.workLog!.some(entry => entry.ticketId === 'contested'))
+    const finished = atBoundary.workLog!.find(entry => entry.ticketId === 'finishing-work')!
+    assert.equal(finished.developerId, 'finishing')
+    assert.equal(effortNumber(finished.effort), 1)
+    const after = advanceSimulation(atBoundary, 0.25, () => 0.99)
+    const newWork = after.workLog!.find(entry => entry.ticketId === 'contested')!
+    assert.equal(newWork.developerId, state.developers[0].id)
+    assert.ok(effortNumber(newWork.effort)! > 0)
+    compareLogs(after, advanceSimulation(state, due + 0.25, () => 0.99))
+  }
 })

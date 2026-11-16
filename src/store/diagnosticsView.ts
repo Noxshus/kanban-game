@@ -3,6 +3,7 @@ import { compareTicket } from './ticketComparison.ts'
 import { getEffectiveProductivity } from '../game/productivity.ts'
 import { getFlowBonus, getFlowDuration } from '../game/flow.ts'
 import { isWorkComplete, remainingWorkNumber } from '../game/work.ts'
+import { effortNumber } from '../game/workLog.ts'
 
 // Authoritative development information stays separate from player reports so visibility can evolve.
 export function getDiagnosticsView(state: GameState) {
@@ -52,6 +53,11 @@ export function getDiagnosticsView(state: GameState) {
       workDomain: ticket.workDomain,
       initialEffortEstimate: ticket.initialEffortEstimate ? { ...ticket.initialEffortEstimate } : null,
       reportedEffortEstimate: ticket.reportedEffortEstimate ?? null,
+      contributions: (state.workLog ?? []).filter(entry => entry.ticketId === ticket.id).map(entry => ({
+        developerId: entry.developerId,
+        developerName: state.developers.find(developer => developer.id === entry.developerId)?.name ?? entry.developerId,
+        effort: effortNumber(entry.effort),
+      })),
       requiredWork: ticket.requiredWork,
       completedWork: ticket.completedWork,
       remainingWork,
