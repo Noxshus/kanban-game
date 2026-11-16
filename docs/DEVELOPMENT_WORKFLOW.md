@@ -18,6 +18,17 @@ This is the standing working agreement for building Kanban Game with ChatGPT, Co
 
 Do not advance workflow steps on assumption. A later prompt may subsume an earlier one, but verify its implementation before claiming that.
 
+## GitHub issue labels — mandatory triage
+
+**Every new GitHub issue must have at least one appropriate label at creation time.** This applies equally to implementation tasks, design follow-ups, deferred ideas, bugs and technical reviews, including issues created by ChatGPT. Treat labels as part of the issue's completion checklist, not optional metadata.
+
+- **Before creating:** Check the repository's existing label vocabulary and select the most accurate applicable label(s). Prefer existing labels over inventing synonymous categories; currently `enhancement` covers gameplay/UX/design additions and `technical-debt` covers cleanup, maintenance and architectural review.
+- **When creating:** Include the selected `labels` explicitly in the issue creation request. Do not rely on GitHub to infer them from title or body.
+- **After creating or changing scope:** Verify the issue actually has appropriate labels; if none exist or the classification is clearly wrong, correct it promptly without waiting for the user to notice.
+- **During periodic backlog/release housekeeping:** Check for unlabeled issues, including open and closed issues, and backfill when the category is unambiguous. If existing labels are inadequate, flag the missing category rather than silently inventing a new one.
+
+Labels are for finding and organising the backlog; they must not imply an issue is approved for immediate implementation, or change its state/priority. Keep issue title/body and explicit status as the source of truth.
+
 ## Standard workflow
 
 1. Discuss scope and confirm design decisions. Record actionable implementation tasks and newly agreed decisions in GitHub issues immediately. Update `GAME_DESIGN.md` **before** local implementation begins, or **after** the implementation has been committed and pushed. Never commit overlapping Markdown changes to GitHub while Codex has local work in progress. Keep proposed ideas distinct from approved rules.
