@@ -35,6 +35,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         ticket.reportedStatus = (['backlog', 'todo', 'in_progress', 'done'] as const)[index % 4]
         ticket.reportedEffortEstimate = [8.5, 0, 1e-200, 1e200, undefined, 12, Number.MIN_VALUE][index]
         ticket.initialEffortEstimate = { developerId: 'private-original-author', totalWork: 7654321 }
+        ticket.lastEstimateEvaluation = { developerId: 'private-estimator', reason: 'discovery', personalWork: 8765432, candidate: 6543210, published: false }
         ticket.requiredWork = 9876543
       })
       const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
@@ -44,7 +45,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)
       }
       for (const text of ['private-original-author', '7654321', '9876543', 'Initial engineer belief:', 'actual total effort:',
-        'private-effort-contributor', 'Productive effort by engineer']) {
+        'private-effort-contributor', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'private-estimator', '8765432', '6543210']) {
         assert.ok(!visibleEstimates.includes(text), mode + ': leaked ' + text)
       }
       assert.equal((html.match(/class="ticket-domain"/g) ?? []).length, 7)
@@ -107,6 +108,15 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const advanced = advanceSimulation(contributed, 1, () => 0.5)
         const liveHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(advanced).tickets[0] }))
         assert.ok(!liveHtml.includes('Alex (developer-1): 32 work units'))
+        const learning = structuredClone(exampleGameState)
+        learning.developers = [{ ...learning.developers[0], judgement: 10, focus: 0, productivity: 1,
+          competencies: { frontend: 5, backend: 0 }, assessmentClock: { elapsed: 0, remaining: 10000 } }]
+        learning.tickets = [{ ...learning.tickets[0], completedWork: 0, requiredWork: 100,
+          initialEffortEstimate: { developerId: 'original', totalWork: 20 }, reportedEffortEstimate: 20 }]
+        const learned = advanceSimulation(learning, 10, () => 0.1)
+        const learnedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(learned).tickets[0] }))
+        assert.ok(learnedHtml.includes('Latest effort re-evaluation: discovery by developer-1'))
+        assert.ok(learnedHtml.includes('; published'))
         const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
           view: getPlayerView(exampleGameState), diagnostics: null,
         }))
@@ -139,7 +149,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
-        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer',
+        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)

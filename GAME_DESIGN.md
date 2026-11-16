@@ -216,11 +216,32 @@ These are **prototype balancing constants**. Mean accuracy at J/C = 0/0, 10/10, 
 
 Existing active claims without estimates are initialised on their first positive advance, in engineer order; zero-time advances and rendering consume no estimate draws. At a genuine new claim, the estimate draw follows selection and precedes the next reconsideration schedule. Saved beliefs or existing public estimates prevent duplicate initial publication after JSON restoration.
 
-First-pickup publication is a **temporary pre-planning shortcut**, including its visible clue that work has been picked up. Sprint planning (#60) is intended before PoC/MVP and will move initial publication before work, without double publication. Later productive-work learning/revisions (#58) are separate and will be published immediately under the agreed temporary reporting shortcut; none of that revision behaviour is implemented here. Communication (#63/#35), overestimation (#59) and event-triggered reconsideration (#56) remain separate work.
+First-pickup publication is a **temporary pre-planning shortcut**, including its visible clue that work has been picked up. Sprint planning (#60) is intended before PoC/MVP and will move initial publication before work, without double publication. Later productive-work learning/revisions (#58, below) publish meaningful improvements immediately under the agreed temporary reporting shortcut. Communication (#63/#35), overestimation (#59) and event-triggered reconsideration (#56) remain separate work.
 
 ### 4.2.5. Durable productive-effort log (#65)
 
 The simulation retains cumulative **actual productive work units per engineer/ticket pair**, across sessions, switching, reassignment, completion and returning to earlier work. Past contributors remain recorded independently of current ownership. This is **gross effort invested**, separate from the ticket's net retained completed work: future work loss must not erase previously gained experience. Idle time, merely holding a ticket and intervals producing no work do not contribute. Older states start with no known contributions; existing progress is not attributed to an engineer retrospectively. Contributions survive saves and remain development-only diagnostics for now. This foundational ledger does not implement discovery, estimate revision (#58), work loss (#61), player reports or a timestamped event history.
+
+### 4.2.6. Progressive hands-on re-estimation (#58; provisional prototype)
+
+Engineers re-evaluate total effort at seeded **productive-work exposure thresholds**, using their own cumulative #65 contributions. The original positive #57 estimate E0 and its author remain historical; new claims, handoffs and returns see the latest board estimate without publishing on pickup or granting an extra experience bonus. No independent knowledge attribute, private estimate history or experience checkpoints are introduced.
+
+```text
+k(J) = 0.8 * (1 + ln(1 + J/10))
+r = (T - Eboard) / T
+g(r) = 2r / (r + 0.2)
+d = max(0, (W - Eboard) / Eboard)
+m = 1 + ln(1 + d)
+discovery hazard per personal work unit = k(J) * g(r) * m / (E0 + w)
+a(J,C) = 0.30 * (1 + ln(1 + J/10) + ln(1 + C/10))
+candidate = T - (T - E0) * (1 + w/E0)^(-a(J,C))
+```
+
+T is true total effort, W is currently retained ticket work (not everyone's gross experience), w is this engineer's gross productive contribution, J is Judgement and C is relevant domain competency. The error and overrun multipliers are **frozen when each next threshold is sampled** and refreshed after evaluation, a report change or handoff; this is a deliberate approximation, not a continuously varying hazard. Repeated discoveries become less frequent as error shrinks. Accurate estimates have no error-discovery events. Focus has no direct estimator modifier; Flow changes the time required to earn work exposure.
+
+Only a genuine evaluation can publish a candidate, and only upward: the provisional meaningful-improvement threshold is **0.1% of the current report**. Candidates are always computed from original E0 and cumulative personal work, never compounded on the latest report. An evaluation can leave the board unchanged. The shared report represents the latest published assessment, not team-wide omniscience. Future #63/#35 will replace immediate publication.
+
+Reaching the reported total while unfinished triggers one immediate evaluation; **completion at the same instant wins**. There is no guaranteed correction, observed-work estimate floor or accuracy bonus. Further overrun evaluations use the same positive-work discovery process with the disparity multiplier, avoiding repeated instantaneous events even when the estimate remains below work already done. Existing overruns in legacy/handoff states do not grant a pickup revision; further work must reach a new evaluation. Board-only legacy reports retain their original baseline without inventing an author. Invalid/zero baselines on unfinished positive work are rejected; zero-work completed tickets bypass learning. Numerical precision limits fail explicitly rather than silently clipping effort or event time. Hidden candidates and discovery information remain development-only; only published effort reaches the player view. Selection, periodic stay/switch reconsideration, Rank, reporting and Focus/Flow rules are otherwise unchanged; #56, #59 and #61 remain deferred.
 
 ### 4.3. Information and Deduction
 

@@ -79,6 +79,7 @@ test('completion, idle/stale references and external ticket changes clear the pr
   const state = scenario()
   state.developers[0].flowStreak = { ticketId: 'ticket-1', duration: 100 }
   state.tickets[0].requiredWork = 1
+  estimatedFixture(state) // Keep the unrelated rate/streak fixture's estimate valid after resizing.
   const completed = advanceSimulation(state, 1, () => 0.99)
   assert.equal(completed.developers[0].flowStreak, undefined)
   assert.equal(completed.developers[0].activeTicketID, undefined)

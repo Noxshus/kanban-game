@@ -12,7 +12,7 @@ test('derives authoritative ticket, developer and team metrics without mutation'
   const view = getDiagnosticsView(state)
   assert.deepEqual(view.tickets[0], {
     id: 'ticket-1', comparison: view.tickets[0].comparison, rank: 1, workDomain: 'frontend', requiredWork: 10, completedWork: 4, remainingWork: 6,
-    initialEffortEstimate: null, reportedEffortEstimate: null, contributions: [],
+    initialEffortEstimate: null, reportedEffortEstimate: null, lastEstimateEvaluation: null, contributions: [],
     activeDeveloperName: 'Alex', workRate: 1.5, estimatedSeconds: 4,
   })
   assert.equal(view.tickets[1].estimatedSeconds, 10)

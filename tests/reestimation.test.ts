@@ -1,0 +1,382 @@
+import assert from 'node:assert/strict'
+import { test } from 'node:test'
+import { exampleGameState } from '../src/data/exampleGameState.ts'
+import { advanceSimulation } from '../src/game/advanceSimulation.ts'
+import { discoveryResponsiveness, nextDiscoveryTarget, revisedEffort, evaluateEstimate } from '../src/game/reestimation.ts'
+import { effortNumber } from '../src/game/workLog.ts'
+import { workAmount } from '../src/game/work.ts'
+import { projectWork } from '../src/game/completionTime.ts'
+import { nextRandom } from '../src/game/random.ts'
+import { eventInterval } from '../src/game/eventTime.ts'
+import { getPlayerView } from '../src/store/playerView.ts'
+import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
+import type { GameState } from '../src/game/types.ts'
+import { close } from './helpers/flowExpectation.ts'
+
+function fixture(total = 100, estimate = 20): GameState {
+  const state = structuredClone(exampleGameState)
+  state.developers = [{ ...state.developers[0], productivity: 1, competencies: { frontend: 5, backend: 0 },
+    judgement: 10, focus: 0, assessmentClock: { elapsed: 0, remaining: 10000 } }]
+  state.tickets = [{ ...state.tickets[0], requiredWork: total, completedWork: 0, reportedProgress: 0,
+    actualStatus: 'in_progress', reportedStatus: 'in_progress', initialEffortEstimate: { developerId: 'original', totalWork: estimate },
+    reportedEffortEstimate: estimate }]
+  return state
+}
+
+test('independent formulas determine error-aware discovery rate and conditional work thresholds', () => {
+  for (const [j, board, completed] of [[0, 20, 0], [10, 80, 0], [100, 95, 120]]) {
+    const r = (100 - board) / 100
+    const expected = 0.8 * (1 + Math.log1p(j / 10)) * (2 * r / (r + 0.2))
+      * (1 + Math.log1p(Math.max(0, (completed - board) / board)))
+    close(discoveryResponsiveness(100, board, j, completed), expected)
+    const u = 0.05, w = 7, baseline = 20
+    const actual = nextDiscoveryTarget(100, board, baseline, workAmount(w), j, completed, workAmount(100), u)!
+    close(effortNumber(actual)!, w + (baseline + w) * Math.expm1(-Math.log1p(-u) / expected))
+  }
+  assert.equal(discoveryResponsiveness(100, 100, 100, 100), 0)
+})
+
+test('Judgement, residual error and overrun disparity affect the same schedule', () => {
+  const target = (j: number, board: number, completed: number) => effortNumber(nextDiscoveryTarget(100, board, 20,
+    workAmount(0), j, completed, workAmount(100), 0.1)!)!
+  assert.ok(target(100, 20, 0) < target(0, 20, 0))
+  assert.ok(target(10, 95, 0) > target(10, 20, 0))
+  assert.ok(target(10, 20, 80) < target(10, 20, 20))
+})
+
+test('accuracy is evaluated from original E0 and cumulative personal work, with no Focus input', () => {
+  for (const [w, j, c] of [[0, 0, 0], [10, 10, 5], [10, 50, 10], [50, 100, 100]]) {
+    const a = 0.3 * (1 + Math.log1p(j / 10) + Math.log1p(c / 10))
+    close(revisedEffort(60, 20, workAmount(w), j, c), 60 - 40 * (1 + w / 20) ** -a)
+  }
+  const basic = revisedEffort(60, 20, workAmount(10), 0, 0)
+  assert.ok(revisedEffort(60, 20, workAmount(20), 0, 0) > basic)
+  assert.ok(revisedEffort(60, 20, workAmount(10), 10, 0) > basic)
+  assert.ok(revisedEffort(60, 20, workAmount(10), 0, 10) > basic)
+})
+
+test('first and repeated discoveries publish upward only at genuine work events', () => {
+  const initial = fixture(), original = structuredClone(initial)
+  let draws = 0
+  let state = advanceSimulation(initial, 0.0625, () => { draws++; return 0.1 })
+  assert.equal(draws, 1)
+  assert.equal(state.tickets[0].reportedEffortEstimate, 20)
+  let discoveries = 0
+  for (let i = 0; i < 1000 && discoveries < 3; i++) {
+    const before = state.tickets[0].reportedEffortEstimate!
+    state = advanceSimulation(state, 0.0625, () => { draws++; return 0.1 })
+    if (state.tickets[0].reportedEffortEstimate === before) continue
+    discoveries++
+    assert.equal(state.tickets[0].lastEstimateEvaluation!.reason, 'discovery')
+    assert.ok(state.tickets[0].reportedEffortEstimate! > before)
+    assert.equal(state.tickets[0].lastEstimateEvaluation!.published, true)
+  }
+  assert.equal(discoveries, 3)
+  assert.equal(draws, 4)
+  assert.deepEqual(state.tickets[0].initialEffortEstimate, original.tickets[0].initialEffortEstimate)
+  assert.deepEqual(initial, original)
+})
+
+test('evaluating the same personal exposure does not compound learning and may leave the board unchanged', () => {
+  const state = fixture(100, 20)
+  state.tickets[0].reportedEffortEstimate = 90
+  state.workLog = [{ developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) }]
+  state.developers[0].workSession = { ticketId: 'ticket-1', requiredWork: 100, productivity: 1, competency: 5,
+    focus: 0, initialFlowDuration: 0, elapsed: 0, completionSeconds: null, initialCompletedWork: 0, lastCompletedWork: 0 }
+  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery')
+  const candidate = state.tickets[0].lastEstimateEvaluation!.candidate
+  assert.ok(candidate < 90)
+  assert.equal(state.tickets[0].lastEstimateEvaluation!.published, false)
+  assert.equal(state.tickets[0].reportedEffortEstimate, 90)
+  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery')
+  assert.equal(state.tickets[0].lastEstimateEvaluation!.candidate, candidate)
+  assert.equal(state.tickets[0].reportedEffortEstimate, 90)
+})
+
+test('publication materiality suppresses negligible changes without changing the accuracy candidate', () => {
+  const state = advanceSimulation(fixture(), 0.001, () => 0.999)
+  state.workLog = [{ developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) }]
+  const candidate = revisedEffort(100, 20, workAmount(10), 10, 5)
+  for (const [improvement, published] of [[0.0005, false], [0.002, true]] as const) {
+    const input = structuredClone(state)
+    const board = candidate / (1 + improvement)
+    input.tickets[0].reportedEffortEstimate = board
+    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
+    assert.equal(input.tickets[0].lastEstimateEvaluation!.candidate, candidate)
+    assert.equal(input.tickets[0].lastEstimateEvaluation!.published, published)
+    assert.equal(input.tickets[0].reportedEffortEstimate, published ? candidate : board)
+  }
+})
+
+test('reaching a board estimate triggers one evaluation, not a mandatory correction or work floor', () => {
+  const state = fixture(100, 1)
+  state.developers[0].judgement = 0
+  state.developers[0].competencies.frontend = 0
+  state.tickets[0].reportedEffortEstimate = 20
+  state.tickets[0].completedWork = 19
+  let draws = 0
+  const first = advanceSimulation(state, 0.01, () => 0.999)
+  const boundary = first.developers[0].workSession!.estimateEvents!.overrun!
+  assert.equal(boundary.low, 0) // exact boundary can be requested directly from time zero
+  const result = advanceSimulation(state, boundary.high, () => { draws++; return 0.999 })
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.reason, 'overrun')
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.published, false)
+  assert.equal(result.tickets[0].reportedEffortEstimate, 20)
+  assert.equal(result.tickets[0].evaluatedOverrunEstimate, 20)
+  close(result.tickets[0].completedWork, 20)
+  assert.equal(draws, 2) // one initial threshold and one renewal, no accuracy RNG
+  const later = advanceSimulation(result, 0.1, () => { throw Error('Overrun must not repeat at every tick') })
+  assert.equal(later.tickets[0].reportedEffortEstimate, 20)
+  assert.ok(later.tickets[0].completedWork > 20)
+})
+
+test('subsequent overrun-driven evaluations use positive work and the same accuracy curve', () => {
+  const state = fixture(100, 1)
+  state.developers[0].judgement = 0
+  state.developers[0].competencies.frontend = 0
+  state.tickets[0].reportedEffortEstimate = 20
+  state.tickets[0].completedWork = 19
+  let first = advanceSimulation(state, 0.01, () => 0.999)
+  const due = first.developers[0].workSession!.estimateEvents!.overrun!
+  let draws = 0
+  first = advanceSimulation(state, due.high, () => ++draws === 1 ? 0.999 : 0.01)
+  assert.equal(first.tickets[0].lastEstimateEvaluation!.reason, 'overrun')
+  const previousWork = first.tickets[0].lastEstimateEvaluation!.personalWork!
+  let next = first
+  for (let step = 0; step < 100 && next.tickets[0].lastEstimateEvaluation!.reason === 'overrun'; step++) {
+    next = advanceSimulation(next, 0.01, () => 0.01)
+  }
+  assert.equal(next.tickets[0].lastEstimateEvaluation!.reason, 'discovery')
+  assert.ok(next.tickets[0].lastEstimateEvaluation!.personalWork! > previousWork)
+  assert.equal(next.tickets[0].reportedEffortEstimate, 20) // allowed to remain wrong
+})
+
+test('handoff and return use the latest board and each engineer own retained work experience', () => {
+  const state = fixture(100, 20)
+  state.developers.push({ ...state.developers[0], id: 'engineer-B', name: 'Blair', activeTicketID: undefined })
+  state.workLog = [
+    { developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) },
+    { developerId: 'engineer-B', ticketId: 'ticket-1', effort: workAmount(30) },
+  ]
+  state.tickets[0].reportedEffortEstimate = 60
+  let first = advanceSimulation(state, 0.01, () => 0.999)
+  assert.equal(first.tickets[0].reportedEffortEstimate, 60)
+  assert.equal(first.tickets[0].lastEstimateEvaluation, undefined)
+  const aBefore = first.workLog![0].effort
+  delete first.developers[0].activeTicketID
+  delete first.developers[0].workSession
+  delete first.developers[0].flowStreak
+  delete first.developers[0].estimateDiscovery
+  first.developers[1].activeTicketID = 'ticket-1'
+  first = advanceSimulation(first, 0.01, () => 0.999)
+  assert.equal(first.tickets[0].reportedEffortEstimate, 60)
+  assert.deepEqual(first.workLog![0].effort, aBefore)
+  // A newly shared higher estimate is observed on return; no second initial belief.
+  first.tickets[0].reportedEffortEstimate = 90
+  delete first.developers[1].activeTicketID
+  delete first.developers[1].workSession
+  first.developers[0].activeTicketID = 'ticket-1'
+  first = advanceSimulation(first, 0.01, () => 0.999)
+  assert.equal(first.tickets[0].reportedEffortEstimate, 90)
+  assert.equal(first.developers[0].estimateDiscovery!.boardEstimate, 90)
+  assert.ok(effortNumber(first.workLog![0].effort)! > 10)
+  assert.deepEqual(first.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
+})
+
+test('a replacement publishes after hands-on discovery; returning work does not reapply another engineer experience', () => {
+  const state = fixture()
+  state.tickets[0].reportedEffortEstimate = 60
+  state.developers[0].activeTicketID = undefined
+  state.developers.push({ ...state.developers[0], id: 'engineer-B', activeTicketID: 'ticket-1',
+    judgement: 100, competencies: { frontend: 100, backend: 0 } })
+  state.workLog = [
+    { developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) },
+    { developerId: 'engineer-B', ticketId: 'ticket-1', effort: workAmount(30) },
+  ]
+  const initial = advanceSimulation(state, 0.001, () => 0.01)
+  assert.equal(initial.tickets[0].reportedEffortEstimate, 60)
+  const learned = advanceSimulation(initial, 1, () => 0.01)
+  const improved = learned.tickets[0].reportedEffortEstimate!
+  assert.ok(improved > 60)
+  assert.equal(learned.tickets[0].lastEstimateEvaluation!.developerId, 'engineer-B')
+  assert.equal(effortNumber(learned.workLog![0].effort), 10)
+  delete learned.developers[1].activeTicketID
+  delete learned.developers[1].workSession
+  learned.developers[0].activeTicketID = 'ticket-1'
+  const returned = advanceSimulation(learned, 0.001, () => 0.01)
+  assert.equal(returned.tickets[0].reportedEffortEstimate, improved)
+  const evaluated = advanceSimulation(returned, 1, () => 0.01)
+  const snapshot = evaluated.tickets[0].lastEstimateEvaluation!
+  assert.equal(snapshot.developerId, 'developer-1')
+  close(snapshot.candidate, revisedEffort(100, 20, workAmount(snapshot.personalWork!), 10, 5))
+  assert.equal(evaluated.tickets[0].reportedEffortEstimate, improved)
+})
+
+test('completion preempts a coincident evaluation, including an exact discovery work target', () => {
+  const state = fixture(1, 0.5)
+  // Seed an already scheduled target exactly at completion. This must reuse its deadline.
+  state.developers[0].estimateDiscovery = { ticketId: 'ticket-1', boardEstimate: 0.5, requiredWork: 1,
+    judgement: 10, productive: true, target: workAmount(1) }
+  state.tickets[0].evaluatedOverrunEstimate = 0.5 // isolate the exact completion/discovery tie
+  const result = advanceSimulation(state, 10, () => { throw Error('Completion cannot renew discovery') })
+  assert.equal(result.tickets[0].actualStatus, 'done')
+  assert.equal(result.tickets[0].lastEstimateEvaluation, undefined)
+  assert.equal(result.tickets[0].reportedEffortEstimate, 0.5)
+  assert.equal(result.developers[0].estimateDiscovery, undefined)
+  const exactBoard = fixture(1, 1)
+  assert.equal(advanceSimulation(exactBoard, 10, () => { throw Error('No error to discover') }).tickets[0].lastEstimateEvaluation, undefined)
+})
+
+test('coincident discovery and overrun evaluate once and renew only one seeded target', () => {
+  const state = fixture()
+  state.developers[0].estimateDiscovery = { ticketId: 'ticket-1', boardEstimate: 20, requiredWork: 100,
+    judgement: 10, productive: true, target: workAmount(20) }
+  const due = projectWork(state.developers[0], state.tickets[0], workAmount(20)).seconds!
+  const result = advanceSimulation(state, due)
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.reason, 'overrun')
+  assert.equal(result.randomState, nextRandom(state.randomState).state)
+  close(result.tickets[0].lastEstimateEvaluation!.personalWork!, 20)
+  assert.ok(result.tickets[0].reportedEffortEstimate! > 20)
+  assert.equal(result.developers[0].activeTicketID, 'ticket-1')
+})
+
+test('mixed completion/discovery instants preserve engineer-ordered claims and RNG under nonbinary partitions', () => {
+  for (const reverse of [false, true]) {
+    const state = fixture(), base = state.developers[0], ticket = state.tickets[0]
+    state.developers = [
+      { ...base, id: 'finishing', activeTicketID: 'finish' },
+      { ...base, id: 'learning', activeTicketID: 'ongoing', estimateDiscovery: { ticketId: 'ongoing',
+        boardEstimate: 20, requiredWork: 100, judgement: 10, productive: true, target: workAmount(1) } },
+    ]
+    state.tickets = [
+      { ...ticket, id: 'finish', rank: 3, requiredWork: 1, initialEffortEstimate: { developerId: 'original', totalWork: 1 }, reportedEffortEstimate: 1 },
+      { ...ticket, id: 'ongoing', rank: 2 },
+      { ...ticket, id: 'contested', rank: 1, actualStatus: 'todo', initialEffortEstimate: { developerId: 'original', totalWork: 100 }, reportedEffortEstimate: 100 },
+    ]
+    if (reverse) state.developers.reverse()
+    const due = projectWork(base, ticket, workAmount(1)).seconds!
+    const whole = advanceSimulation(state, due + 0.25)
+    let split = state
+    for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
+    split = advanceSimulation(split, due + 0.25 - 0.9)
+    assert.equal(whole.tickets[0].actualStatus, 'done')
+    assert.equal(whole.tickets[0].lastEstimateEvaluation, undefined)
+    assert.equal(whole.tickets[1].lastEstimateEvaluation!.developerId, 'learning')
+    assert.equal(whole.developers.find(d => d.id === 'finishing')!.activeTicketID, 'contested')
+    assert.equal(whole.randomState, nextRandom(nextRandom(state.randomState).state).state)
+    assert.equal(split.randomState, whole.randomState)
+    assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]), whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]))
+    assert.deepEqual(split.tickets.map(t => [t.id, t.reportedEffortEstimate, t.lastEstimateEvaluation]),
+      whole.tickets.map(t => [t.id, t.reportedEffortEstimate, t.lastEstimateEvaluation]))
+  }
+})
+
+test('seeded replay, zero time, fractional partitions and JSON preserve evaluations and claims', () => {
+  for (const seed of [1, 42, 58]) {
+    const state = fixture(); state.randomState = seed
+    const original = structuredClone(state)
+    assert.deepEqual(advanceSimulation(state, 0, () => { throw Error('No draw') }), state)
+    const whole = advanceSimulation(state, 30)
+    let split = state
+    for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
+    split = advanceSimulation(split, 29.1)
+    assert.equal(split.randomState, whole.randomState)
+    assert.deepEqual(split.developers.map(d => [d.activeTicketID, d.lastAssessment]), whole.developers.map(d => [d.activeTicketID, d.lastAssessment]))
+    assert.equal(split.tickets[0].lastEstimateEvaluation!.reason, whole.tickets[0].lastEstimateEvaluation!.reason)
+    close(split.tickets[0].reportedEffortEstimate!, whole.tickets[0].reportedEffortEstimate!)
+    close(split.tickets[0].completedWork, whole.tickets[0].completedWork)
+    assert.deepEqual(advanceSimulation(JSON.parse(JSON.stringify(whole)), 1), advanceSimulation(whole, 1))
+    assert.deepEqual(whole, advanceSimulation(state, 30))
+    assert.deepEqual(state, original)
+  }
+})
+
+test('shared work solver accounts for accumulated Flow without resetting its integration origin', () => {
+  const state = fixture()
+  state.developers[0].flowStreak = { ticketId: 'ticket-1', duration: 100 }
+  const first = advanceSimulation(state, 0.01, () => 0.1)
+  const session = first.developers[0].workSession!
+  const target = first.developers[0].estimateDiscovery!.target!
+  const projected = projectWork(state.developers[0], state.tickets[0], target, 100).seconds!
+  close(eventInterval(session.estimateEvents!.discovery!, session.originTime!), projected)
+  const result = advanceSimulation(first, projected - 0.01, () => 0.1)
+  close(result.developers[0].flowStreak!.duration, 100 + projected)
+  assert.deepEqual(result.developers[0].workSession!.originTime, session.originTime)
+})
+
+test('accurate tickets, idle workers and zero productive work create no discovery draws', () => {
+  const exact = fixture(100, 100)
+  assert.equal(advanceSimulation(exact, 1, () => { throw Error('No estimation error') }).tickets[0].reportedEffortEstimate, 100)
+  const held = fixture(); held.developers[0].productivity = 0
+  const first = advanceSimulation(held, 1, () => { throw Error('Holding is not work') })
+  assert.equal(first.workLog, undefined)
+  first.developers[0].productivity = 1
+  let draws = 0
+  advanceSimulation(first, 0.1, () => { draws++; return 0.5 })
+  assert.equal(draws, 1)
+  const zero = fixture(0, 0)
+  assert.equal(advanceSimulation(zero, 1, () => { throw Error('Zero work') }).tickets[0].actualStatus, 'done')
+})
+
+test('invalid baselines fail purely; board-only legacy saves retain E0 without inventing an author', () => {
+  for (const invalid of [0, -1, NaN, Infinity, 101]) {
+    const state = fixture(); state.tickets[0].initialEffortEstimate!.totalWork = invalid
+    const original = structuredClone(state)
+    assert.throws(() => advanceSimulation(state, 1), RangeError)
+    assert.deepEqual(state, original)
+  }
+  for (const invalid of [0, -1, NaN, Infinity, 101]) {
+    const state = fixture(); state.tickets[0].reportedEffortEstimate = invalid
+    const original = structuredClone(state)
+    assert.throws(() => advanceSimulation(state, 1), RangeError)
+    assert.deepEqual(state, original)
+  }
+  const legacy = fixture(); delete legacy.tickets[0].initialEffortEstimate
+  const result = advanceSimulation(legacy, 15, () => 0.1)
+  assert.equal(result.tickets[0].learningBaseline, 20)
+  assert.equal(result.tickets[0].initialEffortEstimate, undefined)
+  assert.ok(result.tickets[0].reportedEffortEstimate! > 20)
+})
+
+test('large attributes, extreme effort scales and RNG endpoints are explicit and bounded', () => {
+  for (const scale of [1e-300, 1, 1e300]) {
+    const candidate = revisedEffort(scale, scale / 10, workAmount(scale / 20), Number.MAX_VALUE, Number.MAX_VALUE)
+    assert.ok(Number.isFinite(candidate) && candidate >= scale / 10 && candidate <= scale)
+    for (const u of [0, 0.5, 1]) {
+      const target = nextDiscoveryTarget(scale, scale / 10, scale / 10, workAmount(0), 100, 0, workAmount(scale), u)
+      assert.ok(target === null || target.mantissa >= 1 && Number.isFinite(target.mantissa))
+    }
+  }
+  assert.equal(revisedEffort(Number.MIN_VALUE, Number.MIN_VALUE, workAmount(0), 100, 100), Number.MIN_VALUE)
+  const huge = discoveryResponsiveness(Number.MAX_VALUE, Number.MIN_VALUE, Number.MAX_VALUE, Number.MAX_VALUE)
+  assert.ok(Number.isFinite(huge) && huge > 0)
+  assert.throws(() => nextDiscoveryTarget(100, 20, 20, workAmount(0), 10, 0, workAmount(100), NaN), RangeError)
+})
+
+test('subnormal discovery work is retained and overrun crossings are not consumed by early scalar rounding', () => {
+  const state = fixture(2 * Number.MIN_VALUE, Number.MIN_VALUE)
+  state.developers[0].productivity = Number.MIN_VALUE
+  const whole = advanceSimulation(state, 3, () => 0.1)
+  let split = state
+  for (const seconds of [0.25, 0.25, 0.5, 1, 1]) split = JSON.parse(JSON.stringify(advanceSimulation(split, seconds, () => 0.1)))
+  assert.equal(whole.tickets[0].actualStatus, 'done')
+  assert.deepEqual(split.tickets, whole.tickets)
+  assert.deepEqual(split.workLog, whole.workLog)
+  assert.equal(split.randomState, whole.randomState)
+  assert.ok(whole.tickets[0].reportedEffortEstimate! >= Number.MIN_VALUE && whole.tickets[0].reportedEffortEstimate! <= 2 * Number.MIN_VALUE)
+})
+
+test('latest candidate and hidden discovery state remain DEV-only; player sees only the published estimate', () => {
+  const state = advanceSimulation(fixture(), 10, () => 0.1)
+  assert.ok(state.tickets[0].lastEstimateEvaluation)
+  const player = getPlayerView(state), diagnostic = getDiagnosticsView(state)
+  assert.equal(player.tickets[0].reportedEffortEstimate, state.tickets[0].reportedEffortEstimate)
+  for (const field of ['lastEstimateEvaluation', 'learningBaseline', 'evaluatedOverrunEstimate', 'requiredWork', 'completedWork']) {
+    assert.equal(field in player.tickets[0], false)
+  }
+  assert.ok(player.developers.every(d => !('estimateDiscovery' in d) && !('workSession' in d)))
+  assert.deepEqual(diagnostic.tickets[0].lastEstimateEvaluation, state.tickets[0].lastEstimateEvaluation)
+  const original = structuredClone(state)
+  diagnostic.tickets[0].lastEstimateEvaluation!.candidate = 0
+  assert.deepEqual(state, original)
+})

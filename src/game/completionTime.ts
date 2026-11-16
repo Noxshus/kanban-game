@@ -2,6 +2,7 @@ import type { Developer, Ticket } from './types'
 import { getLogDomainRate } from './productivity.ts'
 import { getFlowDuration, getFlowBonus, getProjectedFlowMultiplier } from './flow.ts'
 import { compareWork, integratedWork, remainingWork, validWorkSession } from './work.ts'
+import type { WorkAmount } from './work'
 import { addEventTime, eventInterval } from './eventTime.ts'
 
 export interface CompletionProjection { seconds: number | null; logSeconds: number }
@@ -20,7 +21,12 @@ export function projectCompletion(developer: Developer, ticket: Ticket, retainFl
       : session.completionSeconds - session.elapsed)
     return { seconds, logSeconds: Math.log(seconds) }
   }
-  const time = retainFlow ? getFlowDuration(developer, ticket.id) : 0
+  return projectWork(developer, ticket, remaining, retainFlow ? getFlowDuration(developer, ticket.id) : 0)
+}
+
+// Completion, discovery and overrun boundaries invert the SAME Flow integral.
+export function projectWork(developer: Developer, ticket: Ticket, remaining: WorkAmount, time = 0): CompletionProjection {
+  if (remaining.mantissa === 0) return { seconds: 0, logSeconds: -Infinity }
   const initialMultiplier = 1 + getFlowBonus(time, developer.focus)
   const logRate = getLogDomainRate(developer, ticket)
   if (logRate === -Infinity) return { seconds: null, logSeconds: Infinity }

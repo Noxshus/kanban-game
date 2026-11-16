@@ -113,6 +113,7 @@ test('very short completion times do not silently overflow work, and unresolved 
  const state=scenario();state.developers[0].productivity=Number.MAX_VALUE
  state.developers[0].competencies.frontend=Number.MAX_VALUE
  state.tickets[0].requiredWork=Number.MIN_VALUE
+ estimatedFixture(state)
  assert.throws(()=>advanceSimulation(state,1,()=>0.5),/below the numeric time range/)
  const idleRate=scenario();idleRate.developers[0].productivity=0
  const before=structuredClone(idleRate)

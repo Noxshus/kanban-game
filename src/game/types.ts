@@ -25,6 +25,11 @@ export interface Ticket {
   // Absence supports old saves and tickets not yet picked up; either record prevents re-publication.
   initialEffortEstimate?: { developerId: string; totalWork: number }
   reportedEffortEstimate?: number
+  // Legacy board-only states lack #57 provenance: retain their first observed baseline, not an invented author.
+  learningBaseline?: number
+  evaluatedOverrunEstimate?: number
+  // One DEV snapshot, not private belief history or a knowledge attribute.
+  lastEstimateEvaluation?: { developerId: string; reason: 'discovery' | 'overrun'; personalWork: number | null; candidate: number; published: boolean }
   requiredWork: number
   completedWork: number
   // Numerical remainder preserves work lost when the displayed total rounds.
@@ -56,10 +61,13 @@ export interface Developer {
     currentTime?: EventTime
     // Ledger baseline for this integral; absent on older saves. Not a session history.
     effortOrigin?: { total: WorkAmount; produced: WorkAmount }
+    estimateEvents?: { discovery: EventTime | null; overrun: EventTime | null }
   }
   // One immutable decision snapshot survives later progress/rank changes; never an event log.
   lastAssessment?: AssessmentDecision
   assessmentClock?: { elapsed: number; remaining: number; originTime?: EventTime; dueTime?: EventTime }
+  // Only the next seeded work target; personal experience remains exclusively in workLog.
+  estimateDiscovery?: { ticketId: string; boardEstimate: number; requiredWork: number; judgement: number; productive: boolean; target: WorkAmount | null }
 }
 
 export interface CandidateScore {

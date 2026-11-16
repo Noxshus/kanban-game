@@ -9,6 +9,7 @@ import { sampleReconsideration } from './reconsideration.ts'
 import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from './work.ts'
 import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
+import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
 
 export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
@@ -45,6 +46,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     delete developer.flowStreak
     delete developer.assessmentClock
     delete developer.workSession
+    delete developer.estimateDiscovery
   }
   const schedule = (developer: Developer) => {
     const dueTime = addEventTime(now, sampleReconsideration(draw()))
@@ -62,6 +64,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       delete developer.flowStreak
       delete developer.assessmentClock
       delete developer.workSession
+      delete developer.estimateDiscovery
     }
     // First positive advance migrates valid pre-existing active claims once, in
     // engineer order. Estimate precedes scheduling, just as on a new claim below.
@@ -87,6 +90,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     developer.activeTicketID = ticket.id
     developer.flowStreak = { ticketId: ticket.id, duration: 0 }
     delete developer.workSession
+    delete developer.estimateDiscovery
     claimed.add(ticket.id)
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
@@ -96,6 +100,12 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   }
   const decideDue = () => {
     for (const developer of developers) {
+      const events = developer.workSession?.estimateEvents
+      const overrun = events?.overrun && compareEventTime(events.overrun, now) <= 0
+      const discovery = events?.discovery && compareEventTime(events.discovery, now) <= 0
+      if (developer.activeTicketID !== undefined && (overrun || discovery)) {
+        evaluateEstimate(result, developer, byId.get(developer.activeTicketID)!, overrun ? 'overrun' : 'discovery')
+      }
       if (developer.activeTicketID === undefined) {
         const decision = selectWork(eligible(), developer, draw)
         if (!decision) continue
@@ -113,6 +123,11 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
           begin(developer, byId.get(decision.selectedId)!)
         } else schedule(developer)
       }
+    }
+    // Draw pending work thresholds at the event itself (also at call-end), not
+    // on a later render/advance. Pickups/reassessments retain engineer ordering.
+    for (const developer of developers) {
+      if (developer.activeTicketID !== undefined) prepareDiscovery(result, developer, byId.get(developer.activeTicketID)!, draw)
     }
   }
   const report = () => {
@@ -161,9 +176,11 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       const session = developer.workSession!
       return session.completionSeconds === null ? null : addEventTime(session.originTime!, session.completionSeconds)
     })
+    const estimateEvents = active.map(developer => projectEstimateEvents(result, developer, byId.get(developer.activeTicketID!)!))
     // Exact ordering of stored compensated instants: no broad epsilon merges
     // near events, and true ties are independent of elapsed-call partitioning.
-    const boundaries = [...completions.filter(time => time !== null), ...active.map(developer => developer.assessmentClock!.dueTime!)]
+    const boundaries = [...completions.filter(time => time !== null), ...active.map(developer => developer.assessmentClock!.dueTime!),
+      ...estimateEvents.flatMap(events => [events.discovery, events.overrun]).filter(time => time !== null)]
     const nextTime = boundaries.reduce((first, time) => compareEventTime(time, first) < 0 ? time : first, end)
     const interval = eventInterval(nextTime, now)
     if (interval <= 0) throw new RangeError('Event has no positive representable time interval')
@@ -216,7 +233,8 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     decideDue()
     if (compareEventTime(now, end) === 0) break
     if (eventInterval(end, now) === eventInterval(end, previous)
-        && !completions.some(time => time && compareEventTime(time, now) === 0)) {
+        && !completions.some(time => time && compareEventTime(time, now) === 0)
+        && !estimateEvents.some(events => [events.discovery, events.overrun].some(time => time && compareEventTime(time, now) === 0))) {
       // Reject time resolution loss instead of hanging or inventing a minimum tick.
       throw new RangeError('Event interval is below the elapsed-time numeric resolution')
     }

@@ -1,0 +1,170 @@
+import type { Developer, GameState, Ticket } from './types'
+import type { WorkAmount } from './work'
+import { compareWork, integratedWork, remainingWork, workAmount } from './work.ts'
+import { addWorkAmounts, anchorEffort, effortNumber, subtractWorkAmounts } from './workLog.ts'
+import { projectWork } from './completionTime.ts'
+import { addEventTime, compareEventTime } from './eventTime.ts'
+import { openUnit } from './reconsideration.ts'
+
+// Provisional #58 balance, deliberately independent of Focus and Flow.
+export const DISCOVERY_BASE = 0.8
+export const ERROR_REFERENCE = 0.2
+export const ACCURACY_BASE = 0.30
+export const REVISION_RELATIVE_IMPROVEMENT = 0.001
+
+function nonnegative(value: number) {
+  if (!Number.isFinite(value) || value < 0) throw new RangeError('Estimation inputs must be finite and non-negative')
+}
+
+function estimates(total: number, board: number, baseline: number) {
+  for (const value of [total, board, baseline]) nonnegative(value)
+  if (total <= 0 || baseline <= 0 || baseline > total || board <= 0 || board > total) {
+    throw new RangeError('Unfinished ticket estimates require positive baseline and board values no greater than actual total')
+  }
+}
+
+function logWork(work: WorkAmount) {
+  effortNumber(work) // Validate without discarding subnormal quantities that lack a scalar display.
+  return work.mantissa === 0 ? -Infinity : Math.log(work.mantissa) + Math.log1p(-work.correction / work.mantissa) + work.exponent * Math.LN2
+}
+
+function logOnePlusRatio(logRatio: number) {
+  return logRatio > 0 ? logRatio + Math.log1p(Math.exp(-logRatio)) : Math.log1p(Math.exp(logRatio))
+}
+
+export function discoveryResponsiveness(total: number, board: number, judgement: number, completedWork: number) {
+  estimates(total, board, board)
+  nonnegative(judgement); nonnegative(completedWork)
+  const r = (total - board) / total
+  const k = DISCOVERY_BASE * (1 + Math.log1p(judgement / 10))
+  const disparity = completedWork > board ? logOnePlusRatio(Math.log((completedWork - board)) - Math.log(board)) : 0
+  return k * (2 * r / (r + ERROR_REFERENCE)) * (1 + disparity)
+}
+
+export function revisedEffort(total: number, baseline: number, personalWork: WorkAmount, judgement: number, competency: number) {
+  estimates(total, baseline, baseline)
+  nonnegative(judgement); nonnegative(competency)
+  const a = ACCURACY_BASE * (1 + Math.log1p(judgement / 10) + Math.log1p(competency / 10))
+  const exposure = logOnePlusRatio(logWork(personalWork) - Math.log(baseline))
+  // E0 + gap * gain avoids cancellation in T - gap * decay for tiny baselines.
+  // Rounding may reach T, but there is no observed-work floor or accuracy bonus.
+  return Math.min(total, baseline + (total - baseline) * -Math.expm1(-a * exposure))
+}
+
+export function nextDiscoveryTarget(total: number, board: number, baseline: number, personalWork: WorkAmount,
+  judgement: number, completedWork: number, available: WorkAmount, uniform: number): WorkAmount | null {
+  estimates(total, board, baseline)
+  const rate = discoveryResponsiveness(total, board, judgement, completedWork)
+  const u = openUnit(uniform)
+  if (rate === 0) return null
+  // With k*g*m frozen until the next evaluation, integrated hazard is
+  // rate * log((E0 + w_next)/(E0 + w_now)); invert one seeded draw, not tick rolls.
+  const exponent = -Math.log1p(-u) / rate
+  const logBase = Math.log(baseline) + logOnePlusRatio(logWork(personalWork) - Math.log(baseline))
+  // Equivalent log-expm1 forms avoid overflowing an otherwise censored threshold.
+  const logDelta = logBase + (exponent > 50 ? exponent + Math.log1p(-Math.exp(-exponent)) : Math.log(Math.expm1(exponent)))
+  // A threshold beyond all remaining productive work is censored by completion,
+  // not clipped to a smaller threshold or repeatedly resampled every call.
+  if (logDelta > logWork(available)) return null
+  if (!Number.isFinite(logDelta)) throw new RangeError('Discovery threshold is outside numerical resolution')
+  let power = Math.floor(logDelta / Math.LN2)
+  let mantissa = Math.exp(logDelta - power * Math.LN2)
+  if (mantissa < 1) { mantissa *= 2; power-- }
+  else if (mantissa >= 2) { mantissa /= 2; power++ }
+  const delta = { mantissa, exponent: power, correction: 0 }
+  if (compareWork(delta, available) > 0) return null
+  const target = addWorkAmounts(personalWork, delta)
+  if (compareWork(target, personalWork) <= 0) throw new RangeError('Discovery target has no positive representable work interval')
+  return target
+}
+
+export function personalEffort(state: GameState, developer: Developer, ticket: Ticket) {
+  return state.workLog?.find(entry => entry.developerId === developer.id && entry.ticketId === ticket.id)?.effort ?? workAmount(0)
+}
+
+function baselineFor(ticket: Ticket) {
+  if (ticket.reportedEffortEstimate === undefined) return null // private-only legacy state: no report to revise
+  const baseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate
+  estimates(ticket.requiredWork, ticket.reportedEffortEstimate, baseline)
+  if (!ticket.initialEffortEstimate) ticket.learningBaseline = baseline
+  return baseline
+}
+
+function overrunWork(developer: Developer, board: number) {
+  const session = developer.workSession!
+  let required = workAmount(board - session.initialCompletedWork)
+  const carry = session.initialRemainder?.roundingError ?? 0
+  if (carry > 0) required = addWorkAmounts(required, workAmount(carry))
+  else if (carry < 0) required = subtractWorkAmounts(required, workAmount(-carry))
+  return required
+}
+
+function reachedBoard(developer: Developer, ticket: Ticket) {
+  const board = ticket.reportedEffortEstimate!
+  const session = developer.workSession
+  if (!session || board <= session.initialCompletedWork) return ticket.completedWork >= board
+  // completedWork can round to the estimate before its compensated productive
+  // work reaches it (especially at subnormal scales). Do not consume that crossing early.
+  return compareWork(integratedWork(developer, ticket, session.elapsed, session.initialFlowDuration), overrunWork(developer, board)) >= 0
+}
+
+export function prepareDiscovery(state: GameState, developer: Developer, ticket: Ticket, draw: () => number) {
+  const baseline = baselineFor(ticket)
+  if (baseline === null) return
+  const board = ticket.reportedEffortEstimate!
+  const old = developer.estimateDiscovery
+  const productive = developer.productivity > 0
+  if (old?.ticketId === ticket.id && old.boardEstimate === board && old.requiredWork === ticket.requiredWork && old.judgement === developer.judgement && old.productive === productive) return
+  // Legacy/handoff work already beyond a report is not a new crossing, nor a
+  // free reassessment on pickup. Further positive exposure uses the same hazard.
+  if (reachedBoard(developer, ticket)) ticket.evaluatedOverrunEstimate = board
+  const rate = discoveryResponsiveness(ticket.requiredWork, board, developer.judgement, ticket.completedWork)
+  const target = rate > 0 && developer.productivity > 0
+    ? nextDiscoveryTarget(ticket.requiredWork, board, baseline, personalEffort(state, developer, ticket),
+      developer.judgement, ticket.completedWork, remainingWork(ticket), draw()) : null
+  developer.estimateDiscovery = { ticketId: ticket.id, boardEstimate: board, requiredWork: ticket.requiredWork, judgement: developer.judgement, productive, target }
+  if (developer.workSession) delete developer.workSession.estimateEvents
+}
+
+export function projectEstimateEvents(state: GameState, developer: Developer, ticket: Ticket) {
+  const session = developer.workSession!
+  if (session.estimateEvents) return session.estimateEvents
+  const discovery = developer.estimateDiscovery
+  if (!discovery) return { discovery: null, overrun: null }
+  const { origin, capacity } = anchorEffort(state, developer, ticket)
+  const deadline = (quantity: WorkAmount) => {
+    const seconds = compareWork(quantity, capacity) === 0 ? session.completionSeconds
+      : projectWork(developer, ticket, quantity, session.initialFlowDuration).seconds
+    if (seconds === null) return null
+    const due = addEventTime(session.originTime!, seconds)
+    if (compareEventTime(due, session.currentTime!) <= 0) throw new RangeError('Estimate event has no positive representable time interval')
+    return due
+  }
+  const target = discovery.target
+    ? addWorkAmounts(subtractWorkAmounts(discovery.target, origin.total), origin.produced) : null
+  const board = ticket.reportedEffortEstimate!
+  let overrun: ReturnType<typeof deadline> = null
+  if (ticket.evaluatedOverrunEstimate !== board && board > session.initialCompletedWork) {
+    overrun = deadline(overrunWork(developer, board))
+  }
+  session.estimateEvents = { discovery: target ? deadline(target) : null, overrun }
+  return session.estimateEvents
+}
+
+export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun') {
+  const baseline = baselineFor(ticket)
+  if (baseline === null) return
+  const personal = personalEffort(state, developer, ticket)
+  const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
+  const board = ticket.reportedEffortEstimate!
+  const published = candidate > board && (candidate - board) / board >= REVISION_RELATIVE_IMPROVEMENT
+  if (published) ticket.reportedEffortEstimate = candidate
+  ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
+  // Even a no-change evaluation consumes this crossing. A revision still below
+  // W does not recursively trigger another instantaneous evaluation.
+  if (reachedBoard(developer, ticket) || reason === 'overrun' && !published) {
+    ticket.evaluatedOverrunEstimate = ticket.reportedEffortEstimate
+  }
+  delete developer.estimateDiscovery
+  delete developer.workSession!.estimateEvents
+}

@@ -67,6 +67,10 @@ function combine(a: WorkAmount, b: WorkAmount, sign = 1): WorkAmount {
   return result
 }
 
+// Shared compensated arithmetic for pending work thresholds, not another accumulator.
+export const addWorkAmounts = (a: WorkAmount, b: WorkAmount) => combine(a, b)
+export const subtractWorkAmounts = (a: WorkAmount, b: WorkAmount) => combine(a, b, -1)
+
 // A subnormal fraction can be retained in state before it has a scalar display.
 export function effortNumber(effort: WorkAmount): number | null {
   validateAmount(effort)
@@ -74,8 +78,8 @@ export function effortNumber(effort: WorkAmount): number | null {
   return effort.mantissa > 0 && (value === 0 || !Number.isFinite(value)) ? null : value
 }
 
-/** Updates only the cloned transition's ledger and its numerical session baseline. */
-export function recordProductiveEffort(state: GameState, developer: Developer, ticket: Ticket, work: WorkAmount) {
+/** Reuses a session's numerical baseline without inventing unlogged historical exposure. */
+export function anchorEffort(state: GameState, developer: Developer, ticket: Ticket) {
   const session = developer.workSession!
   const capacity = remainingWork({ ...ticket, completedWork: session.initialCompletedWork, workRemainder: session.initialRemainder })
   const capped = (quantity: WorkAmount) => compareWork(quantity, capacity) < 0 ? quantity : capacity
@@ -86,7 +90,13 @@ export function recordProductiveEffort(state: GameState, developer: Developer, t
     session.effortOrigin = { total: entry ? { ...entry.effort } : workAmount(0),
       produced: capped(integratedWork(developer, ticket, session.elapsed, session.initialFlowDuration)) }
   }
-  const origin = session.effortOrigin
+  return { origin: session.effortOrigin, capacity, entry }
+}
+
+/** Updates the cloned ledger from the same fixed integral used by work projections. */
+export function recordProductiveEffort(state: GameState, developer: Developer, ticket: Ticket, work: WorkAmount) {
+  const { origin, capacity, entry } = anchorEffort(state, developer, ticket)
+  const capped = (quantity: WorkAmount) => compareWork(quantity, capacity) < 0 ? quantity : capacity
   const produced = capped(work)
   const contribution = combine(produced, origin.produced, -1)
   if (contribution.mantissa === 0) return
