@@ -8,6 +8,8 @@ test('player view exposes only reported ticket information and public developer 
   state.tickets[0].reportedProgress = 15
   state.tickets[0].completedWork = 9
   state.tickets[0].actualStatus = 'done'
+  state.tickets[0].initialEffortEstimate = { developerId: 'original-engineer', totalWork: 7 }
+  state.tickets[0].reportedEffortEstimate = 8.5
   const view = getPlayerView(state)
   assert.deepEqual(view.tickets[0], {
     id: 'ticket-1',
@@ -17,11 +19,13 @@ test('player view exposes only reported ticket information and public developer 
     reportedStatus: 'in_progress',
     reportedProgress: 15,
     assignedDeveloperId: 'developer-1',
+    reportedEffortEstimate: 8.5,
   })
   for (const ticket of view.tickets) {
     assert.equal('actualStatus' in ticket, false)
     assert.equal('completedWork' in ticket, false)
     assert.equal('requiredWork' in ticket, false)
+    assert.equal('initialEffortEstimate' in ticket, false)
     assert.equal(ticket.workDomain, state.tickets.find(source => source.id === ticket.id)?.workDomain)
   }
   assert.deepEqual(view.developers[0], { id: 'developer-1', name: 'Alex', productivity: 1 })
@@ -29,6 +33,7 @@ test('player view exposes only reported ticket information and public developer 
   assert.equal(view.simulationTime, state.simulationTime)
   state.tickets[0].completedWork = 0
   state.tickets[0].actualStatus = 'todo'
+  state.tickets[0].initialEffortEstimate!.totalWork = 6
   assert.deepEqual(getPlayerView(state), view)
 })
 

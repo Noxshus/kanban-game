@@ -1,3 +1,4 @@
+import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { getAverageFlowMultiplier, getFlowBonus } from '../src/game/flow.ts'
@@ -13,7 +14,7 @@ function scenario(focus = 0) {
   const state = structuredClone(exampleGameState)
   state.developers = [{ ...state.developers[0], focus, productivity: 2, competencies: { frontend: 5, backend: 10 } }]
   state.tickets = [{ ...state.tickets[0], completedWork: 0, requiredWork: 1e6 }]
-  return state
+  return estimatedFixture(state)
 }
 
 test('baseline Focus accumulates Flow, higher Focus builds faster, with no cap', () => {

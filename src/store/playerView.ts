@@ -4,7 +4,7 @@ import { compareRank } from '../game/rank.ts'
 
 export type PlayerTicket = Pick<
   Ticket,
-  'id' | 'title' | 'rank' | 'workDomain' | 'reportedStatus' | 'reportedProgress' | 'assignedDeveloperId'
+  'id' | 'title' | 'rank' | 'workDomain' | 'reportedStatus' | 'reportedProgress' | 'assignedDeveloperId' | 'reportedEffortEstimate'
 >
 
 export function getPlayerView(state: GameState) {
@@ -19,6 +19,7 @@ export function getPlayerView(state: GameState) {
       reportedStatus: ticket.reportedStatus,
       reportedProgress: clampReportedProgress(ticket.reportedProgress),
       assignedDeveloperId: ticket.assignedDeveloperId,
+      reportedEffortEstimate: ticket.reportedEffortEstimate,
     })).sort(compareRank),
     developers: state.developers.map(({ id, name, productivity }) => ({
       id, name, productivity,

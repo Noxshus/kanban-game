@@ -1,3 +1,4 @@
+import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { sampleReconsideration, assessmentNoise } from '../src/game/reconsideration.ts'
@@ -10,7 +11,7 @@ function scenario() {
  const state=structuredClone(exampleGameState)
  state.developers=[{...state.developers[0],flowStreak:{ticketId:'ticket-1',duration:10}}]
  state.tickets=[{...state.tickets[0],completedWork:0,requiredWork:1e6}]
- return state
+ return estimatedFixture(state)
 }
 
 test('scheduled waiting times match the approved cumulative distribution and its median',()=>{

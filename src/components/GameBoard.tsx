@@ -4,6 +4,7 @@ import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DeveloperDiagnostics, TicketDiagnostics } from './Diagnostics'
 import { useEffect, useRef, useState } from 'react'
 import { createEdgeScroller, edgeSpeed } from './edgeScroll'
+import { formatEffort } from './formatEffort'
 
 const columns: { status: WorkflowStatus; title: string }[] = [
   { status: 'backlog', title: 'Backlog' },
@@ -145,6 +146,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                         <h4>{ticket.title}</h4>
                         <span className="ticket-domain">{ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</span>
                         <p>{assignee ? `Assigned to: ${assignee.name}` : 'Unassigned'}</p>
+                        <p className="ticket-estimate">Estimated effort: {formatEffort(ticket.reportedEffortEstimate)}{ticket.reportedEffortEstimate === undefined ? '' : ' work units'}</p>
                         <label className="ticket-progress">
                           <span>Reported progress: {Math.round(ticket.reportedProgress)}%</span>
                           <progress max={100} value={ticket.reportedProgress} />

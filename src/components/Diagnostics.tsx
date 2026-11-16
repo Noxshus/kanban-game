@@ -1,5 +1,6 @@
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { useId } from 'react'
+import { formatEffort } from './formatEffort'
 
 function format(value: number | null) {
   if (value === null) return 'Unavailable (zero rate or outside numeric range)'
@@ -22,6 +23,9 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
       <p>Rank: {ticket.rank}</p>
       <p>Work domain: {ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
+      <p>Initial engineer belief: {ticket.initialEffortEstimate
+        ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + ticket.initialEffortEstimate.developerId + ')' : 'Unknown'}</p>
+      <p>Published effort estimate: {formatEffort(ticket.reportedEffortEstimate ?? undefined)}; actual total effort: {formatEffort(ticket.requiredWork)} work units</p>
       <p>Actual work: {format(ticket.completedWork)} / {format(ticket.requiredWork)} work units</p>
       <p>Remaining: {format(ticket.remainingWork)} work units</p>
       <p>Active developer: {ticket.activeDeveloperName ?? 'None'}</p>

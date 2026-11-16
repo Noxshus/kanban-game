@@ -6,6 +6,8 @@ import { build, createServer } from 'vite'
 import { mkdirSync, mkdtempSync, rmSync } from 'node:fs'
 import { resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
+import { exampleGameState as fixture } from '../src/data/exampleGameState.ts'
+import { getPlayerView as playerView } from '../src/store/playerView.ts'
 
 test('Vite development shows diagnostics; production retains only the player UI', async () => {
   for (const mode of ['development', 'production']) {
@@ -20,10 +22,29 @@ test('Vite development shows diagnostics; production retains only the player UI'
     mkdirSync(temporaryRoot, { recursive: true })
     const output = mode === 'production' ? mkdtempSync(resolve(temporaryRoot, 'ui-visibility-')) : null
     try {
-      if (output) await build({ logLevel: 'silent', build: { ssr: 'src/App.tsx', outDir: output, emptyOutDir: false } })
+      if (output) await build({ logLevel: 'silent', build: { ssr: true, outDir: output, emptyOutDir: false, rollupOptions: { input: { App: resolve('src/App.tsx'), GameBoard: resolve('src/components/GameBoard.tsx') } } } })
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
+      assert.equal((html.match(/Estimated effort: Unknown/g) ?? []).length, 7)
+      const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
+        : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
+      const estimates = structuredClone(fixture)
+      estimates.tickets.forEach((ticket, index) => {
+        ticket.reportedStatus = (['backlog', 'todo', 'in_progress', 'done'] as const)[index % 4]
+        ticket.reportedEffortEstimate = [8.5, 0, 1e-200, 1e200, undefined, 12, Number.MIN_VALUE][index]
+        ticket.initialEffortEstimate = { developerId: 'private-original-author', totalWork: 7654321 }
+        ticket.requiredWork = 9876543
+      })
+      const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
+      assert.equal((visibleEstimates.match(/class="ticket-estimate"/g) ?? []).length, 7)
+      for (const text of ['Estimated effort: 8.5 work units', 'Estimated effort: 0 work units',
+        'Estimated effort: 1E-200 work units', 'Estimated effort: 1E200 work units', 'Estimated effort: Unknown']) {
+        assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)
+      }
+      for (const text of ['private-original-author', '7654321', '9876543', 'Initial engineer belief:', 'actual total effort:']) {
+        assert.ok(!visibleEstimates.includes(text), mode + ': leaked ' + text)
+      }
       assert.equal((html.match(/class="ticket-domain"/g) ?? []).length, 7)
       assert.match(html, /class="ticket-domain">Frontend<\/span>/)
       assert.match(html, /class="ticket-domain">Backend<\/span>/)
@@ -108,6 +129,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
+        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)

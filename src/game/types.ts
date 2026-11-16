@@ -20,6 +20,10 @@ export interface Ticket {
 // Represents ticket ownership, NOT necessarily active work. One developer may be assigned multiple tickets.
 
   assignedDeveloperId?: string
+  // Original engineer belief/provenance and public report can diverge in later systems.
+  // Absence supports old saves and tickets not yet picked up; either record prevents re-publication.
+  initialEffortEstimate?: { developerId: string; totalWork: number }
+  reportedEffortEstimate?: number
   requiredWork: number
   completedWork: number
   // Numerical remainder preserves work lost when the displayed total rounds.

@@ -1,3 +1,4 @@
+import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -23,7 +24,7 @@ function coincident(reverse = false) {
   assert.ok(due > 0)
   state.developers[1].assessmentClock!.remaining = due
   if (reverse) state.developers.reverse()
-  return { state, due }
+  return { state: estimatedFixture(state), due }
 }
 
 test('positive-time completion and reassessment share one engineer-ordered decision pass', () => {

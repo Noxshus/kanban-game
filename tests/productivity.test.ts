@@ -1,4 +1,5 @@
 import { close, expectedWork } from './helpers/flowExpectation.ts'
+import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -147,7 +148,7 @@ test('higher-ranked poor fit is still selected ahead of lower-ranked matching wo
 })
 
 test('switching uses the replacement domain rate and never progresses the abandoned ticket', () => {
-  const state = domainScenario('frontend', 10, 0)
+  const state = estimatedFixture(domainScenario('frontend', 10, 0))
   state.tickets.push({ ...state.tickets[0], id: 'replacement', rank: 2, workDomain: 'backend',
     actualStatus: 'todo', assignedDeveloperId: undefined })
   state.developers[0].assessmentClock = { elapsed: 10, remaining: 0 }

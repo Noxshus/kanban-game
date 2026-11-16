@@ -50,6 +50,8 @@ export function getDiagnosticsView(state: GameState) {
       comparison: compareTicket(ticket, state.developers),
       rank: ticket.rank,
       workDomain: ticket.workDomain,
+      initialEffortEstimate: ticket.initialEffortEstimate ? { ...ticket.initialEffortEstimate } : null,
+      reportedEffortEstimate: ticket.reportedEffortEstimate ?? null,
       requiredWork: ticket.requiredWork,
       completedWork: ticket.completedWork,
       remainingWork,

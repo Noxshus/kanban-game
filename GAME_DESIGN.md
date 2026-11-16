@@ -200,6 +200,24 @@ Focus **does not directly penalise** Judgement, the reconsideration schedule or 
 
 **PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Initial attribute-driven behaviour is implemented; richer decisions and reporting remain future design work.
 
+### 4.2.4. Initial effort estimates (#57; current prototype)
+
+On first actual pickup, an engineer estimates the ticket's **total required work units** and immediately publishes that estimate on the Kanban card. Unstarted tickets display **Unknown**. Publication occurs once per ticket: resuming, switching back or a handoff does not generate another initial estimate. The original engineer's belief and identity are retained separately from the reported estimate and true required work, allowing later divergence. Only the published estimate is player-visible; actual requirements and private beliefs remain development-only. This does not change reported progress or the #49 selection model.
+
+The approved provisional calibration uses Judgement J, the ticket-domain competency C, true total work T, and one seeded uniform draw U in [0, 1):
+
+```text
+q = 1 + 0.09 * J + 0.09 * C
+E0 = T * exp(log1p(-U) / q)
+expected(E0) = T * q / (q + 1)
+```
+
+These are **prototype balancing constants**. Mean accuracy at J/C = 0/0, 10/10, 50/50 and 100/100 is 50%, about 73.7%, about 90.9% and 95% respectively, not a per-seed promise. Attributes remain finite, non-negative and uncapped. Estimates only underestimate (0 <= E0 <= T); exact accuracy can occur at RNG endpoints or finite precision. Positive work whose estimate would underflow to zero is explicitly rejected, rather than assigned an artificial minimum or error cap. Focus and Flow do not directly affect estimation.
+
+Existing active claims without estimates are initialised on their first positive advance, in engineer order; zero-time advances and rendering consume no estimate draws. At a genuine new claim, the estimate draw follows selection and precedes the next reconsideration schedule. Saved beliefs or existing public estimates prevent duplicate initial publication after JSON restoration.
+
+First-pickup publication is a **temporary pre-planning shortcut**, including its visible clue that work has been picked up. Sprint planning (#60) is intended before PoC/MVP and will move initial publication before work, without double publication. Later productive-work learning/revisions (#58) are separate and will be published immediately under the agreed temporary reporting shortcut; none of that revision behaviour is implemented here. Communication (#63/#35), overestimation (#59) and event-triggered reconsideration (#56) remain separate work.
+
 ### 4.3. Information and Deduction
 
 The player does not automatically know everything occurring within the development team.
