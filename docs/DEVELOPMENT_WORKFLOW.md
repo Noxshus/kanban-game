@@ -20,14 +20,29 @@ Do not advance workflow steps on assumption. A later prompt may subsume an earli
 
 ## GitHub issue labels — mandatory triage
 
-**Every new GitHub issue must have at least one appropriate label at creation time.** This applies equally to implementation tasks, design follow-ups, deferred ideas, bugs and technical reviews, including issues created by ChatGPT. Treat labels as part of the issue's completion checklist, not optional metadata.
+**Every GitHub issue must have exactly one primary work-type label** and, when applicable, an area label. This includes design follow-ups, deferred ideas, bugs, technical reviews, implementation tasks and completed historical issues. Apply the labels at issue creation; never depend on GitHub to infer them.
 
-- **Before creating:** Check the repository's existing label vocabulary and select the most accurate applicable label(s). Prefer existing labels over inventing synonymous categories; currently `enhancement` covers gameplay/UX/design additions and `technical-debt` covers cleanup, maintenance and architectural review.
-- **When creating:** Include the selected `labels` explicitly in the issue creation request. Do not rely on GitHub to infer them from title or body.
-- **After creating or changing scope:** Verify the issue actually has appropriate labels; if none exist or the classification is clearly wrong, correct it promptly without waiting for the user to notice.
-- **During periodic backlog/release housekeeping:** Check for unlabeled issues, including open and closed issues, and backfill when the category is unambiguous. If existing labels are inadequate, flag the missing category rather than silently inventing a new one.
+### Primary work type (choose exactly one)
 
-Labels are for finding and organising the backlog; they must not imply an issue is approved for immediate implementation, or change its state/priority. Keep issue title/body and explicit status as the source of truth.
+| Label | Use for |
+|---|---|
+| `enhancement` | Feature implementation, gameplay additions or UI improvements; can be planned or deferred and is **not** automatic implementation approval. |
+| `design` | Concept exploration, balancing, research, unapproved mechanics or read-only design/model decisions. Reclassify as `enhancement` when the issue's remaining scope becomes implementation rather than discovery. |
+| `bug` | Confirmed defects or regressions, including accepted/deferred defects. Do not label speculative risks as confirmed bugs. |
+| `technical-debt` | Maintenance, refactoring, code quality, engineering safeguards, CI/testing infrastructure and architectural simplification reviews. |
+
+### Optional area (add the relevant label)
+
+| Label | Use for |
+|---|---|
+| `area:simulation` | Autonomous engineer behaviour, ticket/work/Flow calculations, decision algorithms, clocks and progression mechanics. |
+| `area:ui-ux` | Player interface, development overlays, visual design, accessibility and explanations shown to players. |
+| `area:testing` | Test fixtures, deterministic regression coverage, browser tests and test/CI infrastructure. |
+| `area:workflow` | ChatGPT/Codex/GitHub working agreements and issue/release process. |
+
+Prefer **one** area label per issue, using no area label when none fits clearly (e.g. generic repo cleanup). Avoid label proliferation, redundant synonyms, speculative priority labels or labels merely duplicating open/closed state. The issue body and user approval determine priority and readiness—not the labels.
+
+**At creation:** Check existing labels; include the primary label and appropriate area label(s) directly in the create request. **Immediately after:** Verify the labels were applied. **When scope changes:** Update labels to match the *remaining* work (for example, shipped prototype with an open design follow-up). **At backlog/release housekeeping:** Search for unlabeled issues in both open and closed states and fix omissions. Do not silently introduce extra categories; if the taxonomy genuinely becomes inadequate, review it deliberately.
 
 ## Standard workflow
 
