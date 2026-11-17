@@ -53,6 +53,7 @@ export function getDiagnosticsView(state: GameState) {
       workDomain: ticket.workDomain,
       initialEffortEstimate: ticket.initialEffortEstimate ? { ...ticket.initialEffortEstimate } : null,
       reportedEffortEstimate: ticket.reportedEffortEstimate ?? null,
+      estimateHistory: structuredClone(ticket.estimateHistory ?? []),
       lastEstimateEvaluation: ticket.lastEstimateEvaluation ? { ...ticket.lastEstimateEvaluation } : null,
       contributions: (state.workLog ?? []).filter(entry => entry.ticketId === ticket.id).map(entry => ({
         developerId: entry.developerId,

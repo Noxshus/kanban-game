@@ -82,7 +82,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
   assert.equal(advanceSimulation(owned, 1).tickets[0].reportedEffortEstimate, undefined)
 })
 
-test('handoff, resume and divergent public/private beliefs do not re-estimate or republish', () => {
+test('a new engineer independently replaces the report; restoration does not invent estimates', () => {
   const initial = advanceSimulation(scenario(), 0.1, () => 0.5)
   const belief = structuredClone(initial.tickets[0].initialEffortEstimate)
   initial.tickets[0].reportedEffortEstimate = 123 // future reporting may diverge
@@ -90,10 +90,11 @@ test('handoff, resume and divergent public/private beliefs do not re-estimate or
   delete initial.developers[0].activeTicketID
   delete initial.developers[0].flowStreak
   delete initial.developers[0].assessmentClock
+  delete initial.developers[0].estimateDiscovery // the replacement does not inherit A's scheduled personal exposure
   const draws: number[] = []
   const handed = advanceSimulation(initial, 0.1, () => { draws.push(0.5); return 0.5 })
-  assert.equal(draws.length, 2) // schedule + discovery threshold; no second initial estimate
-  assert.equal(handed.tickets[0].reportedEffortEstimate, 123)
+  assert.equal(draws.length, 3) // personal first estimate, schedule and discovery threshold
+  assert.equal(handed.tickets[0].reportedEffortEstimate, 500000)
   assert.deepEqual(handed.tickets[0].initialEffortEstimate, belief)
   assert.equal(handed.tickets[0].assignedDeveloperId, 'replacement')
   for (const keep of ['initialEffortEstimate', 'reportedEffortEstimate'] as const) {
@@ -108,7 +109,7 @@ test('handoff, resume and divergent public/private beliefs do not re-estimate or
   }
 })
 
-test('switch away and back retain the first engineer belief and publication', () => {
+test('switch away and back retain the first engineer belief and reuse pending discovery', () => {
   const first = advanceSimulation(scenario(true), 0.1, () => 0.5)
   first.tickets[0].rank = 2
   first.tickets.push({ ...scenario().tickets[0], id: 'other', rank: 1 })
@@ -122,7 +123,8 @@ test('switch away and back retain the first engineer belief and publication', ()
   calls = 0
   const returned = advanceSimulation(switched, 0.1, () => { calls++; return calls === 1 ? 0.999 : 0.5 })
   assert.equal(returned.developers[0].activeTicketID, 'ticket-1')
-  assert.equal(calls, 3) // assessment, schedule and renewed work threshold; no initial estimate draw
+  assert.equal(calls, 2) // assessment + schedule; remembered estimate AND discovery target are reused
+  assert.equal(returned.tickets[0].estimateHistory!.at(-1)!.kind, 'publication')
   assert.deepEqual(returned.tickets.map(t => t.initialEffortEstimate), before)
   assert.deepEqual(returned.tickets.map(t => t.reportedEffortEstimate), switched.tickets.map(t => t.reportedEffortEstimate))
 })
@@ -176,6 +178,8 @@ function coincident(reverse: boolean) {
   for (const ticket of state.tickets.slice(0, 2)) {
     ticket.initialEffortEstimate = { developerId: ticket.id, totalWork: ticket.requiredWork }
     ticket.reportedEffortEstimate = ticket.requiredWork
+    ticket.estimateHistory = state.developers.map(developer => ({ kind: 'assessment', developerId: developer.id,
+      totalWork: ticket.requiredWork, reason: 'initial', at: { high: 0, low: 0 } }))
   }
   const due = projectCompletion(state.developers[0], state.tickets[0], true).seconds!
   state.developers[1].assessmentClock!.remaining = due
@@ -197,8 +201,8 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]),
       whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]))
-    assert.deepEqual(split.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.actualStatus, t.assignedDeveloperId]),
-      whole.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.actualStatus, t.assignedDeveloperId]))
+    assert.deepEqual(split.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.estimateHistory, t.actualStatus, t.assignedDeveloperId]),
+      whole.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.estimateHistory, t.actualStatus, t.assignedDeveloperId]))
     const contested = whole.tickets.find(t => t.id === 'contested')!
     assert.equal(contested.initialEffortEstimate?.developerId, state.developers[0].id)
     assert.equal(contested.assignedDeveloperId, state.developers[0].id)

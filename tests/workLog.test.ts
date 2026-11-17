@@ -135,6 +135,7 @@ test('switching at an event boundary credits each ticket only its own productive
 test('completion caps credited productive work, chains tickets and retains finished contributions', () => {
   const state = fixture(1)
   state.tickets.push({ ...state.tickets[0], id: 'next', rank: 2, requiredWork: 2, actualStatus: 'todo' })
+  estimatedFixture(state)
   const whole = advanceSimulation(state, 10)
   let split = state
   for (let i = 0; i < 40; i++) split = advanceSimulation(split, 0.25)

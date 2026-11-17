@@ -10,6 +10,7 @@ import { nextRandom } from '../src/game/random.ts'
 import { eventInterval } from '../src/game/eventTime.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
+import { encounterEstimate, personalEstimate, publishEstimate } from '../src/game/estimateHistory.ts'
 import type { GameState } from '../src/game/types.ts'
 import { close } from './helpers/flowExpectation.ts'
 
@@ -115,7 +116,10 @@ test('any representable upward estimate publishes, while equal or lower candidat
   for (const [board, published] of [[justBelow, true], [candidate / 1.0005, true],
     [candidate, false], [justAbove, false]] as const) {
     const input = structuredClone(state)
-    input.tickets[0].reportedEffortEstimate = board
+    // #70 improvements compare against the engineer's own accepted opinion.
+    input.tickets[0].estimateHistory!.push({ kind: 'assessment', developerId: input.developers[0].id,
+      totalWork: board, reason: 'discovery', at: { high: input.simulationTime, low: 0 } })
+    publishEstimate(input.tickets[0], input.developers[0].id, 'revision', { high: input.simulationTime, low: 0 })
     evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
     assert.equal(input.tickets[0].lastEstimateEvaluation!.candidate, candidate)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.published, published)
@@ -311,7 +315,7 @@ test('retained ticket disparity no longer changes a freshly sampled discovery ta
   assert.equal(b.tickets[0].overrunEvaluationConsumed, false)
 })
 
-test('handoff and return use the latest board and each engineer own retained work experience', () => {
+test('handoff and return publish personal opinions without altering retained work experience', () => {
   const state = fixture(100, 20)
   state.developers.push({ ...state.developers[0], id: 'engineer-B', name: 'Blair', activeTicketID: undefined })
   state.workLog = [
@@ -322,28 +326,19 @@ test('handoff and return use the latest board and each engineer own retained wor
   let first = advanceSimulation(state, 0.01, () => 0.999)
   assert.equal(first.tickets[0].reportedEffortEstimate, 60)
   assert.equal(first.tickets[0].lastEstimateEvaluation, undefined)
-  const aBefore = first.workLog![0].effort
-  delete first.developers[0].activeTicketID
-  delete first.developers[0].workSession
-  delete first.developers[0].flowStreak
-  delete first.developers[0].estimateDiscovery
-  first.developers[1].activeTicketID = 'ticket-1'
-  first = advanceSimulation(first, 0.01, () => 0.999)
-  assert.equal(first.tickets[0].reportedEffortEstimate, 60)
-  assert.deepEqual(first.workLog![0].effort, aBefore)
-  // A newly shared higher estimate is observed on return; no second initial belief.
-  first.tickets[0].reportedEffortEstimate = 90
-  delete first.developers[1].activeTicketID
-  delete first.developers[1].workSession
-  first.developers[0].activeTicketID = 'ticket-1'
-  first = advanceSimulation(first, 0.01, () => 0.999)
-  assert.equal(first.tickets[0].reportedEffortEstimate, 90)
-  assert.equal(first.developers[0].estimateDiscovery!.boardEstimate, 90)
-  assert.ok(effortNumber(first.workLog![0].effort)! > 10)
+  const work = structuredClone(first.workLog)
+  const [a, b] = first.developers, ticket = first.tickets[0]
+  const at = { high: first.simulationTime, low: 0 }
+  encounterEstimate(ticket, b, at, () => 0.999)
+  assert.equal(ticket.reportedEffortEstimate, personalEstimate(ticket, b.id)!.baseline)
+  assert.notEqual(ticket.reportedEffortEstimate, 60)
+  encounterEstimate(ticket, a, at, () => { throw Error('Returning estimate must not reroll') })
+  assert.equal(ticket.reportedEffortEstimate, 60)
+  assert.deepEqual(first.workLog, work)
   assert.deepEqual(first.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
 })
 
-test('a replacement publishes after hands-on discovery; returning work does not reapply another engineer experience', () => {
+test('a replacement learns from its own baseline; returning work does not inherit another engineer experience', () => {
   const state = fixture()
   state.tickets[0].reportedEffortEstimate = 60
   state.developers[0].activeTicketID = undefined
@@ -353,23 +348,26 @@ test('a replacement publishes after hands-on discovery; returning work does not 
     { developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) },
     { developerId: 'engineer-B', ticketId: 'ticket-1', effort: workAmount(30) },
   ]
-  const initial = advanceSimulation(state, 0.001, () => 0.01)
-  assert.equal(initial.tickets[0].reportedEffortEstimate, 60)
-  const learned = advanceSimulation(initial, 1, () => 0.01)
+  encounterEstimate(state.tickets[0], state.developers[0], { high: 0, low: 0 }, () => { throw Error('Legacy restore') }, true)
+  encounterEstimate(state.tickets[0], state.developers[1], { high: 0, low: 0 }, () => 0.9)
+  const baseline = personalEstimate(state.tickets[0], 'engineer-B')!.baseline
+  const learned = advanceSimulation(state, 1, () => 0.01)
   const improved = learned.tickets[0].reportedEffortEstimate!
   assert.ok(improved > 60)
   assert.equal(learned.tickets[0].lastEstimateEvaluation!.developerId, 'engineer-B')
+  close(improved, revisedEffort(100, baseline, workAmount(learned.tickets[0].lastEstimateEvaluation!.personalWork!), 100, 100))
   assert.equal(effortNumber(learned.workLog![0].effort), 10)
   delete learned.developers[1].activeTicketID
   delete learned.developers[1].workSession
   learned.developers[0].activeTicketID = 'ticket-1'
+  encounterEstimate(learned.tickets[0], learned.developers[0], { high: learned.simulationTime, low: 0 }, () => { throw Error('Remember A') })
   const returned = advanceSimulation(learned, 0.001, () => 0.01)
-  assert.equal(returned.tickets[0].reportedEffortEstimate, improved)
+  assert.equal(returned.tickets[0].reportedEffortEstimate, 60)
   const evaluated = advanceSimulation(returned, 1, () => 0.01)
   const snapshot = evaluated.tickets[0].lastEstimateEvaluation!
   assert.equal(snapshot.developerId, 'developer-1')
   close(snapshot.candidate, revisedEffort(100, 20, workAmount(snapshot.personalWork!), 10, 5))
-  assert.equal(evaluated.tickets[0].reportedEffortEstimate, improved)
+  assert.equal(evaluated.tickets[0].reportedEffortEstimate, 60)
 })
 
 test('completion preempts a coincident evaluation, including an exact discovery work target', () => {
@@ -416,6 +414,8 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
       { ...ticket, id: 'ongoing', rank: 2 },
       { ...ticket, id: 'contested', rank: 1, actualStatus: 'todo', initialEffortEstimate: { developerId: 'original', totalWork: 100 }, reportedEffortEstimate: 100 },
     ]
+    state.tickets[2].estimateHistory = state.developers.map(developer => ({ kind: 'assessment', developerId: developer.id,
+      totalWork: 100, reason: 'initial', at: { high: 0, low: 0 } }))
     if (reverse) state.developers.reverse()
     const due = projectWork(base, ticket, workAmount(1)).seconds!
     const whole = advanceSimulation(state, due + 0.25)

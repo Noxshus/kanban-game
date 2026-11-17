@@ -1,7 +1,7 @@
 import type { Developer, GameState, Ticket } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { nextRandom } from './random.ts'
-import { estimateInitialEffort } from './effortEstimate.ts'
+import { encounterEstimate, pauseDiscovery, resumeDiscovery, validateEstimateHistory } from './estimateHistory.ts'
 import { assessWork, nominateCandidate, selectWork, validateSelectionAttributes } from './selectWork.ts'
 import { getFlowDuration } from './flow.ts'
 import { projectCompletion } from './completionTime.ts'
@@ -22,6 +22,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   requireTimeProgress(now.high, end.high, elapsedSeconds)
   const { tickets, developers } = result
   validateWorkLog(result.workLog)
+  tickets.forEach(validateEstimateHistory)
   developers.forEach(validateSelectionAttributes)
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = () => {
@@ -30,18 +31,11 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     result.randomState = next.state
     return next.value
   }
-  const publishInitialEstimate = (developer: Developer, ticket: Ticket) => {
-    // Either persisted record means this is not a first publication. In particular,
-    // never fabricate an original belief/author for a legacy board-only estimate.
-    if (ticket.initialEffortEstimate !== undefined || ticket.reportedEffortEstimate !== undefined) return
-    const totalWork = estimateInitialEffort(ticket.requiredWork, developer.judgement,
-      developer.competencies[ticket.workDomain], draw())
-    ticket.initialEffortEstimate = { developerId: developer.id, totalWork }
-    ticket.reportedEffortEstimate = totalWork
-  }
   const complete = isWorkComplete
   const claimed = new Set<string>()
   const clearWork = (developer: Developer) => {
+    const previous = byId.get(developer.estimateDiscovery?.ticketId ?? developer.activeTicketID ?? '')
+    if (previous && !complete(previous)) pauseDiscovery(developer)
     delete developer.activeTicketID
     delete developer.flowStreak
     delete developer.assessmentClock
@@ -60,15 +54,18 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       continue
     }
     claimed.add(ticket.id)
+    if (developer.estimateDiscovery && developer.estimateDiscovery.ticketId !== ticket.id) pauseDiscovery(developer)
     if (developer.flowStreak && developer.flowStreak.ticketId !== ticket.id) {
+      pauseDiscovery(developer)
       delete developer.flowStreak
       delete developer.assessmentClock
       delete developer.workSession
       delete developer.estimateDiscovery
     }
-    // First positive advance migrates valid pre-existing active claims once, in
-    // engineer order. Estimate precedes scheduling, just as on a new claim below.
-    publishInitialEstimate(developer, ticket)
+    // Old active saves import evidence once; restoring a running claim is not a
+    // takeover. New claims below independently assess or republish remembered work.
+    encounterEstimate(ticket, developer, now, draw, true)
+    resumeDiscovery(developer, ticket.id)
     if (!developer.assessmentClock) schedule(developer)
     const { elapsed, remaining } = developer.assessmentClock!
     if (!Number.isFinite(elapsed) || elapsed < 0 || !Number.isFinite(remaining) || remaining < 0) {
@@ -87,6 +84,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     && !claimed.has(ticket.id) && !complete(ticket)
     && (ticket.actualStatus === 'todo' || ticket.actualStatus === 'in_progress'))
   const begin = (developer: Developer, ticket: Ticket) => {
+    pauseDiscovery(developer)
     developer.activeTicketID = ticket.id
     developer.flowStreak = { ticketId: ticket.id, duration: 0 }
     delete developer.workSession
@@ -95,7 +93,8 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
     ticket.reportedStatus = 'in_progress'
-    publishInitialEstimate(developer, ticket)
+    encounterEstimate(ticket, developer, now, draw)
+    resumeDiscovery(developer, ticket.id)
     schedule(developer)
   }
   const decideDue = () => {

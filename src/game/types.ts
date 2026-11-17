@@ -4,6 +4,21 @@ import type { WorkAmount } from './work'
 export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export type WorkDomain = 'frontend' | 'backend'
 
+// Array order resolves events at the same compensated instant. Legacy observations
+// have unknown dates; they are evidence, not invented historical events.
+export type EstimateEvent =
+  | { kind: 'assessment'; developerId: string; totalWork: number; reason: 'initial' | 'discovery' | 'overrun'; at: EventTime }
+  | { kind: 'legacy_assessment'; developerId: string; totalWork: number; baseline: number; evidence: 'original' | 'published_revision' | 'active_fallback'; at: EventTime | null }
+  | { kind: 'publication'; developerId: string; totalWork: number; reason: 'initial' | 'takeover' | 'return' | 'revision'; sourceAssessmentIndex: number; replacedTotalWork?: number; replacedDeveloperId?: string; at: EventTime }
+  | { kind: 'legacy_publication'; developerId?: string; totalWork: number; sourceAssessmentIndex?: number; at: null }
+
+export interface EstimateDiscovery {
+  ticketId: string; boardEstimate: number; requiredWork: number; judgement: number
+  productive: boolean; target: WorkAmount | null
+  // Absent in legacy saves; their target already used the old baseline.
+  baseline?: number
+}
+
 export interface Ticket {
   id: string
   title: string
@@ -22,9 +37,10 @@ export interface Ticket {
 
   assignedDeveloperId?: string
   // Original engineer belief/provenance and public report can diverge in later systems.
-  // Absence supports old saves and tickets not yet picked up; either record prevents re-publication.
+  // Immutable ticket-original provenance; personal beliefs live in estimateHistory.
   initialEffortEstimate?: { developerId: string; totalWork: number }
   reportedEffortEstimate?: number
+  estimateHistory?: EstimateEvent[]
   // Legacy board-only states lack #57 provenance: retain their first observed baseline, not an invented author.
   learningBaseline?: number
   // Explicit false distinguishes a known unused lifetime alarm from legacy saves
@@ -72,7 +88,9 @@ export interface Developer {
   lastAssessment?: AssessmentDecision
   assessmentClock?: { elapsed: number; remaining: number; originTime?: EventTime; dueTime?: EventTime }
   // Only the next seeded work target; personal experience remains exclusively in workLog.
-  estimateDiscovery?: { ticketId: string; boardEstimate: number; requiredWork: number; judgement: number; productive: boolean; target: WorkAmount | null }
+  estimateDiscovery?: EstimateDiscovery
+  // Inactive schedules are moved here, never copied or rerolled on a return.
+  pausedEstimateDiscoveries?: EstimateDiscovery[]
 }
 
 export interface CandidateScore {

@@ -93,6 +93,7 @@ test('Focus never changes schedule sampling, and zero time neither initializes n
 test('completion takes precedence over a simultaneous assessment and clears both clocks',()=>{
  const state=scenario()
  state.tickets[0].requiredWork=0;state.tickets[0].completedWork=0
+ estimatedFixture(state)
  state.developers[0].assessmentClock={elapsed:20,remaining:0}
  const result=advanceSimulation(state,1,()=>{throw Error('Completed work must not assess')})
  assert.equal(result.developers[0].assessmentClock,undefined)

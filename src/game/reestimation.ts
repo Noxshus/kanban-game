@@ -3,8 +3,9 @@ import type { WorkAmount } from './work'
 import { compareWork, integratedWork, remainingWork, workAmount } from './work.ts'
 import { addWorkAmounts, anchorEffort, effortNumber, subtractWorkAmounts } from './workLog.ts'
 import { projectWork } from './completionTime.ts'
-import { addEventTime, compareEventTime } from './eventTime.ts'
+import { addEventTime, compareEventTime, eventTime } from './eventTime.ts'
 import { openUnit } from './reconsideration.ts'
+import { personalEstimate, publishEstimate, restoreLegacyEstimate } from './estimateHistory.ts'
 
 // Provisional #58 balance, deliberately independent of Focus and Flow.
 export const DISCOVERY_BASE = 0.8
@@ -80,11 +81,11 @@ export function personalEffort(state: GameState, developer: Developer, ticket: T
   return state.workLog?.find(entry => entry.developerId === developer.id && entry.ticketId === ticket.id)?.effort ?? workAmount(0)
 }
 
-function baselineFor(ticket: Ticket) {
+function baselineFor(ticket: Ticket, developer: Developer, at: ReturnType<typeof eventTime>) {
   if (ticket.reportedEffortEstimate === undefined) return null // private-only legacy state: no report to revise
-  const baseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate
+  const opinion = personalEstimate(ticket, developer.id) ?? restoreLegacyEstimate(ticket, developer.id, at)
+  const baseline = opinion!.baseline
   estimates(ticket.requiredWork, ticket.reportedEffortEstimate, baseline)
-  if (!ticket.initialEffortEstimate) ticket.learningBaseline = baseline
   return baseline
 }
 
@@ -122,7 +123,7 @@ function migrateOverrunState(ticket: Ticket, originalBaseline: number | undefine
 export function prepareDiscovery(state: GameState, developer: Developer, ticket: Ticket, draw: () => number) {
   // Capture provenance before baselineFor supplies a fallback for board-only saves.
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
-  const baseline = baselineFor(ticket)
+  const baseline = baselineFor(ticket, developer, eventTime(state.simulationTime, state.simulationTimeRemainder))
   if (baseline === null) return
   // Reproject migrated caches from their saved work targets, without resampling
   // RNG. An old suppressed or re-armed crossing may no longer be appropriate.
@@ -133,12 +134,13 @@ export function prepareDiscovery(state: GameState, developer: Developer, ticket:
   const board = ticket.reportedEffortEstimate!
   const old = developer.estimateDiscovery
   const productive = developer.productivity > 0
-  if (old?.ticketId === ticket.id && old.boardEstimate === board && old.requiredWork === ticket.requiredWork && old.judgement === developer.judgement && old.productive === productive) return
+  if (old?.ticketId === ticket.id && old.boardEstimate === board && old.requiredWork === ticket.requiredWork && old.judgement === developer.judgement && old.productive === productive
+      && (old.baseline === undefined || old.baseline === baseline)) return
   const rate = discoveryResponsiveness(ticket.requiredWork, board, developer.judgement)
   const target = rate > 0 && developer.productivity > 0
     ? nextDiscoveryTarget(ticket.requiredWork, board, baseline, personalEffort(state, developer, ticket),
       developer.judgement, remainingWork(ticket), draw()) : null
-  developer.estimateDiscovery = { ticketId: ticket.id, boardEstimate: board, requiredWork: ticket.requiredWork, judgement: developer.judgement, productive, target }
+  developer.estimateDiscovery = { ticketId: ticket.id, boardEstimate: board, requiredWork: ticket.requiredWork, judgement: developer.judgement, productive, baseline, target }
   if (developer.workSession) delete developer.workSession.estimateEvents
 }
 
@@ -165,24 +167,29 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
   if (!ticket.overrunEvaluationConsumed && board > session.initialCompletedWork && !reachedBoard(developer, ticket)) {
     overrun = deadline(overrunWork(developer, board))
   }
-  session.estimateEvents = { discovery: target ? deadline(target) : null, overrun }
+  // Other contributors can exhaust capacity while this engineer is away. Retain
+  // the saved target, censoring it at completion rather than rerolling on return.
+  session.estimateEvents = { discovery: target && compareWork(target, capacity) <= 0 ? deadline(target) : null, overrun }
   return session.estimateEvents
 }
 
 export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun') {
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
-  const baseline = baselineFor(ticket)
+  const at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder)
+  const baseline = baselineFor(ticket, developer, at)
   if (baseline === null) return
   migrateOverrunState(ticket, originalBaseline)
   const personal = personalEffort(state, developer, ticket)
   const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
-  const board = ticket.reportedEffortEstimate!
-  const published = candidate > board
-  if (published) ticket.reportedEffortEstimate = candidate
+  const published = candidate > personalEstimate(ticket, developer.id)!.totalWork
+  if (published) {
+    ticket.estimateHistory!.push({ kind: 'assessment', developerId: developer.id, totalWork: candidate, reason, at: { ...at } })
+    publishEstimate(ticket, developer.id, 'revision', at)
+  }
   ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
   // One crossing for the entire ticket lifetime, even if this evaluation leaves
   // the report unchanged. Later revisions and handoffs only learn via discovery.
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
   delete developer.estimateDiscovery
-  delete developer.workSession!.estimateEvents
+  if (developer.workSession) delete developer.workSession.estimateEvents
 }

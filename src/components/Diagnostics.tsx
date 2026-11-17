@@ -26,6 +26,18 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
       <p>Initial engineer belief: {ticket.initialEffortEstimate
         ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + ticket.initialEffortEstimate.developerId + ')' : 'Unknown'}</p>
       <p>Published effort estimate: {formatEffort(ticket.reportedEffortEstimate ?? undefined)}; actual total effort: {formatEffort(ticket.requiredWork)} work units</p>
+      <details>
+        <summary>Estimate assessment and publication history ({ticket.estimateHistory.length})</summary>
+        {ticket.estimateHistory.length ? <ol>{ticket.estimateHistory.map((event, index) => (
+          <li key={index}>
+            {event.kind}: {event.developerId ?? 'Unknown author'}; {formatEffort(event.totalWork)} work units;
+            {' '}{event.at ? format(event.at.high + event.at.low) + 's' : 'historical time unknown'}
+            {'reason' in event ? '; ' + event.reason : 'evidence' in event ? '; ' + event.evidence : '; imported board observation'}
+            {event.kind === 'publication' && event.replacedTotalWork !== undefined
+              ? '; replaced ' + formatEffort(event.replacedTotalWork) + ' (' + (event.replacedDeveloperId ?? 'unknown author') + ')' : ''}
+          </li>
+        ))}</ol> : <p>No estimate events recorded.</p>}
+      </details>
       <p>Latest effort re-evaluation: {ticket.lastEstimateEvaluation
         ? ticket.lastEstimateEvaluation.reason + ' by ' + ticket.lastEstimateEvaluation.developerId
           + '; personal work ' + (ticket.lastEstimateEvaluation.personalWork === null ? 'below scalar range' : formatEffort(ticket.lastEstimateEvaluation.personalWork))

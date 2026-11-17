@@ -117,8 +117,9 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const learnedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(learned).tickets[0] }))
         assert.ok(learnedHtml.includes('Latest effort re-evaluation: discovery by developer-1'))
         assert.ok(learnedHtml.includes('; published'))
+        assert.ok(learnedHtml.includes('Estimate assessment and publication history'))
         const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
-          view: getPlayerView(exampleGameState), diagnostics: null,
+          view: getPlayerView(learned), diagnostics: null,
         }))
         assert.ok(!withoutDiagnostics.includes('role="tooltip"'))
         for (const text of ['Judgement:', 'Focus:', 'Most recent assessment', 'Time until next reconsideration:', 'Time since previous assessment:', 'Current candidate:', 'RNG draw:']) {
@@ -129,6 +130,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         }
         assert.ok(!withoutDiagnostics.includes('>Mismatch</button>'))
         assert.ok(!withoutDiagnostics.includes('>Match</button>'))
+        assert.ok(!withoutDiagnostics.includes('Estimate assessment and publication history'))
         for (const [isPaused, label] of [[true, 'Resume'], [false, 'Pause']] as const) {
           const toolbar = renderToStaticMarkup(createElement(DevelopmentUI, {
             state: exampleGameState,
@@ -149,7 +151,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
-        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:',
+        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'Estimate assessment and publication history',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)
