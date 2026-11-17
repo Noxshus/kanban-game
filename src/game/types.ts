@@ -27,6 +27,11 @@ export interface Ticket {
   reportedEffortEstimate?: number
   // Legacy board-only states lack #57 provenance: retain their first observed baseline, not an invented author.
   learningBaseline?: number
+  // Explicit false distinguishes a known unused lifetime alarm from legacy saves
+  // whose latest discovery may have overwritten all evidence of an earlier alarm.
+  overrunEvaluationConsumed?: boolean
+  // Legacy #58 per-board suppression, also written on pickup/discovery. Migrated
+  // on the first positive advance; its presence alone is not proof of evaluation.
   evaluatedOverrunEstimate?: number
   // One DEV snapshot, not private belief history or a knowledge attribute.
   lastEstimateEvaluation?: { developerId: string; reason: 'discovery' | 'overrun'; personalWork: number | null; candidate: number; published: boolean }

@@ -1,0 +1,442 @@
+{
+  "randomState": 1075679462,
+  "simulationTime": 1,
+  "developers": [
+    {
+      "id": "developer-1",
+      "name": "Alex",
+      "activeTicketID": "ticket-1",
+      "productivity": 1,
+      "competencies": {
+        "frontend": 10,
+        "backend": 0
+      },
+      "judgement": 8,
+      "focus": 2,
+      "assessmentClock": {
+        "elapsed": 1,
+        "remaining": 23.952772525419814,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "dueTime": {
+          "high": 24.952772525419814,
+          "low": 0
+        }
+      },
+      "estimateDiscovery": {
+        "ticketId": "ticket-1",
+        "boardEstimate": 9.021531751750878,
+        "requiredWork": 10,
+        "judgement": 8,
+        "productive": true,
+        "target": null
+      },
+      "workSession": {
+        "ticketId": "ticket-1",
+        "requiredWork": 10,
+        "productivity": 1,
+        "competency": 10,
+        "focus": 2,
+        "initialFlowDuration": 0,
+        "elapsed": 1,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "currentTime": {
+          "high": 1,
+          "low": 0
+        },
+        "completionSeconds": 3.7846495520244496,
+        "initialCompletedWork": 4,
+        "lastCompletedWork": 5.5251041584195555,
+        "effortOrigin": {
+          "total": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          },
+          "produced": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          }
+        },
+        "estimateEvents": {
+          "discovery": null,
+          "overrun": {
+            "high": 3.1913035123022264,
+            "low": 0
+          }
+        }
+      },
+      "flowStreak": {
+        "ticketId": "ticket-1",
+        "duration": 1
+      }
+    },
+    {
+      "id": "developer-2",
+      "name": "Sam",
+      "activeTicketID": "ticket-2",
+      "productivity": 1.2,
+      "competencies": {
+        "frontend": 0,
+        "backend": 10
+      },
+      "judgement": 2,
+      "focus": 8,
+      "assessmentClock": {
+        "elapsed": 1,
+        "remaining": 13.784347155734661,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "dueTime": {
+          "high": 14.784347155734661,
+          "low": 0
+        }
+      },
+      "workSession": {
+        "ticketId": "ticket-2",
+        "requiredWork": 8,
+        "productivity": 1.2,
+        "competency": 0,
+        "focus": 8,
+        "initialFlowDuration": 0,
+        "elapsed": 1,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "currentTime": {
+          "high": 1,
+          "low": 0
+        },
+        "completionSeconds": 8.519554550532439,
+        "initialCompletedWork": 2,
+        "lastCompletedWork": 2.6180004433156925,
+        "effortOrigin": {
+          "total": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          },
+          "produced": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          }
+        },
+        "estimateEvents": {
+          "discovery": {
+            "high": 1.8385039642798717,
+            "low": 0
+          },
+          "overrun": {
+            "high": 3.7033903792232628,
+            "low": 0
+          }
+        }
+      },
+      "flowStreak": {
+        "ticketId": "ticket-2",
+        "duration": 1
+      },
+      "estimateDiscovery": {
+        "ticketId": "ticket-2",
+        "boardEstimate": 4.430252904377287,
+        "requiredWork": 8,
+        "judgement": 2,
+        "productive": true,
+        "target": {
+          "mantissa": 1.1604738404843569,
+          "exponent": 0,
+          "correction": 6.245004513516506e-17
+        }
+      }
+    },
+    {
+      "id": "developer-3",
+      "name": "Jordan",
+      "productivity": 0.8,
+      "competencies": {
+        "frontend": 6,
+        "backend": 6
+      },
+      "judgement": 5,
+      "focus": 5,
+      "lastAssessment": {
+        "kind": "pickup",
+        "current": {
+          "id": "ticket-3",
+          "rank": 3,
+          "reportedProgress": 0,
+          "rankScore": 1,
+          "opportunityScore": 0,
+          "rankContribution": 0.5,
+          "opportunityContribution": 0,
+          "score": 0.5
+        },
+        "alternative": {
+          "id": "ticket-5",
+          "rank": 5,
+          "reportedProgress": 0,
+          "rankScore": 0.3333333333333333,
+          "opportunityScore": 0,
+          "rankContribution": 0.16666666666666666,
+          "opportunityContribution": 0,
+          "score": 0.16666666666666666
+        },
+        "nomination": {
+          "id": "ticket-3",
+          "rank": 3,
+          "reportedProgress": 0,
+          "rankScore": 1,
+          "opportunityScore": 0,
+          "rankContribution": 0.5,
+          "opportunityContribution": 0,
+          "score": 0.5
+        },
+        "judgement": 5,
+        "flowDuration": 0,
+        "staySeconds": 5.169263056662134,
+        "switchSeconds": 3.1955176566074237,
+        "efficiencyAdvantage": 0.48098104057560054,
+        "efficiencyLimit": null,
+        "rankPreference": -0.16666666666666669,
+        "complexity": 2.584962500721156,
+        "noiseScale": 2.1541354172676304,
+        "error": -6.318192666246055,
+        "draw": 0.05054362863302231,
+        "perceivedAdvantage": -6.003878292337121,
+        "outcome": "stay",
+        "selectedId": "ticket-3"
+      },
+      "activeTicketID": "ticket-3",
+      "flowStreak": {
+        "ticketId": "ticket-3",
+        "duration": 1
+      },
+      "assessmentClock": {
+        "elapsed": 1,
+        "remaining": 11.62928519546804,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "dueTime": {
+          "high": 12.62928519546804,
+          "low": 0
+        }
+      },
+      "estimateDiscovery": {
+        "ticketId": "ticket-3",
+        "boardEstimate": 3.9655450942814308,
+        "requiredWork": 5,
+        "judgement": 5,
+        "productive": true,
+        "target": null
+      },
+      "workSession": {
+        "ticketId": "ticket-3",
+        "requiredWork": 5,
+        "productivity": 0.8,
+        "competency": 6,
+        "focus": 5,
+        "initialFlowDuration": 0,
+        "elapsed": 1,
+        "originTime": {
+          "high": 0,
+          "low": 0
+        },
+        "currentTime": {
+          "high": 1,
+          "low": 0
+        },
+        "completionSeconds": 5.169263056662134,
+        "initialCompletedWork": 0,
+        "lastCompletedWork": 0.9006644549680202,
+        "effortOrigin": {
+          "total": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          },
+          "produced": {
+            "mantissa": 0,
+            "exponent": 0,
+            "correction": 0
+          }
+        },
+        "estimateEvents": {
+          "discovery": null,
+          "overrun": {
+            "high": 4.15992731477205,
+            "low": 0
+          }
+        }
+      }
+    }
+  ],
+  "tickets": [
+    {
+      "id": "ticket-1",
+      "rank": 1,
+      "title": "Build the navigation menu",
+      "workDomain": "frontend",
+      "actualStatus": "in_progress",
+      "reportedStatus": "in_progress",
+      "assignedDeveloperId": "developer-1",
+      "requiredWork": 10,
+      "completedWork": 5.5251041584195555,
+      "reportedProgress": 55.25104158419556,
+      "initialEffortEstimate": {
+        "developerId": "developer-1",
+        "totalWork": 9.021531751750878
+      },
+      "reportedEffortEstimate": 9.021531751750878,
+      "workRemainder": {
+        "mantissa": 1.1187239603951111,
+        "exponent": 2,
+        "remainderCorrection": -5.551115123125783e-17,
+        "requiredWork": 10,
+        "completedWork": 5.5251041584195555,
+        "roundingError": 2.220446049250313e-16
+      }
+    },
+    {
+      "id": "ticket-2",
+      "rank": 2,
+      "title": "Fix the search filter",
+      "workDomain": "frontend",
+      "actualStatus": "in_progress",
+      "reportedStatus": "in_progress",
+      "assignedDeveloperId": "developer-2",
+      "requiredWork": 8,
+      "completedWork": 2.6180004433156925,
+      "reportedProgress": 32.72500554144616,
+      "initialEffortEstimate": {
+        "developerId": "developer-2",
+        "totalWork": 4.41411834256028
+      },
+      "reportedEffortEstimate": 4.430252904377287,
+      "lastEstimateEvaluation": {
+        "developerId": "developer-2",
+        "reason": "discovery",
+        "personalWork": 0.05647951489910546,
+        "candidate": 4.430252904377287,
+        "published": true
+      },
+      "workRemainder": {
+        "mantissa": 1.3454998891710768,
+        "exponent": 2,
+        "remainderCorrection": -8.326672684688674e-17,
+        "requiredWork": 8,
+        "completedWork": 2.6180004433156925,
+        "roundingError": -1.1102230246251565e-16
+      }
+    },
+    {
+      "id": "ticket-3",
+      "rank": 3,
+      "title": "Update the help page",
+      "workDomain": "frontend",
+      "actualStatus": "in_progress",
+      "reportedStatus": "in_progress",
+      "requiredWork": 5,
+      "completedWork": 0.9006644549680202,
+      "reportedProgress": 18.013289099360403,
+      "assignedDeveloperId": "developer-3",
+      "initialEffortEstimate": {
+        "developerId": "developer-3",
+        "totalWork": 3.9655450942814308
+      },
+      "reportedEffortEstimate": 3.9655450942814308,
+      "workRemainder": {
+        "mantissa": 1.0248338862579949,
+        "exponent": 2,
+        "remainderCorrection": -8.326672684688674e-17,
+        "requiredWork": 5,
+        "completedWork": 0.9006644549680202,
+        "roundingError": 0
+      }
+    },
+    {
+      "id": "ticket-4",
+      "rank": 4,
+      "title": "Add form validation",
+      "workDomain": "backend",
+      "actualStatus": "todo",
+      "reportedStatus": "todo",
+      "requiredWork": 12,
+      "completedWork": 0,
+      "reportedProgress": 0
+    },
+    {
+      "id": "ticket-5",
+      "rank": 5,
+      "title": "Correct the page heading",
+      "workDomain": "frontend",
+      "actualStatus": "todo",
+      "reportedStatus": "todo",
+      "requiredWork": 3,
+      "completedWork": 0,
+      "reportedProgress": 0
+    },
+    {
+      "id": "ticket-6",
+      "rank": 6,
+      "title": "Improve keyboard navigation",
+      "workDomain": "frontend",
+      "actualStatus": "backlog",
+      "reportedStatus": "backlog",
+      "requiredWork": 6,
+      "completedWork": 0,
+      "reportedProgress": 0
+    },
+    {
+      "id": "ticket-7",
+      "rank": 7,
+      "title": "Review error messages",
+      "workDomain": "backend",
+      "actualStatus": "backlog",
+      "reportedStatus": "backlog",
+      "requiredWork": 4,
+      "completedWork": 0,
+      "reportedProgress": 0
+    }
+  ],
+  "workLog": [
+    {
+      "developerId": "developer-1",
+      "ticketId": "ticket-1",
+      "effort": {
+        "mantissa": 1.5251041584195553,
+        "exponent": 0,
+        "correction": 0
+      }
+    },
+    {
+      "developerId": "developer-2",
+      "ticketId": "ticket-2",
+      "effort": {
+        "mantissa": 1.2360008866313852,
+        "exponent": -1,
+        "correction": 0
+      }
+    },
+    {
+      "developerId": "developer-3",
+      "ticketId": "ticket-3",
+      "effort": {
+        "mantissa": 1.8013289099360403,
+        "exponent": -1,
+        "correction": 0
+      }
+    }
+  ]
+}

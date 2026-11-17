@@ -31,13 +31,12 @@ function logOnePlusRatio(logRatio: number) {
   return logRatio > 0 ? logRatio + Math.log1p(Math.exp(-logRatio)) : Math.log1p(Math.exp(logRatio))
 }
 
-export function discoveryResponsiveness(total: number, board: number, judgement: number, completedWork: number) {
+export function discoveryResponsiveness(total: number, board: number, judgement: number) {
   estimates(total, board, board)
-  nonnegative(judgement); nonnegative(completedWork)
+  nonnegative(judgement)
   const r = (total - board) / total
   const k = DISCOVERY_BASE * (1 + Math.log1p(judgement / 10))
-  const disparity = completedWork > board ? logOnePlusRatio(Math.log((completedWork - board)) - Math.log(board)) : 0
-  return k * (2 * r / (r + ERROR_REFERENCE)) * (1 + disparity)
+  return k * (2 * r / (r + ERROR_REFERENCE))
 }
 
 export function revisedEffort(total: number, baseline: number, personalWork: WorkAmount, judgement: number, competency: number) {
@@ -51,12 +50,12 @@ export function revisedEffort(total: number, baseline: number, personalWork: Wor
 }
 
 export function nextDiscoveryTarget(total: number, board: number, baseline: number, personalWork: WorkAmount,
-  judgement: number, completedWork: number, available: WorkAmount, uniform: number): WorkAmount | null {
+  judgement: number, available: WorkAmount, uniform: number): WorkAmount | null {
   estimates(total, board, baseline)
-  const rate = discoveryResponsiveness(total, board, judgement, completedWork)
+  const rate = discoveryResponsiveness(total, board, judgement)
   const u = openUnit(uniform)
   if (rate === 0) return null
-  // With k*g*m frozen until the next evaluation, integrated hazard is
+  // With k*g fixed for this board and engineer, integrated hazard is
   // rate * log((E0 + w_next)/(E0 + w_now)); invert one seeded draw, not tick rolls.
   const exponent = -Math.log1p(-u) / rate
   const logBase = Math.log(baseline) + logOnePlusRatio(logWork(personalWork) - Math.log(baseline))
@@ -107,20 +106,38 @@ function reachedBoard(developer: Developer, ticket: Ticket) {
   return compareWork(integratedWork(developer, ticket, session.elapsed, session.initialFlowDuration), overrunWork(developer, board)) >= 0
 }
 
+function migrateOverrunState(ticket: Ticket, originalBaseline: number | undefined) {
+  if (ticket.overrunEvaluationConsumed !== undefined) return false
+  // The old marker was also written on pickup, so it cannot prove consumption.
+  // An overrun snapshot is conclusive. Otherwise monotonic work below a saved
+  // original baseline proves no crossing occurred. Equality or a missing baseline
+  // cannot exclude an earlier overrun hidden by a later discovery snapshot.
+  const evaluation = ticket.lastEstimateEvaluation
+  ticket.overrunEvaluationConsumed = evaluation?.reason === 'overrun'
+    || evaluation !== undefined && !(originalBaseline !== undefined && ticket.completedWork < originalBaseline)
+  delete ticket.evaluatedOverrunEstimate
+  return true
+}
+
 export function prepareDiscovery(state: GameState, developer: Developer, ticket: Ticket, draw: () => number) {
+  // Capture provenance before baselineFor supplies a fallback for board-only saves.
+  const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const baseline = baselineFor(ticket)
   if (baseline === null) return
+  // Reproject migrated caches from their saved work targets, without resampling
+  // RNG. An old suppressed or re-armed crossing may no longer be appropriate.
+  if (migrateOverrunState(ticket, originalBaseline) && developer.workSession) delete developer.workSession.estimateEvents
+  if (ticket.overrunEvaluationConsumed && developer.workSession?.estimateEvents) {
+    developer.workSession.estimateEvents.overrun = null
+  }
   const board = ticket.reportedEffortEstimate!
   const old = developer.estimateDiscovery
   const productive = developer.productivity > 0
   if (old?.ticketId === ticket.id && old.boardEstimate === board && old.requiredWork === ticket.requiredWork && old.judgement === developer.judgement && old.productive === productive) return
-  // Legacy/handoff work already beyond a report is not a new crossing, nor a
-  // free reassessment on pickup. Further positive exposure uses the same hazard.
-  if (reachedBoard(developer, ticket)) ticket.evaluatedOverrunEstimate = board
-  const rate = discoveryResponsiveness(ticket.requiredWork, board, developer.judgement, ticket.completedWork)
+  const rate = discoveryResponsiveness(ticket.requiredWork, board, developer.judgement)
   const target = rate > 0 && developer.productivity > 0
     ? nextDiscoveryTarget(ticket.requiredWork, board, baseline, personalEffort(state, developer, ticket),
-      developer.judgement, ticket.completedWork, remainingWork(ticket), draw()) : null
+      developer.judgement, remainingWork(ticket), draw()) : null
   developer.estimateDiscovery = { ticketId: ticket.id, boardEstimate: board, requiredWork: ticket.requiredWork, judgement: developer.judgement, productive, target }
   if (developer.workSession) delete developer.workSession.estimateEvents
 }
@@ -143,7 +160,9 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
     ? addWorkAmounts(subtractWorkAmounts(discovery.target, origin.total), origin.produced) : null
   const board = ticket.reportedEffortEstimate!
   let overrun: ReturnType<typeof deadline> = null
-  if (ticket.evaluatedOverrunEstimate !== board && board > session.initialCompletedWork) {
+  // Pickup above an existing report is not a crossing and does not consume the
+  // lifetime alarm. A later discovery may still establish its first future target.
+  if (!ticket.overrunEvaluationConsumed && board > session.initialCompletedWork && !reachedBoard(developer, ticket)) {
     overrun = deadline(overrunWork(developer, board))
   }
   session.estimateEvents = { discovery: target ? deadline(target) : null, overrun }
@@ -151,19 +170,19 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
 }
 
 export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun') {
+  const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const baseline = baselineFor(ticket)
   if (baseline === null) return
+  migrateOverrunState(ticket, originalBaseline)
   const personal = personalEffort(state, developer, ticket)
   const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
   const board = ticket.reportedEffortEstimate!
   const published = candidate > board
   if (published) ticket.reportedEffortEstimate = candidate
   ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
-  // Even a no-change evaluation consumes this crossing. A revision still below
-  // W does not recursively trigger another instantaneous evaluation.
-  if (reachedBoard(developer, ticket) || reason === 'overrun' && !published) {
-    ticket.evaluatedOverrunEstimate = ticket.reportedEffortEstimate
-  }
+  // One crossing for the entire ticket lifetime, even if this evaluation leaves
+  // the report unchanged. Later revisions and handoffs only learn via discovery.
+  if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
   delete developer.estimateDiscovery
   delete developer.workSession!.estimateEvents
 }
