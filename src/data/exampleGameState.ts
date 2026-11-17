@@ -28,6 +28,7 @@ export const exampleGameState: GameState = {
   tickets: [
     {
       id: 'ticket-1', rank: 1,
+      complexity: 'S',
       title: 'Build the navigation menu',
       workDomain: 'frontend',
       actualStatus: 'in_progress',
@@ -39,6 +40,7 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-2', rank: 2,
+      complexity: 'S',
       title: 'Fix the search filter',
       workDomain: 'frontend',
       actualStatus: 'in_progress',
@@ -50,6 +52,7 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-3', rank: 3,
+      complexity: 'S',
       title: 'Update the help page',
       workDomain: 'frontend',
       actualStatus: 'todo',
@@ -60,6 +63,7 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-4', rank: 4,
+      complexity: 'S',
       title: 'Add form validation',
       workDomain: 'backend',
       actualStatus: 'todo',
@@ -70,6 +74,7 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-5', rank: 5,
+      complexity: 'S',
       title: 'Correct the page heading',
       workDomain: 'frontend',
       actualStatus: 'todo',
@@ -80,12 +85,14 @@ export const exampleGameState: GameState = {
     },
     {
       id: 'ticket-6', rank: 6, title: 'Improve keyboard navigation',
+      complexity: 'XL',
       workDomain: 'frontend',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 6, completedWork: 0, reportedProgress: 0,
     },
     {
       id: 'ticket-7', rank: 7, title: 'Review error messages',
+      complexity: 'XXL',
       workDomain: 'backend',
       actualStatus: 'backlog', reportedStatus: 'backlog',
       requiredWork: 4, completedWork: 0, reportedProgress: 0,

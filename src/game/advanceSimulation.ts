@@ -9,6 +9,7 @@ import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from
 import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
+import { getTicketComplexity } from './complexity.ts'
 
 export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
@@ -79,6 +80,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         developer.workSession = {
           ticketId: ticket.id, requiredWork: ticket.requiredWork, productivity: developer.productivity,
           competency: developer.competencies[ticket.workDomain], focus: developer.focus,
+          complexity: getTicketComplexity(ticket),
           initialFlowDuration: getFlowDuration(developer, ticket.id), elapsed: 0,
           originTime: now,
           currentTime: now,

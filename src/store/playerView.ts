@@ -1,11 +1,12 @@
 import type { GameState, Ticket } from '../game/types'
 import { clampReportedProgress } from '../game/reportedProgress.ts'
 import { compareRank } from '../game/rank.ts'
+import { getTicketComplexity } from '../game/complexity.ts'
 
 export type PlayerTicket = Pick<
   Ticket,
   'id' | 'title' | 'rank' | 'workDomain' | 'reportedStatus' | 'reportedProgress' | 'assignedDeveloperId' | 'reportedEffortEstimate'
->
+> & { complexity: NonNullable<Ticket['complexity']> }
 
 export function getPlayerView(state: GameState) {
   return {
@@ -15,6 +16,7 @@ export function getPlayerView(state: GameState) {
       id: ticket.id,
       title: ticket.title,
       workDomain: ticket.workDomain,
+      complexity: getTicketComplexity(ticket),
       rank: ticket.rank,
       reportedStatus: ticket.reportedStatus,
       reportedProgress: clampReportedProgress(ticket.reportedProgress),

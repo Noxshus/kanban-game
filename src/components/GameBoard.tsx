@@ -145,6 +145,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                         <span className="ticket-id">{ticket.id}</span>
                         <h4>{ticket.title}</h4>
                         <span className="ticket-domain">{ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</span>
+                        <p className="ticket-complexity">Complexity: {ticket.complexity}</p>
                         <p>{assignee ? `Assigned to: ${assignee.name}` : 'Unassigned'}</p>
                         <p className="ticket-estimate">Estimated effort: {formatEffort(ticket.reportedEffortEstimate)}{ticket.reportedEffortEstimate === undefined ? '' : ' work units'}</p>
                         <label className="ticket-progress">

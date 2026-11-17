@@ -1,8 +1,9 @@
 import type { Developer, Ticket } from './types'
+import { getComplexityMultiplier } from './complexity.ts'
 
 export function getDomainModifier(
   developer: Developer,
-  ticket: Pick<Ticket, 'workDomain'>,
+  ticket: Pick<Ticket, 'workDomain' | 'complexity'>,
 ): number {
   const competency = developer.competencies[ticket.workDomain]
   if (!Number.isFinite(competency) || competency < 0) {
@@ -11,24 +12,24 @@ export function getDomainModifier(
   if (!Number.isFinite(developer.productivity)) {
     throw new RangeError('Base productivity must be finite')
   }
-  // Provisional balance: even zero expertise retains half the base rate. Base
-  // productivity has no upper cap, so incremental progression can overcome poor fit.
-  return 0.5 + competency / 10
+  // One unified modifier: complexity reduces the novice baseline, while growing
+  // competency mitigates its relative cost. S exactly preserves the previous rate.
+  return 0.5 / getComplexityMultiplier(ticket) + competency / 10
 }
 
 // Log rate remains representable even when the ordinary rate over/underflows.
-export function getLogDomainRate(developer: Developer, ticket: Pick<Ticket, 'workDomain'>) {
+export function getLogDomainRate(developer: Developer, ticket: Pick<Ticket, 'workDomain' | 'complexity'>) {
   const modifier = getDomainModifier(developer, ticket)
   return developer.productivity > 0 ? Math.log(developer.productivity) + Math.log(modifier) : -Infinity
 }
 
 // An unrepresentable rate is unavailable, not a balancing cap or infinite work.
-export function getEffectiveProductivity(developer: Developer, ticket: Pick<Ticket, 'workDomain'>): number | null {
+export function getEffectiveProductivity(developer: Developer, ticket: Pick<Ticket, 'workDomain' | 'complexity'>): number | null {
   const rate = Math.max(0, developer.productivity) * getDomainModifier(developer, ticket)
   return Number.isFinite(rate) && !(rate === 0 && developer.productivity > 0) ? rate : null
 }
 
-export function getWorkCompleted(developer: Developer, ticket: Pick<Ticket, 'workDomain'>, elapsedSeconds: number): number {
+export function getWorkCompleted(developer: Developer, ticket: Pick<Ticket, 'workDomain' | 'complexity'>, elapsedSeconds: number): number {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0) {
     throw new RangeError('Elapsed time must be finite and non-negative')
   }

@@ -3,6 +3,7 @@ import type { WorkAmount } from './work'
 
 export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export type WorkDomain = 'frontend' | 'backend'
+export type TicketComplexity = 'S' | 'M' | 'L' | 'XL' | 'XXL'
 
 // Array order resolves events at the same compensated instant. Legacy observations
 // have unknown dates; they are evidence, not invented historical events.
@@ -23,6 +24,8 @@ export interface Ticket {
   id: string
   title: string
   workDomain: WorkDomain
+  // Intrinsic technical challenge, independent of base effort. Legacy saves omit it (S).
+  complexity?: TicketComplexity
   // Global position 1..N (1 highest): managerial intent, not guaranteed developer compliance.
   rank: number
 
@@ -76,6 +79,7 @@ export interface Developer {
   // integral across calls preserves completion/assessment coincidence.
   workSession?: {
     ticketId: string; requiredWork: number; productivity: number; competency: number; focus: number
+    complexity?: TicketComplexity
     initialFlowDuration: number; elapsed: number; completionSeconds: number | null
     initialCompletedWork: number; initialRemainder?: Ticket['workRemainder']; lastCompletedWork: number
     originTime?: EventTime

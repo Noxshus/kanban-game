@@ -147,6 +147,12 @@
   font-size: 0.875rem;
 }
 
+.ticket-complexity {
+  margin: 6px 0;
+  color: #36434f;
+  font-size: 0.875rem;
+}
+
 .ticket[draggable="true"] { cursor: grab; }
 .ticket.drop-before { box-shadow: 0 -4px #245da8; }
 .ticket.drop-after { box-shadow: 0 4px #245da8; }

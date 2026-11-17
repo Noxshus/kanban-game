@@ -96,7 +96,7 @@ test('diagnostics update live through completion and remain separate from player
   assert.equal(player.tickets[0].reportedStatus, 'todo')
   assert.deepEqual(Object.keys(player).sort(), ['developers', 'simulationTime', 'tickets'])
   assert.deepEqual(Object.keys(player.tickets[0]).sort(),
-    ['assignedDeveloperId', 'id', 'rank', 'reportedEffortEstimate', 'reportedProgress', 'reportedStatus', 'title', 'workDomain'])
+    ['assignedDeveloperId', 'complexity', 'id', 'rank', 'reportedEffortEstimate', 'reportedProgress', 'reportedStatus', 'title', 'workDomain'])
   assert.deepEqual(Object.keys(player.developers[0]).sort(), ['id', 'name', 'productivity'])
   getDiagnosticsView(state)
   assert.deepEqual(getPlayerView(state), player)

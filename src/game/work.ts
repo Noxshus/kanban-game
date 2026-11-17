@@ -1,6 +1,7 @@
 import type { Developer, Ticket } from './types'
 import { getDomainModifier } from './productivity.ts'
 import { getAverageFlowMultiplier } from './flow.ts'
+import { getTicketComplexity } from './complexity.ts'
 
 export interface WorkAmount { mantissa: number; exponent: number; correction: number }
 const zero = (): WorkAmount => ({ mantissa: 0, exponent: 0, correction: 0 })
@@ -68,6 +69,7 @@ export function validWorkSession(developer: Developer, ticket: Ticket) {
   return session && session.ticketId === ticket.id && session.requiredWork === ticket.requiredWork
     && session.lastCompletedWork === ticket.completedWork && session.productivity === developer.productivity
     && session.competency === developer.competencies[ticket.workDomain] && session.focus === developer.focus
+    && getTicketComplexity(session) === getTicketComplexity(ticket)
     && developer.flowStreak?.ticketId === ticket.id
     && developer.flowStreak.duration === session.initialFlowDuration + session.elapsed ? session : undefined
 }

@@ -27,6 +27,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
       assert.equal((html.match(/Estimated effort: Unknown/g) ?? []).length, 7)
+      assert.equal((html.match(/class="ticket-complexity"/g) ?? []).length, 7)
+      for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</p>`), mode)
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
       const estimates = structuredClone(fixture)
@@ -37,9 +39,11 @@ test('Vite development shows diagnostics; production retains only the player UI'
         ticket.initialEffortEstimate = { developerId: 'private-original-author', totalWork: 7654321 }
         ticket.lastEstimateEvaluation = { developerId: 'private-estimator', reason: 'discovery', personalWork: 8765432, candidate: 6543210, published: false }
         ticket.requiredWork = 9876543
+        ticket.complexity = (['S', 'M', 'L', 'XL', 'XXL', 'S', 'M'] as const)[index]
       })
       const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
       assert.equal((visibleEstimates.match(/class="ticket-estimate"/g) ?? []).length, 7)
+      for (const size of ['S', 'M', 'L', 'XL', 'XXL']) assert.ok(visibleEstimates.includes(`Complexity: ${size}</p>`), mode)
       for (const text of ['Estimated effort: 8.5 work units', 'Estimated effort: 0 work units',
         'Estimated effort: 1E-200 work units', 'Estimated effort: 1E200 work units', 'Estimated effort: Unknown']) {
         assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)

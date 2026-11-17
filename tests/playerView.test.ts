@@ -16,6 +16,7 @@ test('player view exposes only reported ticket information and public developer 
     rank: 1,
     title: 'Build the navigation menu',
     workDomain: 'frontend',
+    complexity: 'S',
     reportedStatus: 'in_progress',
     reportedProgress: 15,
     assignedDeveloperId: 'developer-1',
@@ -27,6 +28,7 @@ test('player view exposes only reported ticket information and public developer 
     assert.equal('requiredWork' in ticket, false)
     assert.equal('initialEffortEstimate' in ticket, false)
     assert.equal(ticket.workDomain, state.tickets.find(source => source.id === ticket.id)?.workDomain)
+    assert.equal(ticket.complexity, state.tickets.find(source => source.id === ticket.id)?.complexity)
   }
   assert.deepEqual(view.developers[0], { id: 'developer-1', name: 'Alex', productivity: 1 })
   assert.ok(view.developers.every(developer => !('competencies' in developer)))
@@ -35,6 +37,14 @@ test('player view exposes only reported ticket information and public developer 
   state.tickets[0].actualStatus = 'todo'
   state.tickets[0].initialEffortEstimate!.totalWork = 6
   assert.deepEqual(getPlayerView(state), view)
+})
+
+test('legacy ticket complexity defaults to visible S without migrating or exposing hidden fields', () => {
+  const state = structuredClone(exampleGameState)
+  delete state.tickets[0].complexity
+  const before = structuredClone(state)
+  assert.equal(getPlayerView(state).tickets[0].complexity, 'S')
+  assert.deepEqual(state, before)
 })
 
 test('player view bounds reported percentages without mutating the state', () => {

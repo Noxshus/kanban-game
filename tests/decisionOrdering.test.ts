@@ -7,9 +7,11 @@ import { nextRandom } from '../src/game/random.ts'
 import { effortNumber } from '../src/game/workLog.ts'
 import { decisionFixture, remember } from './helpers/decisionFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
+import type { TicketComplexity } from '../src/game/types.ts'
 
-function coincident(reverse=false,offset=0) {
+function coincident(reverse=false,offset=0,complexity: TicketComplexity='S') {
  const s=decisionFixture(),base=s.developers[0],template=s.tickets[0]
+ template.complexity=complexity
  base.focus=0;base.competencies.frontend=5
  s.developers=[{...base,id:'finishing',activeTicketID:'finish'},{...base,id:'revising',activeTicketID:'ongoing'}]
  s.tickets=[
@@ -35,8 +37,8 @@ function equivalent(actual:ReturnType<typeof decisionFixture>,expected:ReturnTyp
 }
 
 test('positive-time completion and genuine estimate revision resolve claims in engineer order, not event-type order',()=>{
- for(const reverse of [false,true]) {
-  const {s,due}=coincident(reverse),original=structuredClone(s),r=advanceSimulation(s,due+.25,()=>.999999)
+ for(const complexity of ['S','M','XXL'] as const)for(const reverse of [false,true]) {
+  const {s,due}=coincident(reverse,0,complexity),original=structuredClone(s),r=advanceSimulation(s,due+.25,()=>.999999)
   assert.equal(r.developers[0].activeTicketID,'contested')
   assert.equal(r.developers[1].activeTicketID,'ongoing')
   assert.equal(r.tickets[0].actualStatus,'done')
@@ -48,8 +50,8 @@ test('positive-time completion and genuine estimate revision resolve claims in e
 })
 
 test('nonbinary partitions and JSON preserve mixed-event coincidence, histories, claims and exact RNG',()=>{
- for(const reverse of [false,true])for(const parts of [[.3,.3,.3],[.1,.2,.3],[.13,.17,.19,.23]]) {
-  const {s,due}=coincident(reverse),whole=advanceSimulation(s,due+.25)
+ for(const complexity of ['S','M','XXL'] as const)for(const reverse of [false,true])for(const parts of [[.3,.3,.3],[.1,.2,.3],[.13,.17,.19,.23]]) {
+  const {s,due}=coincident(reverse,0,complexity),whole=advanceSimulation(s,due+.25)
   let split=s
   for(const dt of parts)split=JSON.parse(JSON.stringify(advanceSimulation(split,dt)))
   split=advanceSimulation(split,due+.25-parts.reduce((a,b)=>a+b,0))

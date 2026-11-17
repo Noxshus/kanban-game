@@ -121,7 +121,7 @@ Developer behaviour will eventually be influenced by individual attributes and c
 
 **Wasted effort (agreed design direction, detailed mechanics open; #30):** Developers may attempt blocked work and expend time without useful progress, rather than always being prevented by dependency checks. Some tickets may also be fully executable yet deliver little or no actual value (red herrings). These are distinct possibilities: *ability to make progress* and *value of completing the work* should not be conflated. Players may not initially know which work is blocked or valueless. The effects on work/progress, reporting, dependencies and engineer judgment remain to be designed.
 
-### 4.2.1. Perceived-work selection (#49/#56; implemented local prototype)
+### 4.2.1. Perceived-work selection (#49/#56; released prototype)
 
 Engineers can work on tickets whose **actual** status is **To Do** or **In Progress**, provided they are unfinished and not actively claimed by another engineer. Backlog, Done and another engineer's active claim are excluded. Assignment means ownership and can differ from active work. These truth-based eligibility safeguards do not make the engineer's appraisal omniscient.
 
@@ -142,7 +142,7 @@ Choose the highest score deterministically, breaking ties by better global Rank 
 
 **Historical:** This replaces the #32/#49 50/50 Rank/reported-opportunity nomination and noisy holistic comparison. The older #31 Judgement-minus-Discipline sigmoid and #14 category roll remain superseded. Blockers, dependencies, ticket value and richer team economics remain future systems; the current coefficients are not a final balance commitment.
 
-### 4.2.2. Event-driven reconsideration (#56; implemented local prototype)
+### 4.2.2. Event-driven reconsideration (#56; released prototype)
 
 The periodic Weibull-style reconsideration clock and older #16 automatic switching are removed. Active engineers reconsider only when:
 
@@ -156,7 +156,7 @@ Pause freezes engineer decisions, estimates/publications, RNG, productive work, 
 
 Events process chronologically. Release all completed claims first, then process pickups and revision decisions in engineer order at a true tie. Priority actions also resolve engineers in order, respecting earlier claims; newly freed work alone does not become a new Rank trigger for later engineers. Completion wins a coincident discovery/overrun on the same ticket. Staying preserves Flow; actual switching/completion resets it. Legacy periodic clock fields are ignored/removed without consuming schedule RNG.
 
-Anchored compensated event instants and integrated actual work remain in place for elapsed partitions, JSON restoration and numerical safety. Unsupported actual time/work precision still fails explicitly. This is an implemented local prototype pending manual QA, independent review and separately authorised release. Additional triggers, autonomous reporting #63, planning #60, overestimation #59 and switch-related work loss #61 are not implemented.
+Anchored compensated event instants and integrated actual work remain in place for elapsed partitions, JSON restoration and numerical safety. Unsupported actual time/work precision still fails explicitly. The #49/#56 prototype passed manual QA and independent review and was released in `ec12f8b`. Additional triggers, autonomous reporting #63, planning #60, overestimation #59 and switch-related work loss #61 are not implemented.
 
 ### 4.2.3. Focus builds Flow (implemented #51 and naming #54; `74d098e`, `6177a41`)
 
@@ -175,7 +175,25 @@ Work advances using the **integrated** Flow multiplier, not merely a sample of t
 
 Focus **does not directly penalise** Judgement, event relevance or willingness to switch. However, a good Judgement comparison accounts for the *real productivity cost* of losing accumulated Flow and for how quickly a high-Focus engineer could rebuild Flow after switching. Flow duration, bonus, multiplier, perceived completion times, event triggers and detailed decision explanations remain **development-only diagnostics** (#53 tracks the eventual simple player-facing language).
 
-**Domain expertise versus Judgement (#38; implemented prototype):** Every ticket has **one primary work domain**, initially **Frontend** or **Backend**; multi-disciplinary deliverables are made up of tickets at epic/initiative level. Engineers possess **separate Frontend and Backend competencies** rather than mutually exclusive job classifications, enabling full-stack engineers who are competent in both. Competencies are non-negative, finite and **uncapped**; example engineers initially range from 0 to 10, but this is not a permanent ceiling. Effective productivity is calculated as base productivity × (0.5 + relevant domain competency / 10), giving multipliers of ×0.5, ×1 and ×1.5 at competencies 0, 5 and 10 respectively, and continuing to scale above 10. These are provisional balancing values, not a fixed long-term growth curve. Poor skill fit slows ordinary work but does not make completion impossible; minimum-competency requirements are deferred to #40. **Ticket domains are now visible on normal Kanban cards in every reported column (#46), including production**. Engineer competency values and effective rates remain development-only for now; existing base productivity remains visible. Eventual broader player knowledge is undecided. Domain-adjusted rates affect perceived completion-time comparisons under #49/#56; competency also affects the existing fallible effort-estimation distribution. No separate nomination or Judgement noise is applied. Future specialisms (e.g. DBA versus a general Backend engineer) may apply additional domain-related modifiers (#39); their formulas and visibility are undecided.
+**Domain expertise versus Judgement (#38; implemented prototype):** Every ticket has **one primary work domain**, initially **Frontend** or **Backend**; multi-disciplinary deliverables are made up of tickets at epic/initiative level. Engineers possess **separate Frontend and Backend competencies** rather than mutually exclusive job classifications, enabling full-stack engineers who are competent in both. Competencies are non-negative, finite and **uncapped**; example engineers initially range from 0 to 10, but this is not a permanent ceiling. Effective productivity now uses the single competency/complexity rate below (#52). At S complexity it preserves base productivity × (0.5 + relevant domain competency / 10), including multipliers of ×0.5, ×1 and ×1.5 at competencies 0, 5 and 10, and continues scaling above 10. These are provisional balancing values, not a fixed long-term growth curve. Poor skill fit slows ordinary work but does not make completion impossible; minimum-competency requirements are deferred to #40. **Ticket domains are now visible on normal Kanban cards in every reported column (#46), including production**. Engineer competency values and effective rates remain development-only for now; existing base productivity remains visible. Eventual broader player knowledge is undecided. Domain-adjusted rates affect perceived completion-time comparisons under #49/#56; competency also affects the existing fallible effort-estimation distribution. No separate nomination or Judgement noise is applied. Future specialisms (e.g. DBA versus a general Backend engineer) may apply additional domain-related modifiers (#39); their formulas and visibility are undecided.
+
+### 4.2.3.1. Intrinsic technical complexity (#52; implemented local prototype)
+
+Every ticket has a T-shirt technical-complexity label, independent of its engineer-independent base work quantity (`requiredWork`). **This is not effort sizing:** a 10-work-unit XXL ticket can be more technically challenging than a 100-work-unit S ticket.
+
+The provisional multipliers are **S = 1, M = 1.5, L = 2, XL = 3, XXL = 5**. Use one unified domain-adjusted rate:
+
+```text
+D = complexity multiplier
+C = relevant Frontend/Backend competency
+workRateBeforeFlow = baseProductivity * (C / 10 + 0.5 / D)
+```
+
+Complexity reduces the novice baseline contribution; it does not apply a second independent competency/complexity penalty. S exactly preserves the former formula. At competency 0, the pre-Flow time penalty versus S is D; as uncapped competency grows, the relative penalty tends to zero. Existing integrated Flow multiplies this rate, so actual completion times also reflect Flow growth. No competency cap, difficulty gate or eligibility threshold is added.
+
+The same rate governs actual productive work, completion/discovery/overrun projections, perceived decision times and DEV effective-rate diagnostics. Base work requirements, gross productive-effort contributions and total-effort estimates retain their existing units. Complexity adds no estimation modifier, distribution, learning formula or RNG draw. Tickets and older saves with no complexity label are treated as S without rewriting their work or history.
+
+**Temporary first-scope information rule:** complexity is accurate and visible on every Kanban card, in both development and production, and engineers use that same label for decision projections. Hidden base requirements and engineer competencies remain outside the player view. Future fallible engineer-specific complexity assessments, remembered beliefs, learning and reports (#52/#35) should follow/reuse the effort-estimation lifecycle, but their categorical formulas and reporting rules remain unimplemented. Actual execution will ultimately use true complexity while decisions use believed/reported complexity. Switch-related work loss (#61) is also unimplemented.
 
 **Engineer-decision design sequence (PoC):** Work domains/competencies (#38), the initial selector (#31) and the first stay-versus-switch/reconsideration prototype (#32/#49/#54) are implemented with deterministic scenarios (#37). The deeper Judgement difficulty redesign remains open (#49). Later stages include recognising/attempting blocked work (#33), richer execution/results (#34), and deciding when/how accurately to report work (#35). Their numerical rules are not yet approved.
 
@@ -361,15 +379,16 @@ Record significant decisions here as the project evolves.
 | Wasted work and red herrings | Agreed direction; design open (#30) | Engineers can attempt blocked work; some tickets can consume effort without delivering value |
 | Management interventions sequencing | Confirmed PoC sequencing | Defer new interventions until autonomous engineer behaviour and imperfect reporting demonstrate the tensions they should address |
 | Ticket work domains and future specialisms | Agreed initial scope (#38, #39) | One domain per ticket; independent Frontend/Backend competencies allow full-stack engineers; future specialist modifiers such as DBA; multi-disciplinary scope at epic level |
-| Competency effects on work rate | Implemented provisional model (#38) | Independent, non-negative, finite and uncapped Frontend/Backend competencies; base productivity × (0.5 + relevant competency / 10); poor fit reduces work rate but never prevents ordinary completion; no changes to selection or switching; competency diagnostics remain development-only; future minimum-competency gates deferred to #40 |
+| Competency effects on work rate | Implemented provisional model (#38) | Independent, non-negative, finite and uncapped Frontend/Backend competencies; base productivity × (relevant competency / 10 + 0.5 / complexityMultiplier) under #52; S preserves the former rate; poor fit reduces work rate but never prevents ordinary completion; selection uses the same rate in perceived completion times; competency diagnostics remain development-only; future minimum-competency gates deferred to #40 |
+| Intrinsic ticket complexity (#52) | Implemented local prototype | Accurate visible S/M/L/XL/XXL technical labels, separate from base effort; one unified domain rate; missing labels mean S. Fallible complexity beliefs/reporting and #61 work loss remain future. |
 | Public ticket-domain labels | Implemented (#46) | Frontend/Backend domain is visible on every normal Kanban card in both development and production; engineer competencies and effective rates remain development-only for now |
-| Perceived-work decision model (#49/#56) | Implemented local prototype | Personal/transient fallible estimates plus reported progress, integrated Flow economics and one soft Rank preference; no final Judgement noise. |
-| Autonomous work-selection scope | Implemented local prototype (#49/#56) | Direct comparison across eligible actual To Do and unclaimed In Progress; trigger-specific subsets for priority events; no nomination or true-fastest challenger. |
-| Apparent opportunity signal | Implemented local prototype (#49/#56) | Reported progress determines perceived remaining fraction; hidden actual work and gross experience are not decision completion proxies. |
+| Perceived-work decision model (#49/#56) | Released prototype | Personal/transient fallible estimates plus reported progress, integrated Flow economics and one soft Rank preference; no final Judgement noise. |
+| Autonomous work-selection scope | Released prototype (#49/#56) | Direct comparison across eligible actual To Do and unclaimed In Progress; trigger-specific subsets for priority events; no nomination or true-fastest challenger. |
+| Apparent opportunity signal | Released prototype (#49/#56) | Reported progress determines perceived remaining fraction; hidden actual work and gross experience are not decision completion proxies. |
 | Focus builds Flow | Implemented (#51/#54; `74d098e` and `6177a41`) | Unbounded logarithmic Flow bonus, including Focus 0; Focus accelerates growth. Integrated productivity; Flow resets on switching/completion, not on reassessment/stay. DEV-only metrics; balance provisional. |
 | Partial Flow retention on switching | Future upgrade idea (#50) | Current baseline is full Flow reset; upgrades might preserve some momentum. |
 | Judgement versus situational difficulty | Current estimation-based prototype; broader design open | Uncertainty comes from existing effort estimation; former alternative-count noise model removed. Richer team economics remain future #45. |
-| Event-driven reconsideration (#56) | Implemented local prototype | Genuine personal revisions and relevant priority ordering changes; completion selects next work. No periodic schedule, cooldown or availability-only interrupt. |
+| Event-driven reconsideration (#56) | Released prototype | Genuine personal revisions and relevant priority ordering changes; completion selects next work. No periodic schedule, cooldown or availability-only interrupt. |
 | Numerical simulation event accounting | Shipped and independently verified (#32; `6177a41`) | Chronological completion/assessment deadlines, engineer-order ties, partition-stable RNG/claims and compensated work/time; unsupported precision throws. Simplification assessment deferred #55. |
 | Player-facing explanation of attributes | Explicit UX follow-up (#53) | Explain Judgement as better decisions, Focus as faster Flow building and Rank as managerial influence without requiring knowledge of formulas or hidden truth. |
 | Numerical engine simplification review | Deferred read-only assessment (#55) | Seek simplest maintainable engine that preserves gameplay guarantees; do not refactor merely to reduce lines of code. |
@@ -377,7 +396,7 @@ Record significant decisions here as the project evolves.
 | Non-coding support roles | Future concept (#41) | Roles such as domain architect may improve others' effective competencies without contributing ticket code |
 | Engineer personality and profiles | Very late-stage future concept (#42) | Fully fledged autonomous personalities, profile history and potentially personality-driven self-selected avatars |
 | Pre-selection design review | Completed (#43) | Followed #38; clarified holistic Judgement, Discipline, shared reported board and observability before implementing #31 |
-| Engineer decision design sequence | Initial selection and reconsideration implemented (#31/#32); later stages open | Domain skills #38, Focus/Flow #51/#54 and noisy reconsideration are shipped; blockers #33, work execution #34 and reporting #35 remain future. |
+| Engineer decision design sequence | Initial selection and reconsideration implemented (#31/#32); later stages open | Domain skills #38, Focus/Flow #51/#54 and event-driven perceived-work decisions #49/#56 are shipped; blockers #33, work execution #34 and reporting #35 remain future. |
 | One-to-one review and engineer history | Future concept (#36) | Engineer accounts can be wrong; player Deduction or similar attributes may help uncover contradictions, with reported accounts distinct from verified knowledge |
 | Multiple management layers | Proposed | Not yet committed |
 
