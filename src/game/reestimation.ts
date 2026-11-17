@@ -10,7 +10,6 @@ import { openUnit } from './reconsideration.ts'
 export const DISCOVERY_BASE = 0.8
 export const ERROR_REFERENCE = 0.2
 export const ACCURACY_BASE = 0.30
-export const REVISION_RELATIVE_IMPROVEMENT = 0.001
 
 function nonnegative(value: number) {
   if (!Number.isFinite(value) || value < 0) throw new RangeError('Estimation inputs must be finite and non-negative')
@@ -157,7 +156,7 @@ export function evaluateEstimate(state: GameState, developer: Developer, ticket:
   const personal = personalEffort(state, developer, ticket)
   const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
   const board = ticket.reportedEffortEstimate!
-  const published = candidate > board && (candidate - board) / board >= REVISION_RELATIVE_IMPROVEMENT
+  const published = candidate > board
   if (published) ticket.reportedEffortEstimate = candidate
   ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
   // Even a no-change evaluation consumes this crossing. A revision still below

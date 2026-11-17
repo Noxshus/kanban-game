@@ -93,17 +93,32 @@ test('evaluating the same personal exposure does not compound learning and may l
   assert.equal(state.tickets[0].reportedEffortEstimate, 90)
 })
 
-test('publication materiality suppresses negligible changes without changing the accuracy candidate', () => {
+test('any representable upward estimate publishes, while equal or lower candidates do not', () => {
   const state = advanceSimulation(fixture(), 0.001, () => 0.999)
   state.workLog = [{ developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) }]
   const candidate = revisedEffort(100, 20, workAmount(10), 10, 5)
-  for (const [improvement, published] of [[0.0005, false], [0.002, true]] as const) {
+  const adjacent = (offset: bigint) => {
+    const bits = new DataView(new ArrayBuffer(8))
+    bits.setFloat64(0, candidate)
+    bits.setBigUint64(0, bits.getBigUint64(0) + offset)
+    return bits.getFloat64(0)
+  }
+  const justBelow = adjacent(-1n), justAbove = adjacent(1n)
+  assert.ok(justBelow < candidate && justAbove > candidate)
+  // Adjacent floats exercise the smallest representable increase, not a tolerance.
+  for (const [board, published] of [[justBelow, true], [candidate / 1.0005, true],
+    [candidate, false], [justAbove, false]] as const) {
     const input = structuredClone(state)
-    const board = candidate / (1 + improvement)
     input.tickets[0].reportedEffortEstimate = board
     evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
     assert.equal(input.tickets[0].lastEstimateEvaluation!.candidate, candidate)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.published, published)
+    assert.equal(input.tickets[0].reportedEffortEstimate, published ? candidate : board)
+    assert.deepEqual(input.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
+    assert.equal(input.randomState, state.randomState)
+    assert.equal(input.simulationTime, state.simulationTime)
+    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
+    assert.equal(input.tickets[0].lastEstimateEvaluation!.published, false)
     assert.equal(input.tickets[0].reportedEffortEstimate, published ? candidate : board)
   }
 })
