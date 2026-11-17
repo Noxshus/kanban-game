@@ -1,3 +1,4 @@
+import { decideNow } from './helpers/decisionFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -6,7 +7,6 @@ import { compareWork, integratedWork, workAmount } from '../src/game/work.ts'
 import type { WorkAmount } from '../src/game/work.ts'
 import { effortNumber, recordProductiveEffort } from '../src/game/workLog.ts'
 import { getAverageFlowMultiplier } from '../src/game/flow.ts'
-import { nextRandom } from '../src/game/random.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { simulationReducer } from '../src/store/simulationControls.ts'
@@ -113,25 +113,19 @@ test('simultaneous active work is attributed by active engineer/ticket IDs, neve
   assert.equal(result.workLog!.length, 2)
 })
 
-test('switching at an event boundary credits each ticket only its own productive interval', () => {
-  let state = advanceSimulation(fixture(), 1)
-  state.tickets.push({ ...state.tickets[0], id: 'alternative', rank: 2, completedWork: 0,
-    actualStatus: 'todo', reportedStatus: 'todo', reportedProgress: 0 })
-  state.developers[0].assessmentClock = { elapsed: 1, remaining: 0.5 }
-  let calls = 0
-  state = advanceSimulation(state, 1, () => ++calls === 1 ? 0.999 : 0.5)
-  assert.equal(state.developers[0].activeTicketID, 'alternative')
-  assert.equal(calls, 2) // same assessment and schedule draws as before the ledger
-  close(effort(state)!, expectedEffort(1, 1.5))
-  close(effort(state, 'developer-1', 'alternative')!, expectedEffort(1, 0.5))
-  state.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
-  calls = 0
-  state = advanceSimulation(state, 0.25, () => ++calls === 1 ? 0.999 : 0.5)
-  assert.equal(state.developers[0].activeTicketID, 'ticket-1')
-  close(effort(state)!, expectedEffort(1, 1.5) + expectedEffort(1, 0.25))
-  close(effort(state, 'developer-1', 'alternative')!, expectedEffort(1, 0.5))
+test('decision events credit each ticket only productive intervals and preserve returning experience', () => {
+  let s=advanceSimulation(fixture(),1.5)
+  s.tickets.push({...fixture().tickets[0],id:'alternative',rank:2,completedWork:0,actualStatus:'todo',reportedProgress:99.999})
+  s=advanceSimulation(decideNow(s),.5)
+  assert.equal(s.developers[0].activeTicketID,'alternative')
+  close(effort(s)!,expectedEffort(1,1.5))
+  close(effort(s,'developer-1','alternative')!,expectedEffort(1,.5))
+  s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
+  s=advanceSimulation(decideNow(s),.25)
+  assert.equal(s.developers[0].activeTicketID,'ticket-1')
+  close(effort(s)!,expectedEffort(1,1.5)+expectedEffort(1,.25))
+  close(effort(s,'developer-1','alternative')!,expectedEffort(1,.5))
 })
-
 test('completion caps credited productive work, chains tickets and retains finished contributions', () => {
   const state = fixture(1)
   state.tickets.push({ ...state.tickets[0], id: 'next', rank: 2, requiredWork: 2, actualStatus: 'todo' })
@@ -301,7 +295,7 @@ test('logging consumes no RNG and does not expose history in player information'
   const state = fixture()
   state.developers[0].assessmentClock!.remaining = 0.5
   const result = advanceSimulation(state, 1)
-  assert.equal(result.randomState, nextRandom(state.randomState).state) // the existing reschedule only
+  assert.equal(result.randomState, state.randomState) // the existing reschedule only
   assert.equal(result.tickets[0].reportedEffortEstimate, state.tickets[0].reportedEffortEstimate)
   assert.deepEqual(result.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
   assert.equal(result.tickets[0].rank, state.tickets[0].rank)

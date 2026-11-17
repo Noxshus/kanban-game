@@ -88,11 +88,10 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const conflictHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
           developer: getDiagnosticsView(conflictResult).developers[2],
         }))
-        for (const text of ['Current candidate: ticket-3', 'Alternative candidate: ticket-5',
-          'Projected completion if staying:', 'Projected completion if switching:', 'Efficiency advantage:',
-          'priority preference:', 'noise scale:', 'RNG draw: 0.5', 'sampled error: 0', 'Decision: switch; selected ticket: ticket-5']) {
+        for (const text of ['Trigger: pickup', 'perceived remaining', 'perceived completion', 'Rank contribution', 'score', 'Decision: pickup; selected ticket:']) {
           assert.ok(conflictHtml.includes(text), text)
         }
+        for(const text of ['Time until next reconsideration:', 'Time since previous assessment:', 'sampled error:', 'noise scale:', 'Reported-score nominee:']) assert.ok(!conflictHtml.includes(text))
         const highCompetency = structuredClone(exampleGameState)
         highCompetency.developers[0].competencies.frontend = 100
         const diagnosticHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {

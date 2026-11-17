@@ -26,6 +26,11 @@ function multiply(a: WorkAmount, b: WorkAmount): WorkAmount {
   return normalize(a.mantissa * b.mantissa, a.exponent + b.exponent)
 }
 
+// Perceived remaining fractions can fall below the scalar subnormal range.
+export function scaleWork(work: WorkAmount, factor: number): WorkAmount {
+  return multiply(work, amount(factor))
+}
+
 export function compareWork(a: WorkAmount, b: WorkAmount): number {
   if (a.mantissa === 0 || b.mantissa === 0) return Math.sign(a.mantissa - b.mantissa)
   if (a.exponent < b.exponent) return -compareWork(b, a)

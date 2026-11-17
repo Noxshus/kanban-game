@@ -44,7 +44,9 @@ test('hidden actual status never blocks reorder and reducer works paused or runn
     const result = simulationReducer(session,{type:'reorderTodo',ticketId:'ticket-2',targetId:'ticket-5',after:true})
     assert.equal(order(result.game).at(-1),'ticket-2')
     assert.equal(result.isPaused,isPaused)
-    assert.deepEqual({...result.game,tickets:session.game.tickets},session.game)
+    assert.equal(result.game.simulationTime,session.game.simulationTime)
+    assert.deepEqual(result.game.workLog,session.game.workLog)
+    assert.deepEqual(result.game.tickets.map(t=>t.completedWork),session.game.tickets.map(t=>t.completedWork))
     assert.deepEqual(advanceSimulation(result.game,1),advanceSimulation(structuredClone(result.game),1))
   }
 })
@@ -65,7 +67,7 @@ test('selection across eligible statuses respects global Rank unless overridden'
   assert.equal(result.developers[0].activeTicketID,'ticket-5')
   state.developers.unshift({id:'busy',name:'Busy',productivity:1,activeTicketID:'ticket-5',competencies:{frontend:5,backend:5}, judgement: 5, focus: 5})
   const claimed = advanceSimulation(state,1,()=>0.5)
-  assert.equal(claimed.developers[1].lastAssessment?.current.id,'ticket-2')
+  assert.ok(claimed.developers[1].lastAssessment!.considered.every(t=>t.id!=='ticket-5'))
   assert.equal(claimed.developers[1].activeTicketID,'ticket-3')
 })
 

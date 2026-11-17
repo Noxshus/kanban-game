@@ -25,7 +25,7 @@ export function projectCompletion(developer: Developer, ticket: Ticket, retainFl
 }
 
 // Completion, discovery and overrun boundaries invert the SAME Flow integral.
-export function projectWork(developer: Developer, ticket: Ticket, remaining: WorkAmount, time = 0): CompletionProjection {
+export function projectWork(developer: Developer, ticket: Ticket, remaining: WorkAmount, time = 0, decisionOnly = false): CompletionProjection {
   if (remaining.mantissa === 0) return { seconds: 0, logSeconds: -Infinity }
   const initialMultiplier = 1 + getFlowBonus(time, developer.focus)
   const logRate = getLogDomainRate(developer, ticket)
@@ -43,6 +43,9 @@ export function projectWork(developer: Developer, ticket: Ticket, remaining: Wor
     else high = middle
   }
   const seconds = Math.exp(high)
+  // Decisions can compare log times outside scalar range. Actual work/deadline
+  // projections retain the stricter numerical refinement below.
+  if (decisionOnly) return { seconds: seconds > 0 && Number.isFinite(seconds) ? seconds : null, logSeconds: high }
   if (seconds === 0) throw new RangeError('Positive completion interval is below the numeric time range')
   if (!Number.isFinite(seconds) || !Number.isFinite(time + seconds)) return { seconds: null, logSeconds: high }
   // The log solve is only a bracket estimate. Refine against the SAME integrated

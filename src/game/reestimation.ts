@@ -173,11 +173,11 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
   return session.estimateEvents
 }
 
-export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun') {
+export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun'): boolean {
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder)
   const baseline = baselineFor(ticket, developer, at)
-  if (baseline === null) return
+  if (baseline === null) return false
   migrateOverrunState(ticket, originalBaseline)
   const personal = personalEffort(state, developer, ticket)
   const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
@@ -192,4 +192,7 @@ export function evaluateEstimate(state: GameState, developer: Developer, ticket:
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
   delete developer.estimateDiscovery
   if (developer.workSession) delete developer.workSession.estimateEvents
+  // This result denotes a new adopted belief. A return publication never calls
+  // this path, and a no-op evaluation is not a reconsideration opportunity.
+  return published
 }

@@ -1,3 +1,4 @@
+import { decideNow } from './helpers/decisionFixture.ts'
 import { close, expectedWork } from './helpers/flowExpectation.ts'
 import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
@@ -136,15 +137,15 @@ test('high base productivity overcomes poor fit without a cap, and zero expertis
   assert.equal(completed.developers[0].activeTicketID, undefined)
 })
 
-test('higher-ranked poor fit is still selected ahead of lower-ranked matching work', () => {
+test('a substantial domain productivity advantage can outweigh soft managerial Rank', () => {
   const state = domainScenario('backend', 10, 0)
   delete state.developers[0].activeTicketID
   state.tickets[0].actualStatus = 'todo'
   state.tickets.push({ ...state.tickets[0], id: 'better-fit', rank: 2, workDomain: 'frontend' })
   const result = advanceSimulation(state, 1)
-  assert.equal(result.developers[0].activeTicketID, 'work')
-  close(result.tickets[0].completedWork, expectedWork(1, 1))
-  assert.equal(result.tickets[1].completedWork, 0)
+  assert.equal(result.developers[0].activeTicketID, 'better-fit')
+  close(result.tickets[1].completedWork, expectedWork(3, 1))
+  assert.equal(result.tickets[0].completedWork, 0)
 })
 
 test('switching uses the replacement domain rate and never progresses the abandoned ticket', () => {
@@ -152,7 +153,8 @@ test('switching uses the replacement domain rate and never progresses the abando
   state.tickets.push({ ...state.tickets[0], id: 'replacement', rank: 2, workDomain: 'backend',
     actualStatus: 'todo', assignedDeveloperId: undefined })
   state.developers[0].assessmentClock = { elapsed: 10, remaining: 0 }
-  const result = advanceSimulation(state, 1, (() => { let calls=0; return () => calls++ === 0 ? 0.999 : 0.5 })())
+  state.tickets[1].reportedProgress=99.999
+  const result = advanceSimulation(decideNow(state), 1, () => .5)
   assert.equal(result.developers[0].activeTicketID, 'replacement')
   assert.equal(result.tickets[0].completedWork, 0)
   assert.equal(result.tickets[0].actualStatus, 'in_progress')

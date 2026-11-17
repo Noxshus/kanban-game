@@ -1,166 +1,113 @@
-import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { exampleGameState } from '../src/data/exampleGameState.ts'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
-import { projectCompletion } from '../src/game/completionTime.ts'
-import { remainingWorkNumber } from '../src/game/work.ts'
+import { projectWork } from '../src/game/completionTime.ts'
+import { workAmount, integratedWork } from '../src/game/work.ts'
+import { nextRandom } from '../src/game/random.ts'
 import { effortNumber } from '../src/game/workLog.ts'
+import { decisionFixture, remember } from './helpers/decisionFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
 
-function compareLogs(a: typeof exampleGameState, b: typeof exampleGameState) {
-  assert.deepEqual(a.workLog?.map(entry => [entry.developerId, entry.ticketId]), b.workLog?.map(entry => [entry.developerId, entry.ticketId]))
-  a.workLog?.forEach((entry, index) => close(effortNumber(entry.effort)!, effortNumber(b.workLog![index].effort)!))
+function coincident(reverse=false,offset=0) {
+ const s=decisionFixture(),base=s.developers[0],template=s.tickets[0]
+ base.focus=0;base.competencies.frontend=5
+ s.developers=[{...base,id:'finishing',activeTicketID:'finish'},{...base,id:'revising',activeTicketID:'ongoing'}]
+ s.tickets=[
+  {...template,id:'finish',rank:3,requiredWork:1,estimateHistory:[],initialEffortEstimate:undefined},
+  {...template,id:'ongoing',rank:2,requiredWork:1000,estimateHistory:[],initialEffortEstimate:undefined,reportedEffortEstimate:600},
+  {...template,id:'contested',rank:1,requiredWork:100,actualStatus:'todo',reportedStatus:'todo',estimateHistory:[],initialEffortEstimate:undefined},
+ ]
+ for(const t of s.tickets)for(const d of s.developers)remember(t,d.id,t.id==='ongoing'&&d.id==='revising'?600:t.requiredWork)
+ for(const t of s.tickets)t.reportedEffortEstimate=t.id==='ongoing'?600:t.requiredWork
+ const due=projectWork(s.developers[0],s.tickets[0],workAmount(1)).seconds!
+ const quantity=offset===0?workAmount(1):integratedWork(s.developers[1],s.tickets[1],due+offset,0)
+ s.developers[1].estimateDiscovery={ticketId:'ongoing',boardEstimate:600,requiredWork:1000,judgement:0,productive:true,baseline:600,target:quantity}
+ s.tickets[1].overrunEvaluationConsumed=true
+ if(reverse)s.developers.reverse()
+ return {s,due}
+}
+function equivalent(actual:ReturnType<typeof decisionFixture>,expected:ReturnType<typeof decisionFixture>) {
+ assert.equal(actual.randomState,expected.randomState)
+ assert.deepEqual(actual.tickets.map(t=>[t.id,t.assignedDeveloperId,t.actualStatus,t.estimateHistory]),expected.tickets.map(t=>[t.id,t.assignedDeveloperId,t.actualStatus,t.estimateHistory]))
+ assert.deepEqual(actual.developers.map(d=>[d.id,d.activeTicketID,d.lastAssessment]),expected.developers.map(d=>[d.id,d.activeTicketID,d.lastAssessment]))
+ assert.deepEqual(actual.workLog?.map(e=>[e.developerId,e.ticketId]),expected.workLog?.map(e=>[e.developerId,e.ticketId]))
+ actual.workLog?.forEach((e,i)=>close(effortNumber(e.effort)!,effortNumber(expected.workLog![i].effort)!))
 }
 
-function coincident(reverse = false) {
-  const state = structuredClone(exampleGameState)
-  const base = { ...state.developers[0], productivity: 1, focus: 0, competencies: { frontend: 5, backend: 5 } }
-  state.developers = [
-    { ...base, id: 'finishing', activeTicketID: 'finishing-work', assessmentClock: { elapsed: 0, remaining: 1000 } },
-    { ...base, id: 'reconsidering', activeTicketID: 'ongoing', assessmentClock: { elapsed: 0, remaining: 1000 } },
-  ]
-  const ticket = state.tickets[0]
-  state.tickets = [
-    { ...ticket, id: 'finishing-work', rank: 3, requiredWork: 1, completedWork: 0 },
-    { ...ticket, id: 'ongoing', rank: 2, requiredWork: 1000, completedWork: 0 },
-    { ...ticket, id: 'contested', rank: 1, requiredWork: 100, completedWork: 0, actualStatus: 'todo', reportedStatus: 'todo' },
-  ]
-  const due = projectCompletion(state.developers[0], state.tickets[0], true).seconds!
-  assert.ok(due > 0)
-  state.developers[1].assessmentClock!.remaining = due
-  if (reverse) state.developers.reverse()
-  return { state: estimatedFixture(state), due }
-}
-
-test('positive-time completion and reassessment share one engineer-ordered decision pass', () => {
-  const { state, due } = coincident()
-  let calls = 0
-  const result = advanceSimulation(state, due + 0.25, () => { calls++; return 0.99 })
-  assert.equal(result.tickets[0].actualStatus, 'done')
-  assert.equal(result.developers[0].activeTicketID, 'contested')
-  assert.equal(result.developers[0].lastAssessment?.kind, 'pickup')
-  assert.equal(result.developers[1].activeTicketID, 'ongoing')
-  assert.equal(result.developers[1].lastAssessment?.kind, 'reconsideration')
-  assert.equal(result.developers[1].lastAssessment?.alternative, null)
-  assert.equal(calls, 2) // pickup schedule, then no-alternative reassessment schedule
+test('positive-time completion and genuine estimate revision resolve claims in engineer order, not event-type order',()=>{
+ for(const reverse of [false,true]) {
+  const {s,due}=coincident(reverse),original=structuredClone(s),r=advanceSimulation(s,due+.25,()=>.999999)
+  assert.equal(r.developers[0].activeTicketID,'contested')
+  assert.equal(r.developers[1].activeTicketID,'ongoing')
+  assert.equal(r.tickets[0].actualStatus,'done')
+  assert.equal(r.developers.find(d=>d.id==='revising')!.lastAssessment!.trigger,'estimate_revision')
+  assert.equal(r.randomState,s.randomState) // supplied RNG does not mutate the seed
+  assert.equal(new Set(r.developers.map(d=>d.activeTicketID)).size,2)
+  assert.deepEqual(s,original)
+ }
 })
 
-test('reverse engineer order gives the earlier reassessment first claim, not a pickup priority', () => {
-  const { state, due } = coincident(true)
-  let calls = 0
-  const result = advanceSimulation(state, due + 0.25, () => { calls++; return 0.99 })
-  assert.equal(result.developers[0].activeTicketID, 'contested')
-  assert.equal(result.developers[0].lastAssessment?.kind, 'reconsideration')
-  assert.equal(result.developers[1].activeTicketID, 'ongoing')
-  const claims = result.developers.map(developer => developer.activeTicketID)
-  assert.equal(new Set(claims).size, claims.length)
-  assert.equal(calls, 3) // error, reassessment schedule, then pickup schedule
+test('nonbinary partitions and JSON preserve mixed-event coincidence, histories, claims and exact RNG',()=>{
+ for(const reverse of [false,true])for(const parts of [[.3,.3,.3],[.1,.2,.3],[.13,.17,.19,.23]]) {
+  const {s,due}=coincident(reverse),whole=advanceSimulation(s,due+.25)
+  let split=s
+  for(const dt of parts)split=JSON.parse(JSON.stringify(advanceSimulation(split,dt)))
+  split=advanceSimulation(split,due+.25-parts.reduce((a,b)=>a+b,0))
+  equivalent(split,whole)
+  assert.equal(whole.randomState,reverse?s.randomState:nextRandom(s.randomState).state)
+ }
 })
 
-test('partitioning across decisions and completions preserves claims, RNG and numerical work', () => {
-  for (const reverse of [false, true]) {
-    const { state, due } = coincident(reverse)
-    const whole = advanceSimulation(state, due + 0.25)
-    const first = advanceSimulation(state, due / 2)
-    const split = advanceSimulation(advanceSimulation(first, due / 2), 0.25)
-    assert.equal(whole.randomState, split.randomState)
-    compareLogs(whole, split)
-    assert.deepEqual(whole.developers.map(d => d.activeTicketID), split.developers.map(d => d.activeTicketID))
-    assert.deepEqual(whole.tickets.map(t => t.actualStatus), split.tickets.map(t => t.actualStatus))
-    for (let i = 0; i < whole.tickets.length; i++) close(remainingWorkNumber(whole.tickets[i])!, remainingWorkNumber(split.tickets[i])!)
-  }
+test('nearby distinct completion and discovery instants are not merged by an epsilon window',()=>{
+ for(const offset of [-1e-12,1e-12]) {
+  const {s,due}=coincident(false,offset),r=advanceSimulation(s,due+.25,()=>.999999)
+  assert.equal(r.developers[offset<0?1:0].activeTicketID,'contested')
+ }
 })
 
-test('three 0.3 advances and the remainder preserve the exact coincident-event decisions and RNG', () => {
-  for (const reverse of [false, true]) {
-    const { state, due } = coincident(reverse)
-    state.randomState = 1
-    const whole = advanceSimulation(state, due + 0.25)
-    let split = state
-    for (let i = 0; i < 3; i++) split = advanceSimulation(split, 0.3)
-    split = advanceSimulation(split, due + 0.25 - 0.9)
-    assert.equal(whole.randomState, reverse ? 2165703038 : 1586005467)
-    assert.equal(split.randomState, whole.randomState)
-    compareLogs(whole, split)
-    assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment?.outcome, d.lastAssessment?.selectedId]),
-      whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment?.outcome, d.lastAssessment?.selectedId]))
-    assert.deepEqual(split.tickets.map(t => [t.id, t.actualStatus, t.assignedDeveloperId]),
-      whole.tickets.map(t => [t.id, t.actualStatus, t.assignedDeveloperId]))
-  }
+test('a revision at the exact call boundary runs once; zero-time and subsequent tiny work never repeat it',()=>{
+ const {s,due}=coincident(true)
+ const first=advanceSimulation(s,due,()=>.999999)
+ const history=structuredClone(first.tickets[1].estimateHistory)
+ assert.equal(first.developers[0].lastAssessment!.trigger,'estimate_revision')
+ assert.deepEqual(advanceSimulation(first,0,()=>{throw Error('Zero time')}),first)
+ const next=advanceSimulation(JSON.parse(JSON.stringify(first)),.01,()=>{throw Error('No repeated decision')})
+ assert.deepEqual(next.tickets[1].estimateHistory,history)
 })
 
-test('nonbinary partitions and JSON restoration retain mixed-event coincidence in both engineer orders', () => {
-  for (const reverse of [false, true]) {
-    for (const parts of [[0.1, 0.2, 0.3], [0.13, 0.17, 0.19, 0.23]]) {
-      const { state, due } = coincident(reverse)
-      const whole = advanceSimulation(state, due + 0.25)
-      let split = state
-      for (const seconds of parts) split = JSON.parse(JSON.stringify(advanceSimulation(split, seconds)))
-      split = advanceSimulation(split, due + 0.25 - parts.reduce((sum, part) => sum + part, 0))
-      assert.equal(split.randomState, whole.randomState)
-      compareLogs(whole, split)
-      assert.deepEqual(split.developers.map(d => [d.activeTicketID, d.lastAssessment?.kind, d.lastAssessment?.outcome]),
-        whole.developers.map(d => [d.activeTicketID, d.lastAssessment?.kind, d.lastAssessment?.outcome]))
-      assert.deepEqual(split.tickets.map(t => t.assignedDeveloperId), whole.tickets.map(t => t.assignedDeveloperId))
-    }
-  }
+test('a one-ULP earlier discovery retains chronological priority over engineer order',()=>{
+ const {s,due}=coincident()
+ const bits=new DataView(new ArrayBuffer(8))
+ bits.setFloat64(0,due);bits.setBigUint64(0,bits.getBigUint64(0)-1n)
+ const earlier=bits.getFloat64(0),d=s.developers[1],ticket=s.tickets[1]
+ const target=integratedWork(d,ticket,earlier,0)
+ assert.equal(projectWork(d,ticket,target).seconds,earlier)
+ d.estimateDiscovery!.target=target
+ const result=advanceSimulation(s,due+.25,()=>.999999)
+ assert.equal(result.developers[1].activeTicketID,'contested')
+ assert.equal(result.developers[0].activeTicketID,'ongoing')
 })
 
-test('nearby but genuinely different event times are not merged by a tolerance window', () => {
-  const { state, due } = coincident()
-  state.developers[1].assessmentClock!.remaining = due - 1e-12
-  const earlierAssessment = advanceSimulation(state, due + 0.25, () => 0.99)
-  assert.equal(earlierAssessment.developers[1].activeTicketID, 'contested')
-  assert.equal(earlierAssessment.developers[0].activeTicketID, 'ongoing')
-  const later = coincident()
-  later.state.developers[1].assessmentClock!.remaining = due + 1e-12
-  const earlierCompletion = advanceSimulation(later.state, due + 0.25, () => 0.99)
-  assert.equal(earlierCompletion.developers[0].activeTicketID, 'contested')
-  assert.equal(earlierCompletion.developers[1].activeTicketID, 'ongoing')
+test('completion wins a discovery tie on the same ticket and releases every claim before pickups',()=>{
+ const s=decisionFixture(),d=s.developers[0],t=s.tickets[0]
+ d.estimateDiscovery={ticketId:t.id,requiredWork:100,boardEstimate:100,judgement:0,productive:true,target:workAmount(100)}
+ t.overrunEvaluationConsumed=true
+ const due=projectWork(d,t,workAmount(100)).seconds!
+ const r=advanceSimulation(s,due,()=>{throw Error('Completion cannot trigger reconsideration')})
+ assert.equal(r.tickets[0].actualStatus,'done')
+ assert.equal(r.tickets[0].lastEstimateEvaluation,undefined)
+ assert.equal(r.developers[0].lastAssessment,undefined)
+ assert.equal(r.developers[0].activeTicketID,undefined)
 })
 
-test('one-ULP-separated completion and assessment events retain chronological priority', () => {
-  for (const direction of [-1n, 1n]) {
-    const { state, due } = coincident()
-    const bits = new DataView(new ArrayBuffer(8))
-    bits.setFloat64(0, due)
-    bits.setBigUint64(0, bits.getBigUint64(0) + direction)
-    state.developers[1].assessmentClock!.remaining = bits.getFloat64(0)
-    const result = advanceSimulation(state, due + 0.25, () => 0.99)
-    assert.equal(result.developers[direction < 0n ? 1 : 0].activeTicketID, 'contested')
-  }
-})
-
-test('an assessment at a call boundary is processed once, with no repeated zero-duration event', () => {
-  const { state } = coincident()
-  state.tickets[0].requiredWork = 1000
-  state.developers[0].assessmentClock!.remaining = 0.3
-  let draws = 0
-  const random = () => { draws++; return 0.5 }
-  const first = advanceSimulation(state, 0.3, random)
-  const afterBoundary = draws
-  assert.ok(first.developers[0].assessmentClock!.remaining > 0)
-  const zero = advanceSimulation(first, 0, random)
-  assert.deepEqual(zero, first)
-  const second = advanceSimulation(first, 0.1, random)
-  assert.equal(draws, afterBoundary)
-  assert.ok(second.developers[0].assessmentClock!.remaining > 0)
-})
-
-test('completion/assessment ties log ending work before new claims, in both engineer orders', () => {
-  for (const reverse of [false, true]) {
-    const { state, due } = coincident(reverse)
-    const atBoundary = advanceSimulation(state, due, () => 0.99)
-    assert.equal(atBoundary.developers[0].activeTicketID, 'contested')
-    assert.ok(!atBoundary.workLog!.some(entry => entry.ticketId === 'contested'))
-    const finished = atBoundary.workLog!.find(entry => entry.ticketId === 'finishing-work')!
-    assert.equal(finished.developerId, 'finishing')
-    assert.equal(effortNumber(finished.effort), 1)
-    const after = advanceSimulation(atBoundary, 0.25, () => 0.99)
-    const newWork = after.workLog!.find(entry => entry.ticketId === 'contested')!
-    assert.equal(newWork.developerId, state.developers[0].id)
-    assert.ok(effortNumber(newWork.effort)! > 0)
-    compareLogs(after, advanceSimulation(state, due + 0.25, () => 0.99))
-  }
+test('simultaneous ending work is logged before new claims, without progressing two tickets at the boundary',()=>{
+ for(const reverse of [false,true]) {
+  const {s,due}=coincident(reverse),r=advanceSimulation(s,due,()=>.999999)
+  assert.equal(r.developers[0].activeTicketID,'contested')
+  assert.equal(r.workLog!.some(e=>e.ticketId==='contested'),false)
+  assert.equal(effortNumber(r.workLog!.find(e=>e.ticketId==='finish')!.effort),1)
+  const after=advanceSimulation(r,.25,()=>.999999)
+  assert.equal(after.workLog!.find(e=>e.ticketId==='contested')!.developerId,s.developers[0].id)
+  equivalent(after,advanceSimulation(s,due+.25,()=>.999999))
+ }
 })

@@ -86,6 +86,7 @@ export interface Developer {
   }
   // One immutable decision snapshot survives later progress/rank changes; never an event log.
   lastAssessment?: AssessmentDecision
+  // Legacy saves only; the event-driven engine never schedules this clock.
   assessmentClock?: { elapsed: number; remaining: number; originTime?: EventTime; dueTime?: EventTime }
   // Only the next seeded work target; personal experience remains exclusively in workLog.
   estimateDiscovery?: EstimateDiscovery
@@ -93,35 +94,28 @@ export interface Developer {
   pausedEstimateDiscoveries?: EstimateDiscovery[]
 }
 
-export interface CandidateScore {
+export interface TicketAppraisal {
   id: string
   rank: number
   reportedProgress: number
   rankScore: number
-  opportunityScore: number
+  estimatedTotal: number
+  estimateSource: 'remembered' | 'temporary'
+  perceivedRemaining: number | null
+  completionSeconds: number | null
+  logCompletionTime: number | null
+  timeLimit: 'zero' | 'infinite' | null
   rankContribution: number
-  opportunityContribution: number
-  score: number
+  score: number | null
 }
 
 export interface AssessmentDecision {
-  kind: 'pickup' | 'reconsideration'
-  current: CandidateScore
-  alternative: CandidateScore | null
-  nomination: CandidateScore | null
-  judgement: number
+  trigger: 'pickup' | 'estimate_revision' | 'priority'
+  currentTicketId: string | null
+  considered: TicketAppraisal[]
+  at: EventTime
   flowDuration: number
-  staySeconds: number | null
-  switchSeconds: number | null
-  efficiencyAdvantage: number | null
-  efficiencyLimit: 'stay' | 'switch' | null
-  rankPreference: number
-  complexity: number
-  noiseScale: number
-  draw: number | null
-  error: number
-  perceivedAdvantage: number | null
-  outcome: 'stay' | 'switch' | 'unambiguous'
+  outcome: 'pickup' | 'stay' | 'switch'
   selectedId: string
 }
 

@@ -1,164 +1,138 @@
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
-import { scoreCandidates, nominateCandidate, assessWork, selectWork } from '../src/game/selectWork.ts'
-import { projectCompletion } from '../src/game/completionTime.ts'
-import { getAverageFlowMultiplier } from '../src/game/flow.ts'
-import { exampleGameState } from '../src/data/exampleGameState.ts'
-import { getPlayerView } from '../src/store/playerView.ts'
-import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
+import { selectWork, RANK_PREFERENCE } from '../src/game/selectWork.ts'
+import { projectWork } from '../src/game/completionTime.ts'
+import { workAmount } from '../src/game/work.ts'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
+import { estimateInitialEffort } from '../src/game/effortEstimate.ts'
+import { nextRandom } from '../src/game/random.ts'
+import { decisionFixture, remember } from './helpers/decisionFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
+const noDraw = () => { throw Error('No decision RNG for remembered work') }
 
-function scenario(currentWork=100,alternativeWork=50) {
- const state=structuredClone(exampleGameState)
- state.developers=[{...state.developers[0],focus:5,judgement:0,productivity:1,competencies:{frontend:5,backend:5},assessmentClock:{elapsed:0,remaining:1000}}]
- state.tickets=[{...state.tickets[0],rank:1,requiredWork:currentWork,completedWork:0,reportedProgress:0},
- {...state.tickets[0],id:'alternative',rank:2,actualStatus:'todo',reportedStatus:'todo',requiredWork:alternativeWork,completedWork:0,reportedProgress:100}]
- return state
-}
-function compare(state:ReturnType<typeof scenario>,draw=0.5){return assessWork(state.tickets[0],state.tickets[1],state.tickets,state.developers[0],'reconsideration',()=>draw)}
-
-test('candidate nomination uses half inverse eligible ordinal and half normalized public progress',()=>{
- const state=scenario();state.tickets[0].rank=2;state.tickets[0].reportedProgress=20;state.tickets[1].rank=7;state.tickets[1].reportedProgress=90
- const scores=scoreCandidates([...state.tickets].reverse())
- close(scores[0].score,0.6);close(scores[1].score,0.7)
- assert.equal(nominateCandidate(state.tickets)?.id,'alternative')
- state.tickets[0].reportedProgress=0;state.tickets[1].reportedProgress=50
- assert.equal(nominateCandidate([...state.tickets].reverse())?.id,'ticket-1')
- state.tickets[1].completedWork=49
- assert.deepEqual(scoreCandidates(state.tickets),scoreCandidates(state.tickets.map(t=>({...t,completedWork:0}))))
- state.tickets[1].reportedProgress=Infinity;assert.equal(scoreCandidates(state.tickets)[1].opportunityScore,1)
- state.tickets[1].reportedProgress=NaN;assert.equal(scoreCandidates(state.tickets)[1].opportunityScore,0)
-})
-
-test('completion projection inverts integrated Flow and retains current versus fresh alternative Flow',()=>{
- const state=scenario(), developer=state.developers[0], ticket=state.tickets[0]
- for(const duration of [0,10,100]) {
-  developer.flowStreak={ticketId:ticket.id,duration}
-  const p=projectCompletion(developer,ticket,true)
-  close(p.seconds!*getAverageFlowMultiplier(duration,p.seconds!,developer.focus),100)
- }
- assert.ok(projectCompletion(developer,ticket,true).seconds!<projectCompletion(developer,ticket).seconds!)
- ticket.workDomain='backend';developer.competencies.backend=10
- assert.ok(projectCompletion(developer,ticket).seconds!<projectCompletion(developer,{...ticket,workDomain:'frontend'}).seconds!)
-})
-
-test('independent logarithmic efficiency, soft Rank preference and logistic error determine outcome',()=>{
- const state=scenario(),decision=compare(state,0.75)
- const stay=projectCompletion(state.developers[0],state.tickets[0],true).seconds!
- const change=projectCompletion(state.developers[0],state.tickets[1]).seconds!
- close(decision.efficiencyAdvantage!,Math.log(stay)-Math.log(change))
- close(decision.rankPreference,-0.125)
- close(decision.complexity,2)
- close(decision.noiseScale,2)
- close(decision.error,2*Math.log(3))
- close(decision.perceivedAdvantage!,Math.log(stay)-Math.log(change)-0.125+2*Math.log(3))
- assert.equal(decision.outcome,'switch')
- assert.equal(decision.selectedId,'alternative')
-})
-
-test('soft priority favours higher-ranked slightly slower work but cannot overrule substantial inefficiency',()=>{
- const state=scenario(100,101);state.tickets[0].rank=2;state.tickets[1].rank=1
- const slight=compare(state)
- assert.ok(slight.efficiencyAdvantage!<0);assert.equal(slight.outcome,'switch')
- state.tickets[1].requiredWork=10000
- assert.equal(compare(state).outcome,'stay')
- const fast=scenario(10000,1)
- assert.equal(compare(fast).outcome,'switch')
-})
-
-test('both incorrect stays and switches are possible; high Judgement improves accuracy in either direction',()=>{
- for(const [current,other] of [[100,50],[50,100]]) {
-  const state=scenario(current,other)
-  const target=compare(state).outcome
-  assert.equal(compare(state,target==='switch'?0.001:0.999).outcome,target==='switch'?'stay':'switch')
-  const counts=[]
-  for(const judgement of [0,10,100,10000]) {
-   state.developers[0].judgement=judgement
-   let correct=0
-   for(let i=0;i<500;i++)if(compare(state,(i+0.5)/500).outcome===target)correct++
-   counts.push(correct)
+test('direct scores independently match perceived-work projection plus one soft Rank contribution', () => {
+  const s = decisionFixture(), d = s.developers[0]
+  s.tickets.push({ ...s.tickets[0], id: 'other', rank: 2, requiredWork: 200, reportedProgress: 25, estimateHistory: [] })
+  remember(s.tickets[1], d.id, 80)
+  const result = selectWork(s.tickets, d, noDraw)!
+  for (const option of result.considered) {
+    const remaining = option.estimatedTotal * (1 - option.reportedProgress / 100)
+    const t = s.tickets.find(t => t.id === option.id)!
+    const expected = projectWork(d, t, workAmount(remaining), 0, true)
+    close(option.score!, -expected.logSeconds + 0.25 * option.rankScore)
+    close(option.perceivedRemaining!, remaining)
   }
-  assert.ok(counts.every((count,i)=>i===0||count>=counts[i-1]))
-  assert.ok(counts[3]>counts[0]);assert.equal(counts[3],500)
- }
+  assert.equal(result.selectedId, 'other')
+  assert.equal(RANK_PREFERENCE, 0.25)
 })
 
-test('Focus only affects actual Flow trajectories, never uncertainty or the rank preference',()=>{
- const state=scenario()
- const low=compare(state,0.75)
- state.developers[0].focus=1000
- const high=compare(state,0.75)
- assert.equal(high.noiseScale,low.noiseScale);assert.equal(high.error,low.error)
- assert.equal(high.rankPreference,low.rankPreference)
- state.developers[0].flowStreak={ticketId:'ticket-1',duration:1e5}
- assert.ok(compare(state).efficiencyAdvantage!<high.efficiencyAdvantage!)
+test('reported progress and personal opinions drive appraisal, not actual completed work or gross experience', () => {
+  const s = decisionFixture(), d = s.developers[0]
+  s.tickets[0].reportedProgress = 90
+  const first = selectWork(s.tickets, d, noDraw)!
+  s.tickets[0].completedWork = 99
+  s.tickets[0].requiredWork = 1e20
+  s.workLog = [{developerId:d.id,ticketId:'current',effort:workAmount(1e100)}]
+  assert.deepEqual(selectWork(s.tickets, d, noDraw), first)
+  s.tickets[0].reportedProgress = 10
+  assert.equal(selectWork(s.tickets,d,noDraw)!.considered[0].perceivedRemaining,90)
 })
 
-test('high Judgement correctness targets the management-weighted outcome, including a slower priority choice',()=>{
- const state=scenario(100,101);state.tickets[0].rank=2;state.tickets[1].rank=1
- assert.ok(compare(state).efficiencyAdvantage!<0)
- assert.ok(compare(state).perceivedAdvantage!>0)
- assert.equal(compare(state,0.01).outcome,'stay')
- state.developers[0].judgement=100000
- assert.equal(compare(state,0.01).outcome,'switch')
+test('retained Flow favours staying, while soft Rank permits only a modest efficiency sacrifice', () => {
+  for (const [remaining, flow, selected] of [[28,40,'current'],[32,0,'other'],[300,0,'current']] as const) {
+    const s=decisionFixture(),d=s.developers[0]
+    s.tickets[0].rank=2; s.tickets[0].reportedProgress=70 // current perceived R=30
+    s.tickets.push({...s.tickets[0],id:'other',rank:1,requiredWork:remaining,reportedProgress:0,estimateHistory:[]})
+    remember(s.tickets[1],d.id)
+    d.flowStreak={ticketId:'current',duration:flow}
+    const decision=selectWork(s.tickets,d,noDraw,'priority',{high:0,low:0},s.tickets[0])!
+    assert.equal(decision.selectedId,selected)
+  }
 })
 
-test('nomination snapshot is distinct from the final Rank-prior ordinal pool including current work',()=>{
- const state=scenario()
- const decision=compare(state)
- assert.equal(decision.nomination?.id,'alternative')
- assert.equal(decision.nomination?.rankScore,1)
- assert.equal(decision.alternative?.rankScore,0.5)
+test('unfamiliar appraisals can rationally choose objectively worse work without a second Judgement roll', () => {
+  const s=decisionFixture(),d=s.developers[0]
+  delete d.activeTicketID; d.judgement=0;d.competencies.frontend=0
+  s.tickets=[{...s.tickets[0],id:'small',rank:1,requiredWork:30,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined},
+    {...s.tickets[0],id:'large',rank:2,requiredWork:1000,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined}]
+  const before=structuredClone(s),draws=[0.5,0.99];let calls=0
+  const decision=selectWork(s.tickets,d,()=>{assert.ok(calls<2);return draws[calls++]})!
+  assert.equal(calls,2); assert.equal(decision.selectedId,'large')
+  close(decision.considered[1].estimatedTotal,10)
+  assert.deepEqual(s,before)
+  assert.ok(!('draw' in decision) && !('nomination' in decision))
 })
 
-test('ties stay at neutral error; impossible work, RNG endpoints and huge finite attributes are explicit',()=>{
- const state=scenario(100,100)
- // Equal times still have the explicit ordinal Rank preference; no noise at u=0.5.
- assert.equal(compare(state).error,0)
- assert.equal(compare(state).outcome,'stay')
- for(const u of [0,1])assert.ok(Number.isFinite(compare(state,u).error))
- state.developers[0].judgement=Number.MAX_VALUE;state.developers[0].focus=Number.MAX_VALUE
- assert.ok(Number.isFinite(compare(state).noiseScale))
- state.developers[0].productivity=0
- const impossible=compare(state)
- assert.equal(impossible.efficiencyAdvantage,0);assert.equal(impossible.staySeconds,null)
- assert.equal(impossible.switchSeconds,null)
- for(const value of [-1,NaN,Infinity]) {
-  state.developers[0].judgement=value;assert.throws(()=>compare(state),RangeError)
- }
+test('winning preview becomes exactly one official personal assessment/publication, without resampling', () => {
+  const s=decisionFixture(),d=s.developers[0]
+  delete d.activeTicketID
+  s.tickets=[{...s.tickets[0],id:'one',rank:1,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined},
+    {...s.tickets[0],id:'two',rank:2,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined}]
+  const first=nextRandom(1),second=nextRandom(first.state)
+  const decision=selectWork(s.tickets,d,(()=>{const v=[first.value,second.value];return()=>v.shift()!})())!
+  const result=advanceSimulation(s,0.0001),winner=result.tickets.find(t=>t.id===decision.selectedId)!
+  const preview=decision.considered.find(t=>t.id===winner.id)!
+  assert.equal(winner.initialEffortEstimate!.totalWork,preview.estimatedTotal)
+  assert.equal(winner.reportedEffortEstimate,preview.estimatedTotal)
+  assert.deepEqual(winner.estimateHistory!.map(e=>e.kind),['assessment','publication'])
+  assert.equal(result.tickets.find(t=>t.id!==winner.id)!.estimateHistory,undefined)
+  assert.equal(result.randomState,nextRandom(second.state).state) // two previews, one discovery target
 })
 
-test('idle pickup compares reported-score nominee with fastest fresh-Flow alternative using one draw',()=>{
- const state=scenario(1000,1);state.tickets[1].reportedProgress=0
- let calls=0
- const decision=selectWork(state.tickets,state.developers[0],()=>{calls++;return 0.5})!
- assert.equal(calls,1);assert.equal(decision.current.id,'ticket-1')
- assert.equal(decision.selectedId,'alternative');assert.equal(decision.kind,'pickup')
- assert.equal(selectWork([state.tickets[0]],state.developers[0],()=>{throw Error('Unnecessary draw')})!.draw,null)
- const bestNominee=scenario(1,1000);bestNominee.tickets[1].reportedProgress=0
- assert.equal(selectWork(bestNominee.tickets,bestNominee.developers[0],()=>0.999)!.selectedId,'alternative')
+test('Judgement and relevant competency improve the SAME existing temporary estimate distribution', () => {
+  for(const [j,c] of [[0,0],[100,0],[0,100],[100,100]]) {
+    const s=decisionFixture(),d=s.developers[0]
+    s.tickets[0].estimateHistory=undefined;s.tickets[0].initialEffortEstimate=undefined;d.judgement=j;d.competencies.frontend=c
+    const e=selectWork(s.tickets,d,()=>0.8)!.considered[0].estimatedTotal
+    close(e,100*Math.exp(Math.log1p(-0.8)/(1+.09*j+.09*c)))
+    assert.equal(e,estimateInitialEffort(100,j,c,.8))
+  }
 })
 
-test('log projections remain comparable across incremental scales without overflowing time ratios',()=>{
- for(const scale of [1e-200,1,1e200]) {
-  const state=scenario(100*scale,50*scale);state.developers[0].productivity=scale
-  close(compare(state).efficiencyAdvantage!,compare(scenario()).efficiencyAdvantage!)
- }
- const state=scenario(100,50);state.developers[0].productivity=1e308;state.developers[0].competencies.frontend=100
- const p=projectCompletion(state.developers[0],state.tickets[0])
- assert.ok(Number.isFinite(p.logSeconds));assert.ok(p.seconds!>0)
- state.tickets[0].requiredWork=Number.MAX_VALUE;state.developers[0].productivity=Number.MIN_VALUE
- assert.equal(projectCompletion(state.developers[0],state.tickets[0]).seconds,null)
- assert.ok(Number.isFinite(projectCompletion(state.developers[0],state.tickets[0]).logSeconds))
+test('event subsets retain full eligible Rank ordinals and stable Rank/ID ties independent of array order', () => {
+  const s=decisionFixture(),d=s.developers[0]
+  for(const [id,rank] of [['middle',2],['last',3]] as const) {
+    const t={...s.tickets[0],id,rank,estimateHistory:[]}; remember(t,d.id);s.tickets.push(t)
+  }
+  const ids=new Set(['last'])
+  const r=selectWork(s.tickets,d,noDraw,'priority',{high:0,low:0},s.tickets[0],ids)!
+  assert.deepEqual(r.considered.map(t=>[t.id,t.rankScore]),[['current',1],['last',1/3]])
+  for(const t of s.tickets){t.reportedProgress=100;t.rank=1}
+  assert.equal(selectWork([...s.tickets].reverse(),d,noDraw)!.selectedId,'current')
 })
 
-test('diagnostics retain actual decisions read-only and player selectors omit all assessment/Flow data',()=>{
- const state=scenario();state.developers[0].assessmentClock.remaining=0
- const result=advanceSimulation(state,0.1,()=>0.5)
- const before=structuredClone(result)
- const diagnostic=getDiagnosticsView(result).developers[0]
- assert.deepEqual(diagnostic.lastAssessment,result.developers[0].lastAssessment)
- assert.deepEqual(result,before)
- assert.deepEqual(Object.keys(getPlayerView(result).developers[0]).sort(),['id','name','productivity'])
+test('unchosen legacy evidence is appraised read-only without an independent estimate reroll or fabricated history', () => {
+  const s=decisionFixture(),t=s.tickets[0],d=s.developers[0]
+  delete t.estimateHistory
+  t.initialEffortEstimate={developerId:d.id,totalWork:20}
+  t.reportedEffortEstimate=60
+  const before=structuredClone(s)
+  const appraisal=selectWork([t],d,noDraw)!.considered[0]
+  assert.equal(appraisal.estimateSource,'remembered')
+  assert.equal(appraisal.estimatedTotal,20)
+  assert.deepEqual(s,before)
+  t.lastEstimateEvaluation={developerId:d.id,reason:'discovery',personalWork:10,candidate:40,published:true}
+  const revised=structuredClone(s)
+  assert.equal(selectWork([t],d,noDraw)!.considered[0].estimatedTotal,40)
+  assert.deepEqual(s,revised)
+})
+
+test('zero/100% reports, impossible rates, tiny fractions and enormous finite scales have explicit JSON-safe outcomes', () => {
+  const s=decisionFixture(),d=s.developers[0],t=s.tickets[0]
+  d.productivity=0
+  assert.equal(selectWork([t],d,noDraw)!.considered[0].timeLimit,'infinite')
+  t.reportedProgress=100
+  assert.equal(selectWork([t],d,noDraw)!.considered[0].timeLimit,'zero')
+  t.reportedProgress=50;d.productivity=1
+  t.estimateHistory=[];remember(t,d.id,Number.MIN_VALUE)
+  const tiny=selectWork([t],d,noDraw)!.considered[0]
+  assert.equal(tiny.perceivedRemaining,null)
+  assert.ok(tiny.logCompletionTime!<Math.log(Number.MIN_VALUE))
+  assert.equal(tiny.timeLimit,null)
+  for(const [total,rate] of [[1e300,1e-300],[Number.MIN_VALUE,Number.MAX_VALUE]]) {
+    t.estimateHistory=[];remember(t,d.id,total);d.productivity=rate
+    const r=selectWork([t],d,noDraw)!
+    assert.ok(Number.isFinite(r.considered[0].score))
+    assert.deepEqual(JSON.parse(JSON.stringify(r)),r)
+  }
 })

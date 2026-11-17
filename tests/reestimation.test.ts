@@ -426,7 +426,7 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
     assert.equal(whole.tickets[0].lastEstimateEvaluation, undefined)
     assert.equal(whole.tickets[1].lastEstimateEvaluation!.developerId, 'learning')
     assert.equal(whole.developers.find(d => d.id === 'finishing')!.activeTicketID, 'contested')
-    assert.equal(whole.randomState, nextRandom(nextRandom(state.randomState).state).state)
+    assert.equal(whole.randomState, nextRandom(state.randomState).state)
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]), whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]))
     assert.deepEqual(split.tickets.map(t => [t.id, t.reportedEffortEstimate, t.lastEstimateEvaluation]),

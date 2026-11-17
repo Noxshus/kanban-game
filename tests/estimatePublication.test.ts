@@ -1,3 +1,4 @@
+import { decideNow } from './helpers/decisionFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -22,7 +23,7 @@ test('a genuine pickup publishes total work once, with one estimate draw before 
   const firstDraw = nextRandom(1), secondDraw = nextRandom(firstDraw.state)
   const first = advanceSimulation(input, 0.1)
   const expected = estimateInitialEffort(1e6, 0, 0, firstDraw.value)
-  assert.equal(first.randomState, nextRandom(secondDraw.state).state) // one pending discovery threshold follows #57
+  assert.equal(first.randomState, secondDraw.state) // initial preview plus discovery threshold; no periodic schedule
   assert.deepEqual(first.tickets[0].initialEffortEstimate, { developerId: input.developers[0].id, totalWork: expected })
   assert.equal(first.tickets[0].reportedEffortEstimate, expected)
   assert.equal(first.tickets[0].assignedDeveloperId, input.developers[0].id)
@@ -74,7 +75,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
     { ...state.tickets[0], id: 'done', rank: 3, actualStatus: 'done', completedWork: 1e6 })
   let draws = 0
   const result = advanceSimulation(state, 0.1, () => { draws++; return 0.5 })
-  assert.equal(draws, 3) // first active ticket estimate, schedule and discovery threshold
+  assert.equal(draws, 2) // initial estimate and discovery threshold
   assert.equal(result.developers[1].activeTicketID, undefined)
   assert.equal(result.developers[2].activeTicketID, undefined)
   assert.ok(result.tickets.slice(1).every(t => t.initialEffortEstimate === undefined))
@@ -93,7 +94,7 @@ test('a new engineer independently replaces the report; restoration does not inv
   delete initial.developers[0].estimateDiscovery // the replacement does not inherit A's scheduled personal exposure
   const draws: number[] = []
   const handed = advanceSimulation(initial, 0.1, () => { draws.push(0.5); return 0.5 })
-  assert.equal(draws.length, 3) // personal first estimate, schedule and discovery threshold
+  assert.equal(draws.length, 2) // personal preview and discovery threshold
   assert.equal(handed.tickets[0].reportedEffortEstimate, 500000)
   assert.deepEqual(handed.tickets[0].initialEffortEstimate, belief)
   assert.equal(handed.tickets[0].assignedDeveloperId, 'replacement')
@@ -109,26 +110,22 @@ test('a new engineer independently replaces the report; restoration does not inv
   }
 })
 
-test('switch away and back retain the first engineer belief and reuse pending discovery', () => {
-  const first = advanceSimulation(scenario(true), 0.1, () => 0.5)
-  first.tickets[0].rank = 2
-  first.tickets.push({ ...scenario().tickets[0], id: 'other', rank: 1 })
-  first.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
-  let calls = 0
-  const switched = advanceSimulation(first, 0.1, () => { calls++; return calls === 1 ? 0.999 : 0.5 })
-  assert.equal(switched.developers[0].activeTicketID, 'other')
-  assert.equal(calls, 4) // assessment, first estimate, schedule and discovery threshold
-  const before = switched.tickets.map(t => structuredClone(t.initialEffortEstimate))
-  switched.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
-  calls = 0
-  const returned = advanceSimulation(switched, 0.1, () => { calls++; return calls === 1 ? 0.999 : 0.5 })
-  assert.equal(returned.developers[0].activeTicketID, 'ticket-1')
-  assert.equal(calls, 2) // assessment + schedule; remembered estimate AND discovery target are reused
-  assert.equal(returned.tickets[0].estimateHistory!.at(-1)!.kind, 'publication')
-  assert.deepEqual(returned.tickets.map(t => t.initialEffortEstimate), before)
-  assert.deepEqual(returned.tickets.map(t => t.reportedEffortEstimate), switched.tickets.map(t => t.reportedEffortEstimate))
+test('event switches and returns retain personal beliefs and pending discovery without resampling', () => {
+  let s=advanceSimulation(scenario(true),.1,()=>.5)
+  const pending=structuredClone(s.developers[0].estimateDiscovery)
+  s.tickets.push({...scenario().tickets[0],id:'other',rank:2,reportedProgress:99.999})
+  let calls=0
+  s=decideNow(s,()=>{calls++;return .5})
+  assert.equal(calls,1)
+  assert.equal(s.developers[0].activeTicketID,'other')
+  const beliefs=s.tickets.map(t=>structuredClone(t.initialEffortEstimate))
+  s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
+  const returned=decideNow(s,()=>{throw Error('Remembered opinions require no RNG')})
+  assert.equal(returned.developers[0].activeTicketID,'ticket-1')
+  assert.deepEqual(returned.developers[0].estimateDiscovery,pending)
+  assert.deepEqual(returned.tickets.map(t=>t.initialEffortEstimate),beliefs)
+  assert.equal(returned.tickets[0].estimateHistory!.at(-1)!.kind,'publication')
 })
-
 test('published-only player view hides original belief, author and actual total even when values diverge', () => {
   const state = advanceSimulation(scenario(), 0.1)
   state.tickets[0].reportedEffortEstimate = 8.5
@@ -151,9 +148,11 @@ test('estimate failures leave original tickets, developers and seeded RNG untouc
   const before = structuredClone(state)
   assert.throws(() => advanceSimulation(state, 0.1, () => 0.9), /positive numeric range/)
   assert.deepEqual(state, before)
-  // This seed also reaches the second claim's underflow after the first succeeds.
+  // This seeded first-estimation stream reaches the tiny claim without a schedule draw.
+  state.randomState = 100000
+  const seededBefore = structuredClone(state)
   assert.throws(() => advanceSimulation(state, 0.1), /positive numeric range/)
-  assert.deepEqual(state, before)
+  assert.deepEqual(state, seededBefore)
   for (const bad of [NaN, Infinity]) {
     const invalid = scenario(true); invalid.tickets[0].requiredWork = bad
     assert.throws(() => advanceSimulation(invalid, 0.1), RangeError)
@@ -163,7 +162,7 @@ test('estimate failures leave original tickets, developers and seeded RNG untouc
 // Exercise first publications inside mixed positive-time events, not just call-start migration.
 function coincident(reverse: boolean) {
   const state = scenario(true), base = state.developers[0], ticket = state.tickets[0]
-  state.randomState = 1000 // a positive-noise seeded reassessment contests the first claim in either order
+  state.randomState = 1000 // reproducible first preview, with no extra final decision roll
   state.developers = [
     { ...base, id: 'finishing', activeTicketID: 'finish', assessmentClock: { elapsed: 0, remaining: 1000 } },
     { ...base, id: 'reconsidering', activeTicketID: 'ongoing', assessmentClock: { elapsed: 0, remaining: 1000 } },
@@ -196,7 +195,7 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
     split = advanceSimulation(split, due + 0.25 - 0.9)
     let expectedSeed = state.randomState
-    for (let i = 0; i < (reverse ? 5 : 4); i++) expectedSeed = nextRandom(expectedSeed).state
+    for (let i = 0; i < 2; i++) expectedSeed = nextRandom(expectedSeed).state
     assert.equal(whole.randomState, expectedSeed)
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]),
@@ -204,8 +203,8 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     assert.deepEqual(split.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.estimateHistory, t.actualStatus, t.assignedDeveloperId]),
       whole.tickets.map(t => [t.id, t.initialEffortEstimate, t.reportedEffortEstimate, t.estimateHistory, t.actualStatus, t.assignedDeveloperId]))
     const contested = whole.tickets.find(t => t.id === 'contested')!
-    assert.equal(contested.initialEffortEstimate?.developerId, state.developers[0].id)
-    assert.equal(contested.assignedDeveloperId, state.developers[0].id)
+    assert.equal(contested.initialEffortEstimate?.developerId, 'finishing')
+    assert.equal(contested.assignedDeveloperId, 'finishing')
     assert.deepEqual(advanceSimulation(JSON.parse(JSON.stringify(whole)), 1), advanceSimulation(whole, 1))
     assert.deepEqual(whole, advanceSimulation(state, due + 0.25))
     assert.deepEqual(state, original)

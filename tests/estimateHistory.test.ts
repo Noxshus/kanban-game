@@ -1,3 +1,4 @@
+import { decideNow } from './helpers/decisionFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import type { Developer, GameState } from '../src/game/types.ts'
@@ -11,7 +12,7 @@ import { getPlayerView } from '../src/store/playerView.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
 import { nextRandom } from '../src/game/random.ts'
 import { projectWork } from '../src/game/completionTime.ts'
-import { close, expectedWork } from './helpers/flowExpectation.ts'
+import { close } from './helpers/flowExpectation.ts'
 
 const at = { high: 0, low: 0 }
 const noDraw = () => { throw Error('No fresh estimation/discovery draw expected') }
@@ -114,140 +115,76 @@ test('rapid switching parks and restores each pending target, including censored
   }
 })
 
-test('real spontaneous switches retain discovery targets and return draws only for decisions/scheduling', () => {
-  let s = fixture()
-  s.developers = [s.developers[0]]
-  s.tickets[0].requiredWork = 1e6
-  s = advanceSimulation(s, 0.1, () => 0.5)
-  const t = s.tickets[0], a = s.developers[0], pending = structuredClone(a.estimateDiscovery)
-  t.rank = 2
-  s.tickets.push({ ...fixture().tickets[0], id: 'other', rank: 1, requiredWork: 1e6 })
-  a.assessmentClock = { elapsed: 0, remaining: 0 }
-  let draws = 0
-  s = advanceSimulation(s, 0.1, () => ++draws === 1 ? 0.999999 : 0.5)
-  assert.equal(s.developers[0].activeTicketID, 'other')
-  assert.equal(draws, 4)
-  assert.deepEqual(s.developers[0].pausedEstimateDiscoveries![0], pending)
-  const aWork = structuredClone(s.workLog!.find(e => e.ticketId === t.id)!.effort)
-  s.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
-  draws = 0
-  s = advanceSimulation(JSON.parse(JSON.stringify(s)), 0.1, () => ++draws === 1 ? 0.999999 : 0.5)
-  assert.equal(draws, 2)
-  assert.equal(s.developers[0].activeTicketID, t.id)
-  assert.deepEqual(s.developers[0].estimateDiscovery, pending)
-  assert.ok(effortNumber(s.workLog!.find(e => e.ticketId === t.id)!.effort)! > effortNumber(aWork)!)
+test('event decisions retain discovery targets and returns do not draw new initial estimates',()=>{
+ let s=fixture();s.developers=[s.developers[0]];s.tickets[0].requiredWork=1e6
+ s=advanceSimulation(s,.1,()=>.5)
+ const pending=structuredClone(s.developers[0].estimateDiscovery)
+ s.tickets.push({...fixture().tickets[0],id:'other',rank:2,requiredWork:1e6,reportedProgress:99.999})
+ let draws=0;s=decideNow(s,()=>{draws++;return .5})
+ assert.equal(draws,1);assert.equal(s.developers[0].activeTicketID,'other')
+ assert.deepEqual(s.developers[0].pausedEstimateDiscoveries![0],pending)
+ s=advanceSimulation(s,.1,()=>.5)
+ const work=structuredClone(s.workLog!.find(e=>e.ticketId==='ticket')!.effort)
+ s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
+ s=decideNow(JSON.parse(JSON.stringify(s)),noDraw)
+ assert.equal(s.developers[0].activeTicketID,'ticket')
+ assert.deepEqual(s.developers[0].estimateDiscovery,pending)
+ s=advanceSimulation(s,.1,noDraw)
+ assert.ok(effortNumber(s.workLog!.find(e=>e.ticketId==='ticket')!.effort)!>effortNumber(work)!)
 })
-
-test('B hands-on revision and A attribute change preserve remembered belief on return and refresh only affected discovery inputs', () => {
-  for (const attribute of ['judgement', 'competency'] as const) {
-    let s = fixture()
-    encounterEstimate(s.tickets[0], s.developers[0], at, () => 0.5)
-    s.developers[0].activeTicketID = 'ticket'
-    s = advanceSimulation(s, 2, () => 0.5)
-    const opinion = structuredClone(personalEstimate(s.tickets[0], 'a')!)
-    const original = structuredClone(s.tickets[0].initialEffortEstimate)
-    const work = structuredClone(s.workLog!.find(e => e.developerId === 'a')!.effort)
-    const parked = structuredClone(s.developers[0].estimateDiscovery!)
-    const alarm = s.tickets[0].overrunEvaluationConsumed
-    assert.ok(effortNumber(work)! > 0)
-    assert.ok(parked.target)
-
-    // Force real reconsideration events, leaving selection, publication and work
-    // to the engine. A releases the claim before idle B picks it up in engineer order.
-    s.tickets.push({ ...fixture().tickets[0], id: 'other', rank: 2 })
-    s.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
-    const takeoverDraws = [0.999999, 0.5, 0.5, 0.8, 0.5, 0.999999, 0.05, 0.999999]
-    let draws = 0
-    s = advanceSimulation(s, 2, () => {
-      assert.ok(draws < takeoverDraws.length, 'unexpected takeover/evaluation RNG draw')
-      return takeoverDraws[draws++]
-    })
-    assert.equal(draws, takeoverDraws.length)
-    const a = s.developers.find(d => d.id === 'a')!, b = s.developers.find(d => d.id === 'b')!
-    const ticket = s.tickets[0]
-    assert.equal(ticket.overrunEvaluationConsumed, alarm)
-    assert.equal(a.activeTicketID, 'other')
-    assert.equal(b.activeTicketID, ticket.id)
-    assert.deepEqual(a.pausedEstimateDiscoveries!.find(d => d.ticketId === ticket.id), parked)
-    assert.deepEqual(s.workLog!.find(e => e.developerId === 'a' && e.ticketId === ticket.id)!.effort, work)
-    const revisionIndex = ticket.estimateHistory!.findLastIndex(e => e.kind === 'assessment' && e.developerId === 'b' && e.reason === 'discovery')
-    assert.ok(revisionIndex >= 0, 'B must genuinely revise after productive work')
-    const revision = ticket.estimateHistory![revisionIndex]
-    const bWork = effortNumber(s.workLog!.find(e => e.developerId === 'b')!.effort)!
-    assert.ok(bWork > 0)
-    assert.equal(ticket.lastEstimateEvaluation!.reason, 'discovery')
-    assert.equal(ticket.lastEstimateEvaluation!.published, true)
-    const bBaseline = personalEstimate(ticket, 'b')!.baseline
-    close(revision.totalWork, 100 - (100 - bBaseline) * (1 + ticket.lastEstimateEvaluation!.personalWork! / bBaseline) ** -0.3)
-    const bReport = ticket.reportedEffortEstimate!
-    const history = structuredClone(ticket.estimateHistory!)
-    if (attribute === 'judgement') a.judgement = 10
-    else a.competencies.frontend = 10
-
-    // B leaves for new work first, then A returns at the SAME instant. Only
-    // Judgement is a discovery-rate input; competency changes execution/accuracy.
-    s.tickets.push({ ...fixture().tickets[0], id: 'third', rank: 3 })
-    s.developers = [b, a]
-    for (const d of s.developers) d.assessmentClock = { elapsed: 0, remaining: 0 }
-    const returnDraws = [0.999999, 0.5, 0.5, 0.999999, 0.5, 0.999999,
-      ...(attribute === 'judgement' ? [0.25] : [])]
-    draws = 0
-    s = advanceSimulation(JSON.parse(JSON.stringify(s)), 0.001, () => {
-      assert.ok(draws < returnDraws.length, 'return must not take a new initial-estimate draw')
-      return returnDraws[draws++]
-    })
-    assert.equal(draws, returnDraws.length)
-    let returned = s.developers.find(d => d.id === 'a')!
-    const current = s.tickets[0]
-    assert.equal(returned.activeTicketID, current.id)
-    assert.deepEqual(personalEstimate(current, 'a'), opinion)
-    assert.deepEqual(current.initialEffortEstimate, original)
-    assert.equal(current.reportedEffortEstimate, opinion.totalWork)
-    assert.deepEqual(current.estimateHistory!.slice(0, -1), history)
-    const publication = current.estimateHistory!.at(-1)!
-    assert.ok(publication.kind === 'publication')
-    assert.equal(publication.reason, 'return')
-    assert.equal(publication.sourceAssessmentIndex, opinion.index)
-    assert.equal(publication.replacedDeveloperId, 'b')
-    assert.equal(publication.replacedTotalWork, bReport)
-    assert.deepEqual(publication.at, { high: 4, low: 0 })
-    close(effortNumber(s.workLog!.find(e => e.developerId === 'a' && e.ticketId === current.id)!.effort)!,
-      effortNumber(work)! + expectedWork(attribute === 'competency' ? 1.5 : 0.5, 0.001, 0))
-    const pending = structuredClone(returned.estimateDiscovery!)
-    if (attribute === 'judgement') {
-      const r = (100 - opinion.totalWork) / 100
-      const rate = 0.8 * (1 + Math.log1p(10 / 10)) * 2 * r / (r + 0.2)
-      const expected = effortNumber(work)! + (opinion.baseline + effortNumber(work)!) * Math.expm1(-Math.log1p(-0.25) / rate)
-      close(effortNumber(pending.target!)!, expected)
-      assert.equal(pending.judgement, 10)
-      assert.notDeepEqual(pending.target, parked.target)
-    } else assert.deepEqual(pending, parked)
-    assert.equal(current.overrunEvaluationConsumed, alarm)
-
-    for (let cycle = 0; cycle < 3; cycle++) {
-      // Once inputs are current, repeated real switches cannot reroll the target.
-      returned.assessmentClock = { elapsed: 0, remaining: 0 }
-      const awayDraws = [0.999999, 0.5, ...(attribute === 'judgement' && cycle === 0 ? [0.999999] : [])]
-      draws = 0
-      s = advanceSimulation(s, 0.001, () => { assert.ok(draws < awayDraws.length); return awayDraws[draws++] })
-      assert.equal(draws, awayDraws.length)
-      const away = s.developers.find(d => d.id === 'a')!
-      assert.equal(away.activeTicketID, 'other')
-      away.assessmentClock = { elapsed: 0, remaining: 0 }
-      draws = 0
-      s = advanceSimulation(s, 0.001, () => { assert.ok(draws < 2); return ++draws === 1 ? 0.999999 : 0.5 })
-      assert.equal(draws, 2) // assessment and next reconsideration, no estimation/discovery
-      const back = s.developers.find(d => d.id === 'a')!
-      assert.equal(back.activeTicketID, current.id)
-      assert.deepEqual(back.estimateDiscovery, pending)
-      assert.deepEqual(personalEstimate(s.tickets[0], 'a'), opinion)
-      assert.equal(s.tickets[0].overrunEvaluationConsumed, alarm)
-      returned = back
-    }
-    validateEstimateHistory(s.tickets[0])
+test('B hands-on revision and A changed attributes preserve remembered belief and refresh only affected discovery inputs',()=>{
+ for(const attribute of ['judgement','competency'] as const){
+  let s=fixture();encounterEstimate(s.tickets[0],s.developers[0],at,()=>.5);s.developers[0].activeTicketID='ticket'
+  s=advanceSimulation(s,2,()=>.5)
+  const opinion=structuredClone(personalEstimate(s.tickets[0],'a')!),original=structuredClone(s.tickets[0].initialEffortEstimate)
+  const work=structuredClone(s.workLog!.find(e=>e.developerId==='a')!.effort),parked=structuredClone(s.developers[0].estimateDiscovery!)
+  const alarm=s.tickets[0].overrunEvaluationConsumed
+  s.tickets.push({...fixture().tickets[0],id:'other',rank:2,reportedProgress:99.999})
+  const previews=[.5,.8];let draws=0
+  s=decideNow(s,()=>{assert.ok(draws<2);return previews[draws++]})
+  assert.equal(draws,2);assert.equal(s.developers[0].activeTicketID,'other');assert.equal(s.developers[1].activeTicketID,'ticket')
+  const workDraws=[.999999,.05,.999999];draws=0
+  s=advanceSimulation(s,2,()=>{assert.ok(draws<3);return workDraws[draws++]})
+  assert.equal(draws,3)
+  const a=s.developers[0],b=s.developers[1],t=s.tickets[0]
+  assert.deepEqual(a.pausedEstimateDiscoveries!.find(p=>p.ticketId==='ticket'),parked)
+  assert.deepEqual(s.workLog!.find(e=>e.developerId==='a'&&e.ticketId==='ticket')!.effort,work)
+  const evaluation=t.lastEstimateEvaluation!
+  assert.equal(evaluation.developerId,'b');assert.equal(evaluation.reason,'discovery');assert.equal(evaluation.published,true)
+  const baseline=personalEstimate(t,'b')!.baseline
+  close(t.reportedEffortEstimate!,100-(100-baseline)*(1+evaluation.personalWork!/baseline)**-.3)
+  const history=structuredClone(t.estimateHistory!),board=t.reportedEffortEstimate
+  if(attribute==='judgement')a.judgement=10;else a.competencies.frontend=10
+  s.tickets.push({...fixture().tickets[0],id:'third',rank:3,reportedProgress:99.999})
+  s.developers=[b,a];draws=0
+  s=decideNow(JSON.parse(JSON.stringify(s)),()=>{draws++;assert.equal(draws,1);return .5})
+  assert.equal(draws,1) // B's new preview only; no final decision roll or A initial roll
+  const returned=s.developers.find(d=>d.id==='a')!,current=s.tickets[0]
+  assert.equal(returned.activeTicketID,'ticket');assert.deepEqual(personalEstimate(current,'a'),opinion)
+  assert.deepEqual(current.initialEffortEstimate,original);assert.equal(current.reportedEffortEstimate,opinion.totalWork)
+  assert.deepEqual(current.estimateHistory!.slice(0,-1),history)
+  const publication=current.estimateHistory!.at(-1)!
+  assert.ok(publication.kind==='publication');assert.equal(publication.reason,'return')
+  assert.equal(publication.sourceAssessmentIndex,opinion.index);assert.equal(publication.replacedDeveloperId,'b');assert.equal(publication.replacedTotalWork,board)
+  assert.deepEqual(publication.at,{high:4,low:0})
+  assert.deepEqual(s.workLog!.find(e=>e.developerId==='a'&&e.ticketId==='ticket')!.effort,work)
+  draws=0;prepareDiscovery(s,returned,current,()=>{draws++;return .25})
+  assert.equal(draws,attribute==='judgement'?1:0)
+  const pending=structuredClone(returned.estimateDiscovery!)
+  if(attribute==='judgement'){
+   const r=(100-opinion.totalWork)/100,rate=.8*(1+Math.log1p(1))*2*r/(r+.2)
+   close(effortNumber(pending.target!)!,effortNumber(work)!+(opinion.baseline+effortNumber(work)!)*Math.expm1(-Math.log1p(-.25)/rate))
+   assert.notDeepEqual(pending.target,parked.target)
+  }else assert.deepEqual(pending,parked)
+  for(let i=0;i<3;i++){
+   pauseDiscovery(returned);encounterEstimate(current,b,{high:4,low:0},noDraw);encounterEstimate(current,returned,{high:4,low:0},noDraw)
+   resumeDiscovery(returned,'ticket');prepareDiscovery(s,returned,current,noDraw)
+   assert.deepEqual(returned.estimateDiscovery,pending);assert.deepEqual(personalEstimate(current,'a'),opinion)
+   assert.equal(current.overrunEvaluationConsumed,alarm)
   }
+  validateEstimateHistory(current)
+ }
 })
-
 test('a returning target beyond remaining capacity stays censored instead of rerolling', () => {
   const s = fixture(), t = s.tickets[0], [a, b] = s.developers
   encounterEstimate(t, a, at, () => 0.5)
@@ -360,7 +297,7 @@ test('ordinary stays, repeated advances and zero time never manufacture assessme
   s.developers[0].assessmentClock = { elapsed: 0, remaining: 0 }
   let draws = 0
   s = advanceSimulation(s, 1, () => { draws++; return 0.5 })
-  assert.equal(draws, 1) // next reassessment only
+  assert.equal(draws, 0) // periodic reassessment removed
   assert.deepEqual(s.tickets[0].estimateHistory, history)
   assert.equal(original.tickets[0].completedWork, 0)
 })

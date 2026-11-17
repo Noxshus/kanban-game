@@ -74,28 +74,17 @@ export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView
         ? `${developer.activeTicket.id}: ${developer.activeTicket.title}` : 'Idle'}</p>
       <p>Assigned tickets (ownership): {developer.assignedTicketCount}</p>
       <p>Judgement: {format(developer.judgement)}; Focus: {format(developer.focus)}</p>
-      <p>Time since previous assessment: {format(developer.timeSinceLastAssessment)} seconds</p>
-      <p>Time until next reconsideration: {developer.timeUntilNextAssessment === null ? 'Not scheduled (starts when work advances)' : format(developer.timeUntilNextAssessment) + ' seconds'}</p>
       <details>
         <summary>Most recent assessment</summary>
         {developer.lastAssessment ? <>
-          <p>Assessment: {developer.lastAssessment.kind}; Judgement {format(developer.lastAssessment.judgement)}</p>
-          <p>Current candidate: {developer.lastAssessment.current.id}, Rank {developer.lastAssessment.current.rank}; Rank contribution {format(developer.lastAssessment.current.rankContribution)}, reported-opportunity contribution {format(developer.lastAssessment.current.opportunityContribution)}</p>
-          <p>Alternative candidate: {developer.lastAssessment.alternative
-            ? developer.lastAssessment.alternative.id + ', Rank ' + developer.lastAssessment.alternative.rank
-              + '; Rank contribution ' + format(developer.lastAssessment.alternative.rankContribution)
-              + ', reported-opportunity contribution ' + format(developer.lastAssessment.alternative.opportunityContribution) : 'None'}</p>
-          <p>Reported-score nominee: {developer.lastAssessment.nomination ? developer.lastAssessment.nomination.id
-            + '; Rank contribution ' + format(developer.lastAssessment.nomination.rankContribution)
-            + ', reported-opportunity contribution ' + format(developer.lastAssessment.nomination.opportunityContribution)
-            + ', nomination score ' + format(developer.lastAssessment.nomination.score) : 'None'}</p>
-          <p>Projected completion if staying: {format(developer.lastAssessment.staySeconds)} seconds</p>
-          <p>Projected completion if switching: {developer.lastAssessment.alternative ? format(developer.lastAssessment.switchSeconds) + ' seconds' : 'Not applicable'}</p>
-          <p>Flow at assessment: {format(developer.lastAssessment.flowDuration)} seconds; switching starts fresh Flow</p>
-          <p>Efficiency advantage: {developer.lastAssessment.efficiencyLimit ? 'Only ' + developer.lastAssessment.efficiencyLimit + ' can finish at a positive rate' : format(developer.lastAssessment.efficiencyAdvantage)}; priority preference: {format(developer.lastAssessment.rankPreference)}</p>
-          <p>Complexity: {format(developer.lastAssessment.complexity)}; noise scale: {format(developer.lastAssessment.noiseScale)}</p>
-          <p>RNG draw: {developer.lastAssessment.draw === null ? 'None (no alternative)' : developer.lastAssessment.draw}; sampled error: {format(developer.lastAssessment.error)}</p>
-          <p>Perceived advantage: {format(developer.lastAssessment.perceivedAdvantage)}</p>
+          <p>Trigger: {developer.lastAssessment.trigger}; current ticket: {developer.lastAssessment.currentTicketId ?? 'Idle'}</p>
+          <p>Flow at assessment: {format(developer.lastAssessment.flowDuration)} seconds; alternatives start fresh Flow</p>
+          <ul>{developer.lastAssessment.considered.map(option => <li key={option.id}>
+            {option.id}, Rank {option.rank}; {option.estimateSource} total {formatEffort(option.estimatedTotal)};
+            {' '}perceived remaining {option.perceivedRemaining === null ? 'Below scalar range' : formatEffort(option.perceivedRemaining)};
+            {' '}perceived completion {option.timeLimit === 'zero' ? 'Zero (reported complete)' : option.timeLimit === 'infinite' ? 'Impossible at current rate' : format(option.completionSeconds) + ' seconds'};
+            {' '}Rank contribution {format(option.rankContribution)}; score {option.score === null ? option.timeLimit : format(option.score)}
+          </li>)}</ul>
           <p>Decision: {developer.lastAssessment.outcome}; selected ticket: {developer.lastAssessment.selectedId}</p>
         </> : <p>No assessment yet</p>}
       </details>

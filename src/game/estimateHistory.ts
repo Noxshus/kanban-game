@@ -68,6 +68,17 @@ function migrateHistory(ticket: Ticket) {
 }
 
 export function personalEstimate(ticket: Ticket, developerId: string) {
+  // Read established legacy evidence without migrating or mutating an unchosen
+  // ticket during appraisal. Real pickup imports that same evidence into history.
+  if (ticket.estimateHistory === undefined) {
+    const original = ticket.initialEffortEstimate
+    const evaluation = ticket.lastEstimateEvaluation
+    if (evaluation?.published && evaluation.developerId === developerId) {
+      return { baseline: original?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate!,
+        totalWork: evaluation.candidate, index: -1 }
+    }
+    if (original?.developerId === developerId) return { baseline: original.totalWork, totalWork: original.totalWork, index: -1 }
+  }
   const opinions = (ticket.estimateHistory ?? []).flatMap((event, index) =>
     (event.kind === 'assessment' || event.kind === 'legacy_assessment') && event.developerId === developerId ? [{ event, index }] : [])
   if (!opinions.length) return undefined
@@ -105,7 +116,7 @@ export function publishEstimate(ticket: Ticket, developerId: string, reason: Ext
   ticket.reportedEffortEstimate = opinion.totalWork
 }
 
-export function encounterEstimate(ticket: Ticket, developer: Developer, at: EventTime, draw: () => number, restoring = false) {
+export function encounterEstimate(ticket: Ticket, developer: Developer, at: EventTime, draw: () => number, restoring = false, appraisal?: number) {
   const legacy = ticket.estimateHistory === undefined && (ticket.initialEffortEstimate !== undefined || ticket.reportedEffortEstimate !== undefined)
   if (restoring && legacy) {
     restoreLegacyEstimate(ticket, developer.id, at)
@@ -116,7 +127,9 @@ export function encounterEstimate(ticket: Ticket, developer: Developer, at: Even
   // Restoring an existing active claim is not a return or a publication event.
   if (restoring && opinion) return
   if (!opinion) {
-    const totalWork = estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
+    // Promote the winning transient appraisal, without a second estimate roll.
+    const totalWork = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
+    validEffort(ticket, totalWork)
     ticket.estimateHistory!.push({ kind: 'assessment', developerId: developer.id, totalWork, reason: 'initial', at: { ...at } })
     // Existing ticket-original provenance, including unknown legacy authors, is never replaced.
     if (!legacy && ticket.initialEffortEstimate === undefined && ticket.reportedEffortEstimate === undefined

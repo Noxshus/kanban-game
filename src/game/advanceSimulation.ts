@@ -1,11 +1,10 @@
-import type { Developer, GameState, Ticket } from './types'
+import type { GameState } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
-import { nextRandom } from './random.ts'
-import { encounterEstimate, pauseDiscovery, resumeDiscovery, validateEstimateHistory } from './estimateHistory.ts'
-import { assessWork, nominateCandidate, selectWork, validateSelectionAttributes } from './selectWork.ts'
+import { workTransitions, simulationDraw } from './workDecisions.ts'
+import { validateEstimateHistory } from './estimateHistory.ts'
+import { validateSelectionAttributes } from './selectWork.ts'
 import { getFlowDuration } from './flow.ts'
 import { projectCompletion } from './completionTime.ts'
-import { sampleReconsideration } from './reconsideration.ts'
 import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from './work.ts'
 import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
@@ -25,108 +24,30 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   tickets.forEach(validateEstimateHistory)
   developers.forEach(validateSelectionAttributes)
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
-  const draw = () => {
-    if (random) return random()
-    const next = nextRandom(result.randomState)
-    result.randomState = next.state
-    return next.value
-  }
+  const draw = random ?? simulationDraw(result)
+  let transitions = workTransitions(result, now, draw)
   const complete = isWorkComplete
-  const claimed = new Set<string>()
-  const clearWork = (developer: Developer) => {
-    const previous = byId.get(developer.estimateDiscovery?.ticketId ?? developer.activeTicketID ?? '')
-    if (previous && !complete(previous)) pauseDiscovery(developer)
-    delete developer.activeTicketID
-    delete developer.flowStreak
-    delete developer.assessmentClock
-    delete developer.workSession
-    delete developer.estimateDiscovery
-  }
-  const schedule = (developer: Developer) => {
-    const dueTime = addEventTime(now, sampleReconsideration(draw()))
-    if (compareEventTime(dueTime, now) <= 0) throw new RangeError('Assessment deadline is below event-time numeric resolution')
-    developer.assessmentClock = { elapsed: 0, remaining: eventInterval(dueTime, now), originTime: now, dueTime }
-  }
-  for (const developer of developers) {
-    const ticket = byId.get(developer.activeTicketID ?? '')
-    if (!ticket || ticket.actualStatus === 'backlog' || complete(ticket) || claimed.has(ticket.id)) {
-      clearWork(developer)
-      continue
-    }
-    claimed.add(ticket.id)
-    if (developer.estimateDiscovery && developer.estimateDiscovery.ticketId !== ticket.id) pauseDiscovery(developer)
-    if (developer.flowStreak && developer.flowStreak.ticketId !== ticket.id) {
-      pauseDiscovery(developer)
-      delete developer.flowStreak
-      delete developer.assessmentClock
-      delete developer.workSession
-      delete developer.estimateDiscovery
-    }
-    // Old active saves import evidence once; restoring a running claim is not a
-    // takeover. New claims below independently assess or republish remembered work.
-    encounterEstimate(ticket, developer, now, draw, true)
-    resumeDiscovery(developer, ticket.id)
-    if (!developer.assessmentClock) schedule(developer)
-    const { elapsed, remaining } = developer.assessmentClock!
-    if (!Number.isFinite(elapsed) || elapsed < 0 || !Number.isFinite(remaining) || remaining < 0) {
-      throw new RangeError('Assessment clock must be finite and non-negative')
-    }
-    const clock = developer.assessmentClock!
-    // Accept fixtures/old JSON clocks and deliberate clock edits, then anchor
-    // once. Public elapsed/remaining are derived views, never countdown inputs.
-    if (!clock.originTime || !clock.dueTime || clock.elapsed !== eventInterval(now, clock.originTime)
-        || clock.remaining !== Math.max(0, eventInterval(clock.dueTime, now))) {
-      clock.originTime = addEventTime(now, -elapsed)
-      clock.dueTime = addEventTime(now, remaining)
-    }
-  }
-  const eligible = (excludedId?: string) => tickets.filter(ticket => ticket.id !== excludedId
-    && !claimed.has(ticket.id) && !complete(ticket)
-    && (ticket.actualStatus === 'todo' || ticket.actualStatus === 'in_progress'))
-  const begin = (developer: Developer, ticket: Ticket) => {
-    pauseDiscovery(developer)
-    developer.activeTicketID = ticket.id
-    developer.flowStreak = { ticketId: ticket.id, duration: 0 }
-    delete developer.workSession
-    delete developer.estimateDiscovery
-    claimed.add(ticket.id)
-    ticket.assignedDeveloperId = developer.id
-    ticket.actualStatus = 'in_progress'
-    ticket.reportedStatus = 'in_progress'
-    encounterEstimate(ticket, developer, now, draw)
-    resumeDiscovery(developer, ticket.id)
-    schedule(developer)
-  }
+  for (const developer of developers) transitions.restore(developer)
   const decideDue = () => {
+    // Completed claims are released first; pickups and revision decisions then
+    // share one engineer-ordered pass. No-op evaluations never trigger a choice.
+    transitions = workTransitions(result, now, draw)
     for (const developer of developers) {
       const events = developer.workSession?.estimateEvents
       const overrun = events?.overrun && compareEventTime(events.overrun, now) <= 0
       const discovery = events?.discovery && compareEventTime(events.discovery, now) <= 0
+      let revised = false
       if (developer.activeTicketID !== undefined && (overrun || discovery)) {
-        evaluateEstimate(result, developer, byId.get(developer.activeTicketID)!, overrun ? 'overrun' : 'discovery')
+        const ticket = byId.get(developer.activeTicketID)!
+        revised = evaluateEstimate(result, developer, ticket, overrun ? 'overrun' : 'discovery')
       }
-      if (developer.activeTicketID === undefined) {
-        const decision = selectWork(eligible(), developer, draw)
-        if (!decision) continue
-        developer.lastAssessment = decision
-        begin(developer, byId.get(decision.selectedId)!)
-      } else if (compareEventTime(developer.assessmentClock!.dueTime!, now) <= 0) {
-        const current = byId.get(developer.activeTicketID)!
-        const alternatives = eligible(current.id)
-        const nominated = nominateCandidate(alternatives)
-        const decision = assessWork(current, byId.get(nominated?.id ?? ''), [current, ...alternatives], developer, 'reconsideration', draw)
-        developer.lastAssessment = decision
-        if (decision.selectedId !== current.id) {
-          current.actualStatus = 'in_progress'
-          claimed.delete(current.id)
-          begin(developer, byId.get(decision.selectedId)!)
-        } else schedule(developer)
-      }
+      if (developer.activeTicketID === undefined) transitions.decide(developer, 'pickup')
+      else if (revised) transitions.decide(developer, 'estimate_revision')
     }
-    // Draw pending work thresholds at the event itself (also at call-end), not
-    // on a later render/advance. Pickups/reassessments retain engineer ordering.
     for (const developer of developers) {
-      if (developer.activeTicketID !== undefined) prepareDiscovery(result, developer, byId.get(developer.activeTicketID)!, draw)
+      if (developer.activeTicketID !== undefined) {
+        prepareDiscovery(result, developer, byId.get(developer.activeTicketID)!, draw)
+      }
     }
   }
   const report = () => {
@@ -137,7 +58,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         ticket.actualStatus = 'done'
         ticket.reportedStatus = 'done'
         ticket.reportedProgress = 100
-      } else if (claimed.has(ticket.id)) {
+      } else if (transitions.claimed.has(ticket.id)) {
         ticket.reportedStatus = ticket.actualStatus
         ticket.reportedProgress = clampReportedProgress(ticket.completedWork / ticket.requiredWork * 100)
       }
@@ -146,7 +67,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   report()
   decideDue()
   // Process globally ordered event boundaries, not independent per-developer
-  // timelines. Completion wins a simultaneous assessment; developer order breaks
+  // timelines. Completion wins a simultaneous estimate event; developer order breaks
   // simultaneous claims. Unused time can progress the next naturally selected work.
   while (compareEventTime(now, end) < 0) {
     const active = developers.filter(developer => developer.activeTicketID !== undefined)
@@ -178,7 +99,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     const estimateEvents = active.map(developer => projectEstimateEvents(result, developer, byId.get(developer.activeTicketID!)!))
     // Exact ordering of stored compensated instants: no broad epsilon merges
     // near events, and true ties are independent of elapsed-call partitioning.
-    const boundaries = [...completions.filter(time => time !== null), ...active.map(developer => developer.assessmentClock!.dueTime!),
+    const boundaries = [...completions.filter(time => time !== null),
       ...estimateEvents.flatMap(events => [events.discovery, events.overrun]).filter(time => time !== null)]
     const nextTime = boundaries.reduce((first, time) => compareEventTime(time, first) < 0 ? time : first, end)
     const interval = eventInterval(nextTime, now)
@@ -186,7 +107,6 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     for (let index = 0; index < active.length; index++) {
       const developer = active[index]
       const ticket = byId.get(developer.activeTicketID!)!
-      const clock = developer.assessmentClock!
       const session = developer.workSession!
       if (interval > 0) {
         const elapsed = completions[index] && compareEventTime(nextTime, completions[index]!) === 0
@@ -211,11 +131,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         session.currentTime = nextTime
         session.lastCompletedWork = ticket.completedWork
       }
-      const assessedElapsed = eventInterval(nextTime, clock.originTime!)
-      requireTimeProgress(clock.elapsed, assessedElapsed, interval)
       developer.flowStreak = { ticketId: ticket.id, duration: session.initialFlowDuration + session.elapsed }
-      developer.assessmentClock = { ...clock, elapsed: assessedElapsed,
-        remaining: Math.max(0, eventInterval(clock.dueTime!, nextTime)) }
       ticket.assignedDeveloperId = developer.id
       ticket.actualStatus = complete(ticket) ? 'done' : 'in_progress'
     }
@@ -225,7 +141,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     // Release all completed claims before anybody makes a decision at this instant.
     for (const developer of active) {
       const ticket = byId.get(developer.activeTicketID!)!
-      if (complete(ticket)) { claimed.delete(ticket.id); clearWork(developer) }
+      if (complete(ticket)) { transitions.claimed.delete(ticket.id); transitions.clear(developer) }
     }
     // Pickups and reconsiderations share ONE engineer-ordered pass; neither
     // decision type implicitly gets priority after completed claims are released.

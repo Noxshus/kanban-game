@@ -1,3 +1,4 @@
+import { decideNow } from './helpers/decisionFixture.ts'
 import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
@@ -8,7 +9,6 @@ import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { simulationReducer } from '../src/store/simulationControls.ts'
 import { close, expectedWork } from './helpers/flowExpectation.ts'
-import { nextRandom } from '../src/game/random.ts'
 
 function scenario(focus = 0) {
   const state = structuredClone(exampleGameState)
@@ -61,14 +61,15 @@ test('switching fully resets Flow, abandoned work is preserved, and returning st
   let state = advanceSimulation(scenario(5), 10, () => 0.99)
   state.tickets.push({ ...state.tickets[0], id: 'alternative', rank: 2, completedWork: 0, actualStatus: 'todo' })
   state.developers[0].assessmentClock = { elapsed: 10, remaining: 0 }
+  state.tickets[1].reportedProgress=99.999
   const before = structuredClone(state)
-  const switched = advanceSimulation(state, 1, (() => { let calls=0; return () => calls++ === 0 ? 0.999 : 0.5 })())
+  const switched = advanceSimulation(decideNow(state), 1, () => .5)
   assert.equal(switched.developers[0].activeTicketID, 'alternative')
   assert.equal(switched.developers[0].flowStreak?.duration, 1)
   close(switched.tickets[1].completedWork, expectedWork(2, 1))
   assert.equal(switched.tickets[0].completedWork, before.tickets[0].completedWork)
-  switched.developers[0].assessmentClock!.remaining = 0
-  const returned = advanceSimulation(switched, 1, (() => { let calls=0; return () => calls++ === 0 ? 0.999 : 0.5 })())
+  switched.tickets[0].reportedProgress=99.9999;switched.tickets[1].reportedProgress=0
+  const returned = advanceSimulation(decideNow(switched), 1, () => .5)
   assert.equal(returned.developers[0].activeTicketID, 'ticket-1')
   assert.equal(returned.developers[0].flowStreak?.duration, 1)
   close(returned.tickets[0].completedWork - before.tickets[0].completedWork, expectedWork(2, 1))
@@ -107,7 +108,7 @@ test('staying, pause, zero time and rank reorder preserve the streak', () => {
   assert.deepEqual(resumed.game, game)
   assert.equal(simulationReducer(resumed, { type: 'tick' }).game.developers[0].flowStreak?.duration, 3)
   game.tickets[0].reportedStatus = 'todo'
-  game.tickets.push({ ...game.tickets[0], id: 'alternative', rank: 2 })
+  game.tickets.push({ ...game.tickets[0], id: 'alternative', rank: 2, actualStatus:'backlog' })
   for (const isPaused of [true, false]) {
     const reordered = simulationReducer({ game, isPaused }, { type: 'reorderTodo', ticketId: 'ticket-1', targetId: 'alternative', after: true })
     assert.equal(reordered.game.tickets[0].rank, 2)
@@ -118,7 +119,7 @@ test('staying, pause, zero time and rank reorder preserve the streak', () => {
 test('Flow adds no RNG draws and serialized streaks replay without mutating their input', () => {
   const state = scenario(10)
   const first = advanceSimulation(state, 1)
-  assert.equal(first.randomState, nextRandom(state.randomState).state)
+  assert.equal(first.randomState, state.randomState)
   const original = structuredClone(first)
   Object.freeze(first.developers[0].flowStreak)
   const continued = advanceSimulation(first, 3)

@@ -1,11 +1,14 @@
 import { exampleGameState } from '../data/exampleGameState.ts'
 import { advanceSimulation } from '../game/advanceSimulation.ts'
 import type { GameState } from '../game/types'
-import { reorderTodo } from '../game/rank.ts'
+import { compareRank, reorderTodo } from '../game/rank.ts'
+import { reconsiderPriorities } from '../game/workDecisions.ts'
 
 export interface SimulationSession {
   game: GameState
   isPaused: boolean
+  // Session-only, JSON-safe staging: no simulation changes occur during paused edits.
+  pausedPriorityOrder?: string[]
 }
 
 export type SimulationAction =
@@ -28,6 +31,22 @@ export function parseSeed(input: string): number | null {
   return Number.isInteger(seed) && seed >= 0 && seed <= 0xffffffff ? seed : null
 }
 
+function priorityOrder(game: GameState): string[] {
+  return [...game.tickets].sort(compareRank).map(ticket => ticket.id)
+}
+
+function applyPendingPriorities(session: SimulationSession): SimulationSession {
+  const { pausedPriorityOrder, ...ready } = session
+  if (!pausedPriorityOrder) return session
+  // Ranks are globally consecutive. Reconstruct only the old ordering, keeping
+  // the current seed and shared decision path instead of saving a stale GameState.
+  const ranks = new Map(pausedPriorityOrder.map((id, i) => [id, i + 1]))
+  const before = { ...session.game, tickets: session.game.tickets.map(ticket => ({
+    ...ticket, rank: ranks.get(ticket.id) ?? ticket.rank,
+  })) }
+  return { ...ready, game: reconsiderPriorities(before, session.game) }
+}
+
 export function simulationReducer(
   session: SimulationSession,
   action: SimulationAction,
@@ -35,15 +54,27 @@ export function simulationReducer(
   switch (action.type) {
     case 'reorderTodo': {
       const game = reorderTodo(session.game, action.ticketId, action.targetId, action.after)
-      return game === session.game ? session : { ...session, game }
+      if (game === session.game) return session
+      if (!session.isPaused) return { ...session, game: reconsiderPriorities(session.game, game) }
+      // Capture lazily: before the first paused edit this is also the pause-start
+      // order. Compare net order, so reversing edits never creates an assessment.
+      const { pausedPriorityOrder = priorityOrder(session.game), ...rest } = session
+      return priorityOrder(game).every((id, i) => id === pausedPriorityOrder[i])
+        ? { ...rest, game }
+        : { ...rest, game, pausedPriorityOrder }
     }
     case 'togglePause':
-      return { ...session, isPaused: !session.isPaused }
+      return session.isPaused
+        ? { ...applyPendingPriorities(session), isPaused: false }
+        : { ...session, isPaused: true }
     case 'tick':
     case 'step':
       // Guard against queued timer ticks after pause/restart, and stepping during a live run.
       if (action.type === 'tick' ? session.isPaused : !session.isPaused) return session
-      return { ...session, game: advanceSimulation(session.game, 1) }
+      {
+        const ready = applyPendingPriorities(session)
+        return { ...ready, game: advanceSimulation(ready.game, 1) }
+      }
     case 'restart':
       return createSimulationSession()
     case 'applySeed':

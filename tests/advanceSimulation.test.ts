@@ -1,3 +1,4 @@
+import { decideNow, remember } from './helpers/decisionFixture.ts'
 import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
@@ -128,7 +129,7 @@ test('misleading reported columns cannot make Backlog/Done eligible or hide actu
  assert.equal(result.tickets[1].completedWork,10)
 })
 
-test('actual accumulated Flow can change a neutral-noise decision from switch to stay',()=>{
+test('actual accumulated Flow can change an event decision from switch to stay',()=>{
  for(const duration of [0,1000]) {
   const input=state()
   input.developers[0].productivity=1
@@ -136,8 +137,8 @@ test('actual accumulated Flow can change a neutral-noise decision from switch to
   input.developers[0].assessmentClock={elapsed:10,remaining:0}
   input.tickets[0]={...input.tickets[0],rank:2,requiredWork:100,completedWork:0}
   input.tickets.push({...input.tickets[0],id:'alternative',rank:1,requiredWork:101,actualStatus:'todo'})
-  const result=advanceSimulation(input,0.1,()=>0.5)
-  assert.equal(result.developers[0].lastAssessment?.error,0)
+  for (const t of input.tickets) remember(t,input.developers[0].id)
+  const result=advanceSimulation(decideNow(input),0.1,()=>0.5)
   assert.equal(result.developers[0].lastAssessment?.outcome,duration===0?'switch':'stay')
   assert.equal(result.developers[0].activeTicketID,duration===0?'alternative':'ticket-1')
   close(result.developers[0].flowStreak!.duration,duration+0.1)
@@ -151,10 +152,11 @@ test('high Focus with substantial retained Flow still permits a clearly worthwhi
  input.developers[0].assessmentClock={elapsed:10,remaining:0}
  input.tickets[0].requiredWork=10000;input.tickets[0].completedWork=0
  input.tickets.push({...input.tickets[0],id:'quick',rank:2,requiredWork:1,actualStatus:'todo'})
- const result=advanceSimulation(input,0.01,()=>0.5)
+ for (const t of input.tickets) remember(t,input.developers[0].id)
+ const result=advanceSimulation(decideNow(input),0.01,()=>0.5)
  assert.equal(result.developers[0].lastAssessment?.outcome,'switch')
  assert.equal(result.developers[0].activeTicketID,'quick')
- assert.ok(result.developers[0].lastAssessment!.efficiencyAdvantage!>0)
+ assert.equal(result.developers[0].lastAssessment!.trigger,'priority')
  close(result.developers[0].flowStreak!.duration,0.01)
 })
 
