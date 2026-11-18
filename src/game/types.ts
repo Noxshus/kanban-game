@@ -75,6 +75,9 @@ export interface Developer {
   focus: number
   // Missing means zero Flow; ticket identity prevents carrying it between tickets.
   flowStreak?: { ticketId: string; duration: number }
+  // Gameplay stint: the gross-ledger baseline survives numerical cache refreshes.
+  // Missing on legacy saves; prior contributions are protected on restoration.
+  workStint?: { ticketId: string; effortOrigin: WorkAmount }
   // Numerical integration origin, not another gameplay clock. Reusing one
   // integral across calls preserves completion/assessment coincidence.
   workSession?: {

@@ -7,6 +7,7 @@ import { prepareDiscovery } from './reestimation.ts'
 import { selectWork } from './selectWork.ts'
 import { compareRank } from './rank.ts'
 import { nextRandom } from './random.ts'
+import { applySwitchLoss, beginWorkStint } from './workLoss.ts'
 
 export function simulationDraw(state: GameState) {
   return () => {
@@ -29,6 +30,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     delete developer.workSession
     delete developer.estimateDiscovery
     delete developer.assessmentClock
+    delete developer.workStint
   }
   // Reserve existing work before any idle pickup, irrespective of engineer order.
   for (const developer of state.developers) {
@@ -46,6 +48,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     if (developer.lastAssessment && !('trigger' in developer.lastAssessment)) delete developer.lastAssessment
     const ticket = current(developer)
     if (!ticket) return
+    beginWorkStint(state, developer, ticket)
     if (developer.estimateDiscovery && developer.estimateDiscovery.ticketId !== ticket.id) pauseDiscovery(developer)
     if (developer.flowStreak && developer.flowStreak.ticketId !== ticket.id) {
       pauseDiscovery(developer)
@@ -61,12 +64,18 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     if (!decision) return
     developer.lastAssessment = decision
     if (decision.selectedId === previous?.id) return
-    if (previous) { claimed.delete(previous.id); previous.actualStatus = 'in_progress' }
+    if (previous) {
+      applySwitchLoss(state, developer, previous)
+      claimed.delete(previous.id)
+      previous.actualStatus = 'in_progress'
+    }
     const ticket = byId.get(decision.selectedId)!
     const appraisal = decision.considered.find(t => t.id === ticket.id)!
     pauseDiscovery(developer)
     developer.activeTicketID = ticket.id
     developer.flowStreak = { ticketId: ticket.id, duration: 0 }
+    delete developer.workStint
+    beginWorkStint(state, developer, ticket)
     delete developer.workSession
     delete developer.estimateDiscovery
     delete developer.assessmentClock
