@@ -3,17 +3,18 @@ import { test } from 'node:test'
 import { selectWork, RANK_PREFERENCE } from '../src/game/selectWork.ts'
 import { projectWork } from '../src/game/completionTime.ts'
 import { workAmount } from '../src/game/work.ts'
+import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
 import { estimateInitialEffort } from '../src/game/effortEstimate.ts'
 import { nextRandom } from '../src/game/random.ts'
-import { decisionFixture, remember } from './helpers/decisionFixture.ts'
+import { decisionFixture, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
-const noDraw = () => { throw Error('No decision RNG for remembered work') }
+const noDraw = () => { throw Error('No decision RNG for published work') }
 
 test('direct scores independently match perceived-work projection plus one soft Rank contribution', () => {
   const s = decisionFixture(), d = s.developers[0]
   s.tickets.push({ ...s.tickets[0], id: 'other', rank: 2, requiredWork: 200, reportedProgress: 25, estimateHistory: [] })
-  remember(s.tickets[1], d.id, 80)
+  setPublishedEstimate(s.tickets[1], d.id, 80)
   const result = selectWork(s.tickets, d, noDraw)!
   for (const option of result.considered) {
     const remaining = option.estimatedTotal * (1 - option.reportedProgress / 100)
@@ -26,7 +27,7 @@ test('direct scores independently match perceived-work projection plus one soft 
   assert.equal(RANK_PREFERENCE, 0.25)
 })
 
-test('reported progress and personal opinions drive appraisal, not actual completed work or gross experience', () => {
+test('reported progress and shared board estimates drive appraisal, not actual completed work or gross experience', () => {
   const s = decisionFixture(), d = s.developers[0]
   s.tickets[0].reportedProgress = 90
   const first = selectWork(s.tickets, d, noDraw)!
@@ -43,7 +44,7 @@ test('retained Flow favours staying, while soft Rank permits only a modest effic
     const s=decisionFixture(),d=s.developers[0]
     s.tickets[0].rank=2; s.tickets[0].reportedProgress=70 // current perceived R=30
     s.tickets.push({...s.tickets[0],id:'other',rank:1,requiredWork:remaining,reportedProgress:0,estimateHistory:[]})
-    remember(s.tickets[1],d.id)
+    setPublishedEstimate(s.tickets[1],d.id)
     d.flowStreak={ticketId:'current',duration:flow}
     const decision=selectWork(s.tickets,d,noDraw,'priority',{high:0,low:0},s.tickets[0])!
     assert.equal(decision.selectedId,selected)
@@ -74,7 +75,7 @@ test('winning preview becomes exactly one official personal assessment/publicati
   const preview=decision.considered.find(t=>t.id===winner.id)!
   assert.equal(winner.initialEffortEstimate!.totalWork,preview.estimatedTotal)
   assert.equal(winner.reportedEffortEstimate,preview.estimatedTotal)
-  assert.deepEqual(winner.estimateHistory!.map(e=>e.kind),['assessment','publication'])
+  assert.deepEqual(winner.estimateHistory!.map(e=>e.kind),['publication'])
   assert.equal(result.tickets.find(t=>t.id!==winner.id)!.estimateHistory,undefined)
   assert.equal(result.randomState,nextRandom(second.state).state) // two previews, one discovery target
 })
@@ -82,7 +83,7 @@ test('winning preview becomes exactly one official personal assessment/publicati
 test('Judgement and relevant competency improve the SAME existing temporary estimate distribution', () => {
   for(const [j,c] of [[0,0],[100,0],[0,100],[100,100]]) {
     const s=decisionFixture(),d=s.developers[0]
-    s.tickets[0].estimateHistory=undefined;s.tickets[0].initialEffortEstimate=undefined;d.judgement=j;d.competencies.frontend=c
+    s.tickets[0].estimateHistory=undefined;s.tickets[0].initialEffortEstimate=undefined;s.tickets[0].reportedEffortEstimate=undefined;d.judgement=j;d.competencies.frontend=c
     const e=selectWork(s.tickets,d,()=>0.8)!.considered[0].estimatedTotal
     close(e,100*Math.exp(Math.log1p(-0.8)/(1+.09*j+.09*c)))
     assert.equal(e,estimateInitialEffort(100,j,c,.8))
@@ -92,7 +93,7 @@ test('Judgement and relevant competency improve the SAME existing temporary esti
 test('event subsets retain full eligible Rank ordinals and stable Rank/ID ties independent of array order', () => {
   const s=decisionFixture(),d=s.developers[0]
   for(const [id,rank] of [['middle',2],['last',3]] as const) {
-    const t={...s.tickets[0],id,rank,estimateHistory:[]}; remember(t,d.id);s.tickets.push(t)
+    const t={...s.tickets[0],id,rank,estimateHistory:[]}; setPublishedEstimate(t,d.id);s.tickets.push(t)
   }
   const ids=new Set(['last'])
   const r=selectWork(s.tickets,d,noDraw,'priority',{high:0,low:0},s.tickets[0],ids)!
@@ -101,19 +102,20 @@ test('event subsets retain full eligible Rank ordinals and stable Rank/ID ties i
   assert.equal(selectWork([...s.tickets].reverse(),d,noDraw)!.selectedId,'current')
 })
 
-test('unchosen legacy evidence is appraised read-only without an independent estimate reroll or fabricated history', () => {
+test('shared board estimates override private legacy records and DEV snapshots without rerolls or mutation', () => {
   const s=decisionFixture(),t=s.tickets[0],d=s.developers[0]
-  delete t.estimateHistory
+  t.estimateHistory=[{kind:'assessment',developerId:d.id,totalWork:5,reason:'initial',at:{high:0,low:0}}]
   t.initialEffortEstimate={developerId:d.id,totalWork:20}
   t.reportedEffortEstimate=60
   const before=structuredClone(s)
   const appraisal=selectWork([t],d,noDraw)!.considered[0]
-  assert.equal(appraisal.estimateSource,'remembered')
-  assert.equal(appraisal.estimatedTotal,20)
+  assert.equal(appraisal.estimateSource,'published')
+  assert.equal(appraisal.estimatedTotal,60)
   assert.deepEqual(s,before)
+  assert.equal(getDiagnosticsView(s).tickets[0].estimateHistory.length,0)
   t.lastEstimateEvaluation={developerId:d.id,reason:'discovery',personalWork:10,candidate:40,published:true}
   const revised=structuredClone(s)
-  assert.equal(selectWork([t],d,noDraw)!.considered[0].estimatedTotal,40)
+  assert.equal(selectWork([t],d,noDraw)!.considered[0].estimatedTotal,60)
   assert.deepEqual(s,revised)
 })
 
@@ -124,13 +126,13 @@ test('zero/100% reports, impossible rates, tiny fractions and enormous finite sc
   t.reportedProgress=100
   assert.equal(selectWork([t],d,noDraw)!.considered[0].timeLimit,'zero')
   t.reportedProgress=50;d.productivity=1
-  t.estimateHistory=[];remember(t,d.id,Number.MIN_VALUE)
+  t.estimateHistory=[];setPublishedEstimate(t,d.id,Number.MIN_VALUE)
   const tiny=selectWork([t],d,noDraw)!.considered[0]
   assert.equal(tiny.perceivedRemaining,null)
   assert.ok(tiny.logCompletionTime!<Math.log(Number.MIN_VALUE))
   assert.equal(tiny.timeLimit,null)
   for(const [total,rate] of [[1e300,1e-300],[Number.MIN_VALUE,Number.MAX_VALUE]]) {
-    t.estimateHistory=[];remember(t,d.id,total);d.productivity=rate
+    t.estimateHistory=[];setPublishedEstimate(t,d.id,total);d.productivity=rate
     const r=selectWork([t],d,noDraw)!
     assert.ok(Number.isFinite(r.considered[0].score))
     assert.deepEqual(JSON.parse(JSON.stringify(r)),r)

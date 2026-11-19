@@ -48,7 +48,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         'Estimated effort: 1E-200 work units', 'Estimated effort: 1E200 work units', 'Estimated effort: Unknown']) {
         assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)
       }
-      for (const text of ['private-original-author', '7654321', '9876543', 'Initial engineer belief:', 'actual total effort:',
+      for (const text of ['private-original-author', '7654321', '9876543', 'First published estimate:', 'actual total effort:',
         'private-effort-contributor', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'private-estimator', '8765432', '6543210']) {
         assert.ok(!visibleEstimates.includes(text), mode + ': leaked ' + text)
       }
@@ -120,7 +120,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const learnedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(learned).tickets[0] }))
         assert.ok(learnedHtml.includes('Latest effort re-evaluation: discovery by developer-1'))
         assert.ok(learnedHtml.includes('; published'))
-        assert.ok(learnedHtml.includes('Estimate assessment and publication history'))
+        assert.ok(learnedHtml.includes('Estimate publication history'))
         const withoutDiagnostics = renderToStaticMarkup(createElement(GameBoard, {
           view: getPlayerView(learned), diagnostics: null,
         }))
@@ -133,7 +133,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         }
         assert.ok(!withoutDiagnostics.includes('>Mismatch</button>'))
         assert.ok(!withoutDiagnostics.includes('>Match</button>'))
-        assert.ok(!withoutDiagnostics.includes('Estimate assessment and publication history'))
+        assert.ok(!withoutDiagnostics.includes('Estimate publication history'))
         for (const [isPaused, label] of [[true, 'Resume'], [false, 'Pause']] as const) {
           const toolbar = renderToStaticMarkup(createElement(DevelopmentUI, {
             state: exampleGameState,
@@ -154,7 +154,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
-        'Initial engineer belief:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'Estimate assessment and publication history',
+        'First published estimate:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'Estimate publication history',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
         assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)

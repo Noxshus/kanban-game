@@ -83,7 +83,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
   assert.equal(advanceSimulation(owned, 1).tickets[0].reportedEffortEstimate, undefined)
 })
 
-test('a new engineer independently replaces the report; restoration does not invent estimates', () => {
+test('a replacement adopts the board with no estimate draw; legacy Unknown claims publish on first real advance', () => {
   const initial = advanceSimulation(scenario(), 0.1, () => 0.5)
   const belief = structuredClone(initial.tickets[0].initialEffortEstimate)
   initial.tickets[0].reportedEffortEstimate = 123 // future reporting may diverge
@@ -94,23 +94,25 @@ test('a new engineer independently replaces the report; restoration does not inv
   delete initial.developers[0].estimateDiscovery // the replacement does not inherit A's scheduled personal exposure
   const draws: number[] = []
   const handed = advanceSimulation(initial, 0.1, () => { draws.push(0.5); return 0.5 })
-  assert.equal(draws.length, 2) // personal preview and discovery threshold
-  assert.equal(handed.tickets[0].reportedEffortEstimate, 500000)
+  assert.equal(draws.length, 1) // discovery threshold only; the report is already known
+  assert.equal(handed.tickets[0].reportedEffortEstimate, 123)
   assert.deepEqual(handed.tickets[0].initialEffortEstimate, belief)
   assert.equal(handed.tickets[0].assignedDeveloperId, 'replacement')
-  for (const keep of ['initialEffortEstimate', 'reportedEffortEstimate'] as const) {
-    const legacy = scenario(true)
-    if (keep === 'initialEffortEstimate') legacy.tickets[0].initialEffortEstimate = belief
-    else legacy.tickets[0].reportedEffortEstimate = legacy.tickets[0].requiredWork
-    legacy.developers[0].assessmentClock = { elapsed: 0, remaining: 1000 }
-    const restored = advanceSimulation(JSON.parse(JSON.stringify(legacy)), 0.1, () => { throw Error('No duplicate draw') })
-    assert.deepEqual(restored.tickets[0][keep], legacy.tickets[0][keep])
-    const absent = keep === 'initialEffortEstimate' ? 'reportedEffortEstimate' : 'initialEffortEstimate'
-    assert.equal(restored.tickets[0][absent], undefined)
-  }
+  const boardOnly = scenario(true)
+  boardOnly.tickets[0].reportedEffortEstimate = boardOnly.tickets[0].requiredWork
+  const restored = advanceSimulation(JSON.parse(JSON.stringify(boardOnly)), .1, () => { throw Error('No duplicate draw') })
+  assert.equal(restored.tickets[0].initialEffortEstimate, undefined)
+  assert.equal(restored.tickets[0].reportedEffortEstimate, 1e6)
+  const unknown = scenario(true)
+  unknown.tickets[0].initialEffortEstimate = { developerId: 'legacy-private-author', totalWork: 321 }
+  let calls = 0
+  const published = advanceSimulation(JSON.parse(JSON.stringify(unknown)), .1, () => { calls++; return .5 })
+  assert.equal(calls, 2) // Unknown active work: one estimate, one discovery threshold
+  assert.equal(published.tickets[0].reportedEffortEstimate, 500000)
+  assert.deepEqual(published.tickets[0].initialEffortEstimate, { developerId: unknown.developers[0].id, totalWork: 500000 })
 })
 
-test('event switches and returns retain personal beliefs and pending discovery without resampling', () => {
+test('event switches and returns retain shared estimates and pending discovery without resampling', () => {
   let s=advanceSimulation(scenario(true),.1,()=>.5)
   const pending=structuredClone(s.developers[0].estimateDiscovery)
   s.tickets.push({...scenario().tickets[0],id:'other',rank:2,reportedProgress:99.999})
@@ -120,7 +122,7 @@ test('event switches and returns retain personal beliefs and pending discovery w
   assert.equal(s.developers[0].activeTicketID,'other')
   const beliefs=s.tickets.map(t=>structuredClone(t.initialEffortEstimate))
   s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
-  const returned=decideNow(s,()=>{throw Error('Remembered opinions require no RNG')})
+  const returned=decideNow(s,()=>{throw Error('Published reports require no RNG')})
   assert.equal(returned.developers[0].activeTicketID,'ticket-1')
   assert.deepEqual(returned.developers[0].estimateDiscovery,pending)
   assert.deepEqual(returned.tickets.map(t=>t.initialEffortEstimate),beliefs)

@@ -5,12 +5,12 @@ export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export type WorkDomain = 'frontend' | 'backend'
 export type TicketComplexity = 'S' | 'M' | 'L' | 'XL' | 'XXL'
 
-// Array order resolves events at the same compensated instant. Legacy observations
-// have unknown dates; they are evidence, not invented historical events.
+// Only publications are written now. Assessment variants/source indices are
+// accepted solely to migrate old saves; they never supply engineer knowledge.
 export type EstimateEvent =
   | { kind: 'assessment'; developerId: string; totalWork: number; reason: 'initial' | 'discovery' | 'overrun'; at: EventTime }
   | { kind: 'legacy_assessment'; developerId: string; totalWork: number; baseline: number; evidence: 'original' | 'published_revision' | 'active_fallback'; at: EventTime | null }
-  | { kind: 'publication'; developerId: string; totalWork: number; reason: 'initial' | 'takeover' | 'return' | 'revision'; sourceAssessmentIndex: number; replacedTotalWork?: number; replacedDeveloperId?: string; at: EventTime }
+  | { kind: 'publication'; developerId: string; totalWork: number; reason: 'initial' | 'takeover' | 'return' | 'revision'; sourceAssessmentIndex?: number; replacedTotalWork?: number; replacedDeveloperId?: string; at: EventTime }
   | { kind: 'legacy_publication'; developerId?: string; totalWork: number; sourceAssessmentIndex?: number; at: null }
 
 export interface EstimateDiscovery {
@@ -39,8 +39,7 @@ export interface Ticket {
 // Represents ticket ownership, NOT necessarily active work. One developer may be assigned multiple tickets.
 
   assignedDeveloperId?: string
-  // Original engineer belief/provenance and public report can diverge in later systems.
-  // Immutable ticket-original provenance; personal beliefs live in estimateHistory.
+  // First published estimate/provenance: fixed E0 for learning, never private memory.
   initialEffortEstimate?: { developerId: string; totalWork: number }
   reportedEffortEstimate?: number
   estimateHistory?: EstimateEvent[]
@@ -107,7 +106,7 @@ export interface TicketAppraisal {
   reportedProgress: number
   rankScore: number
   estimatedTotal: number
-  estimateSource: 'remembered' | 'temporary'
+  estimateSource: 'published' | 'temporary'
   perceivedRemaining: number | null
   completionSeconds: number | null
   logCompletionTime: number | null

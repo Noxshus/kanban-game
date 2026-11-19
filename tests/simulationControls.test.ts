@@ -6,7 +6,7 @@ import { compareRank } from '../src/game/rank.ts'
 import { reconsiderPriorities } from '../src/game/workDecisions.ts'
 import { createSimulationSession, parseSeed, simulationReducer } from '../src/store/simulationControls.ts'
 import type { SimulationSession } from '../src/store/simulationControls.ts'
-import { decisionFixture, remember } from './helpers/decisionFixture.ts'
+import { decisionFixture, setPublishedEstimate } from './helpers/decisionFixture.ts'
 
 const moveFive = { type: 'reorderTodo', ticketId: 'ticket-5', targetId: 'ticket-2' } as const
 const order = (session: SimulationSession) => [...session.game.tickets].sort(compareRank).map(t => t.id)
@@ -243,7 +243,7 @@ test('a deferred net change respects engineer ordering and exclusive claims at t
     for (const [id, rank] of [['left', 3], ['middle', 4], ['right', 5]] as const) {
       game.tickets.push({ ...game.tickets[0], id, rank, actualStatus: 'todo', reportedStatus: 'todo', requiredWork: 1, estimateHistory: [] })
     }
-    for (const ticket of game.tickets) for (const developer of game.developers) remember(ticket, developer.id)
+    for (const ticket of game.tickets) for (const developer of game.developers) setPublishedEstimate(ticket, developer.id)
     if (reversed) game.developers.reverse()
     const initial = { game, isPaused: true }
     let staged = simulationReducer(initial, { type: 'reorderTodo', ticketId: 'right', targetId: 'left' })

@@ -1,7 +1,7 @@
 import type { GameState } from './types'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { workTransitions, simulationDraw } from './workDecisions.ts'
-import { validateEstimateHistory } from './estimateHistory.ts'
+import { migrateEstimateHistory, validateEstimateHistory } from './estimateHistory.ts'
 import { validateSelectionAttributes } from './selectWork.ts'
 import { getFlowDuration } from './flow.ts'
 import { projectCompletion } from './completionTime.ts'
@@ -23,6 +23,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   const { tickets, developers } = result
   validateWorkLog(result.workLog)
   tickets.forEach(validateEstimateHistory)
+  for (const ticket of tickets) if (ticket.estimateHistory !== undefined) migrateEstimateHistory(ticket)
   developers.forEach(validateSelectionAttributes)
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = random ?? simulationDraw(result)

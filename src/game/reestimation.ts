@@ -5,7 +5,7 @@ import { addWorkAmounts, anchorEffort, effortNumber, subtractWorkAmounts } from 
 import { projectWork } from './completionTime.ts'
 import { addEventTime, compareEventTime, eventTime } from './eventTime.ts'
 import { openUnit } from './reconsideration.ts'
-import { personalEstimate, publishEstimate, restoreLegacyEstimate } from './estimateHistory.ts'
+import { firstPublishedEstimate, migrateEstimateHistory, publishEstimate } from './estimateHistory.ts'
 
 // Provisional #58 balance, deliberately independent of Focus and Flow.
 export const DISCOVERY_BASE = 0.8
@@ -81,11 +81,9 @@ export function personalEffort(state: GameState, developer: Developer, ticket: T
   return state.workLog?.find(entry => entry.developerId === developer.id && entry.ticketId === ticket.id)?.effort ?? workAmount(0)
 }
 
-function baselineFor(ticket: Ticket, developer: Developer, at: ReturnType<typeof eventTime>) {
-  if (ticket.reportedEffortEstimate === undefined) return null // private-only legacy state: no report to revise
-  const opinion = personalEstimate(ticket, developer.id) ?? restoreLegacyEstimate(ticket, developer.id, at)
-  const baseline = opinion!.baseline
-  estimates(ticket.requiredWork, ticket.reportedEffortEstimate, baseline)
+function baselineFor(ticket: Ticket) {
+  const baseline = firstPublishedEstimate(ticket)
+  if (baseline !== null) estimates(ticket.requiredWork, ticket.reportedEffortEstimate!, baseline)
   return baseline
 }
 
@@ -121,9 +119,10 @@ function migrateOverrunState(ticket: Ticket, originalBaseline: number | undefine
 }
 
 export function prepareDiscovery(state: GameState, developer: Developer, ticket: Ticket, draw: () => number) {
+  migrateEstimateHistory(ticket)
   // Capture provenance before baselineFor supplies a fallback for board-only saves.
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
-  const baseline = baselineFor(ticket, developer, eventTime(state.simulationTime, state.simulationTimeRemainder))
+  const baseline = baselineFor(ticket)
   if (baseline === null) return
   // Reproject migrated caches from their saved work targets, without resampling
   // RNG. An old suppressed or re-armed crossing may no longer be appropriate.
@@ -174,17 +173,17 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
 }
 
 export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun'): boolean {
+  migrateEstimateHistory(ticket)
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder)
-  const baseline = baselineFor(ticket, developer, at)
+  const baseline = baselineFor(ticket)
   if (baseline === null) return false
   migrateOverrunState(ticket, originalBaseline)
   const personal = personalEffort(state, developer, ticket)
   const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
-  const published = candidate > personalEstimate(ticket, developer.id)!.totalWork
+  const published = candidate > ticket.reportedEffortEstimate!
   if (published) {
-    ticket.estimateHistory!.push({ kind: 'assessment', developerId: developer.id, totalWork: candidate, reason, at: { ...at } })
-    publishEstimate(ticket, developer.id, 'revision', at)
+    publishEstimate(ticket, developer.id, candidate, 'revision', at)
   }
   ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
   // One crossing for the entire ticket lifetime, even if this evaluation leaves
@@ -192,7 +191,7 @@ export function evaluateEstimate(state: GameState, developer: Developer, ticket:
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
   delete developer.estimateDiscovery
   if (developer.workSession) delete developer.workSession.estimateEvents
-  // This result denotes a new adopted belief. A return publication never calls
+  // This result denotes a shared board improvement. A takeover never calls
   // this path, and a no-op evaluation is not a reconsideration opportunity.
   return published
 }

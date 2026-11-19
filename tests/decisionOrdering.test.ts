@@ -5,7 +5,7 @@ import { projectWork } from '../src/game/completionTime.ts'
 import { workAmount, integratedWork } from '../src/game/work.ts'
 import { nextRandom } from '../src/game/random.ts'
 import { effortNumber } from '../src/game/workLog.ts'
-import { decisionFixture, remember } from './helpers/decisionFixture.ts'
+import { decisionFixture, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
 import type { TicketComplexity } from '../src/game/types.ts'
 
@@ -19,7 +19,7 @@ function coincident(reverse=false,offset=0,complexity: TicketComplexity='S') {
   {...template,id:'ongoing',rank:2,requiredWork:1000,estimateHistory:[],initialEffortEstimate:undefined,reportedEffortEstimate:600},
   {...template,id:'contested',rank:1,requiredWork:100,actualStatus:'todo',reportedStatus:'todo',estimateHistory:[],initialEffortEstimate:undefined},
  ]
- for(const t of s.tickets)for(const d of s.developers)remember(t,d.id,t.id==='ongoing'&&d.id==='revising'?600:t.requiredWork)
+ for(const t of s.tickets)for(const d of s.developers)setPublishedEstimate(t,d.id,t.id==='ongoing'&&d.id==='revising'?600:t.requiredWork)
  for(const t of s.tickets)t.reportedEffortEstimate=t.id==='ongoing'?600:t.requiredWork
  const due=projectWork(s.developers[0],s.tickets[0],workAmount(1)).seconds!
  const quantity=offset===0?workAmount(1):integratedWork(s.developers[1],s.tickets[1],due+offset,0)
@@ -56,7 +56,7 @@ test('nonbinary partitions and JSON preserve mixed-event coincidence, histories,
   for(const dt of parts)split=JSON.parse(JSON.stringify(advanceSimulation(split,dt)))
   split=advanceSimulation(split,due+.25-parts.reduce((a,b)=>a+b,0))
   equivalent(split,whole)
-  assert.equal(whole.randomState,reverse?s.randomState:nextRandom(s.randomState).state)
+  assert.equal(whole.randomState,nextRandom(s.randomState).state)
  }
 })
 

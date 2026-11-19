@@ -4,7 +4,6 @@ import { compareRank } from './rank.ts'
 import { clampReportedProgress } from './reportedProgress.ts'
 import { projectWork } from './completionTime.ts'
 import { getFlowDuration } from './flow.ts'
-import { personalEstimate } from './estimateHistory.ts'
 import { estimateInitialEffort } from './effortEstimate.ts'
 import { scaleWork, workAmount } from './work.ts'
 
@@ -29,8 +28,8 @@ export function selectWork(
   const considered: TicketAppraisal[] = []
   for (const [index, ticket] of ordered.entries()) {
     if (alternatives && ticket.id !== current?.id && !alternatives.has(ticket.id)) continue
-    const opinion = personalEstimate(ticket, developer.id)
-    const estimatedTotal = opinion?.totalWork
+    const published = ticket.reportedEffortEstimate
+    const estimatedTotal = published
       ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
     const reportedProgress = clampReportedProgress(ticket.reportedProgress)
     const remaining = scaleWork(workAmount(estimatedTotal), 1 - reportedProgress / 100)
@@ -42,7 +41,7 @@ export function selectWork(
     const scalar = remaining.mantissa * 2 ** remaining.exponent
     considered.push({
       id: ticket.id, rank: ticket.rank, rankScore, reportedProgress, estimatedTotal,
-      estimateSource: opinion ? 'remembered' : 'temporary',
+      estimateSource: published !== undefined ? 'published' : 'temporary',
       perceivedRemaining: remaining.mantissa > 0 && (scalar === 0 || !Number.isFinite(scalar)) ? null : scalar,
       completionSeconds: projection.seconds,
       logCompletionTime: Number.isFinite(projection.logSeconds) ? projection.logSeconds : null,

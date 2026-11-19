@@ -184,9 +184,9 @@ test('complexity reprojects discovery and lifetime overrun deadlines without cha
     const due = projectWork(d, t, workAmount(reason === 'discovery' ? 5 : 40)).seconds!
     const boundary = advanceSimulation(s, due)
     assert.equal(boundary.tickets[0].lastEstimateEvaluation!.reason, reason)
-    assert.deepEqual(boundary.tickets[0].estimateHistory!.at(-2)!.at, { high: due, low: 0 })
-    assert.equal(boundary.tickets[0].estimateHistory!.filter(e => e.kind === 'assessment').length, 2)
-    assert.equal(boundary.tickets[0].estimateHistory!.filter(e => e.kind === 'publication').length, 1)
+    assert.deepEqual(boundary.tickets[0].estimateHistory!.at(-1)!.at, { high: due, low: 0 })
+    assert.equal(boundary.tickets[0].estimateHistory!.filter(e => e.kind === 'assessment').length, 0)
+    assert.equal(boundary.tickets[0].estimateHistory!.filter(e => e.kind === 'publication').length, 2)
     close(boundary.tickets[0].lastEstimateEvaluation!.personalWork!, reason === 'discovery' ? 5 : 40)
     close(boundary.tickets[0].reportedEffortEstimate!, 100 - 60 * (1 + (reason === 'discovery' ? 5 : 40) / 40) ** -0.3)
     const whole = advanceSimulation(s, due + 0.25)

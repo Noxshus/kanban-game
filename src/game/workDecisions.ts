@@ -55,7 +55,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       delete developer.flowStreak
       delete developer.workSession
     }
-    encounterEstimate(ticket, developer, now, draw, true)
+    encounterEstimate(ticket, developer, now, draw)
     resumeDiscovery(developer, ticket.id)
   }
   const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>) => {
@@ -83,7 +83,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
     ticket.reportedStatus = 'in_progress'
-    encounterEstimate(ticket, developer, now, draw, false,
+    encounterEstimate(ticket, developer, now, draw,
       appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined)
     resumeDiscovery(developer, ticket.id)
   }

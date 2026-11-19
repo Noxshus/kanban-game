@@ -14,8 +14,12 @@ export function decideNow(state: GameState, draw: () => number = () => 0.5) {
   return result
 }
 
-export function remember(ticket: Ticket, developerId: string, totalWork = ticket.requiredWork) {
-  (ticket.estimateHistory ??= []).push({ kind: 'assessment', developerId, totalWork, reason: 'initial', at: { high: 0, low: 0 } })
+// Explicit shared board fixtures, not engineer-private assessment memories.
+export function setPublishedEstimate(ticket: Ticket, developerId: string, totalWork = ticket.requiredWork) {
+  ticket.reportedEffortEstimate = totalWork
+  ticket.initialEffortEstimate = { developerId, totalWork }
+  delete ticket.learningBaseline
+  ticket.estimateHistory = [{ kind: 'publication', developerId, totalWork, reason: 'initial', at: { high: 0, low: 0 } }]
 }
 
 export function decisionFixture(): GameState {

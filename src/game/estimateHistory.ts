@@ -25,9 +25,6 @@ export function validateEstimateHistory(ticket: Ticket) {
     }
     if (event.kind === 'legacy_assessment') validEffort(ticket, event.baseline)
     if (event.kind === 'publication' || event.kind === 'legacy_publication') {
-      if (event.kind === 'publication' && event.sourceAssessmentIndex === undefined) {
-        throw new RangeError('Publication requires an assessment source')
-      }
       if (event.sourceAssessmentIndex !== undefined) {
         const source = ticket.estimateHistory![event.sourceAssessmentIndex]
         if (!Number.isInteger(event.sourceAssessmentIndex) || event.sourceAssessmentIndex >= index
@@ -40,102 +37,80 @@ export function validateEstimateHistory(ticket: Ticket) {
   }
 }
 
-function migrateHistory(ticket: Ticket) {
-  if (ticket.estimateHistory !== undefined) return
+// Keep board history as evidence, never as a source of personal beliefs. Old
+// assessment records are removed; publication author/time remain exactly as saved.
+export function migrateEstimateHistory(ticket: Ticket) {
+  if (ticket.estimateHistory !== undefined) {
+    const first = ticket.estimateHistory.find(event => event.kind === 'publication' || event.kind === 'legacy_publication')
+    const original = ticket.initialEffortEstimate
+    // An explicit initial publication proves the board was Unknown. Older private
+    // provenance must yield to it; partial revision/takeover history proves no such thing.
+    if (first?.kind === 'publication' && first.reason === 'initial' && original
+        && (original.totalWork !== first.totalWork || original.developerId !== first.developerId)) {
+      ticket.initialEffortEstimate = { developerId: first.developerId, totalWork: first.totalWork }
+      delete ticket.learningBaseline
+    }
+    ticket.estimateHistory = ticket.estimateHistory.flatMap(event => {
+      if (event.kind !== 'publication' && event.kind !== 'legacy_publication') return []
+      const publication = { ...event }
+      delete publication.sourceAssessmentIndex
+      return [publication]
+    })
+    return
+  }
+  if (ticket.reportedEffortEstimate === undefined) return
   const history: EstimateEvent[] = []
   const original = ticket.initialEffortEstimate
   const evaluation = ticket.lastEstimateEvaluation
   if (original) {
     validEffort(ticket, original.totalWork)
-    history.push({ kind: 'legacy_assessment', ...original, baseline: original.totalWork, evidence: 'original', at: null })
+    history.push({ kind: 'legacy_publication', ...original, at: null })
   }
-  // Only a published legacy snapshot proves adoption. Unpublished mathematical
-  // candidates do not establish an otherwise missing personal opinion.
-  if (evaluation?.published && (!original || evaluation.developerId !== original.developerId || evaluation.candidate !== original.totalWork)) {
-    const baseline = original?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate!
-    validEffort(ticket, baseline); validEffort(ticket, evaluation.candidate)
-    history.push({ kind: 'legacy_assessment', developerId: evaluation.developerId, totalWork: evaluation.candidate,
-      baseline, evidence: 'published_revision', at: null })
-  }
-  if (ticket.reportedEffortEstimate !== undefined) {
-    validEffort(ticket, ticket.reportedEffortEstimate)
-    const index = history.findLastIndex(event => event.totalWork === ticket.reportedEffortEstimate)
-    const source = history[index]
-    history.push({ kind: 'legacy_publication', totalWork: ticket.reportedEffortEstimate, at: null,
-      ...(source ? { developerId: source.developerId, sourceAssessmentIndex: index } : {}) })
+  const board = ticket.reportedEffortEstimate
+  validEffort(ticket, board)
+  // A no-op evaluation cannot establish who published an earlier report.
+  const knownPublisher = evaluation?.published && evaluation.candidate === board ? evaluation.developerId : undefined
+  if (!original || board !== original.totalWork || knownPublisher && knownPublisher !== original.developerId) {
+    history.push({ kind: 'legacy_publication', totalWork: board, at: null,
+      ...(knownPublisher ? { developerId: knownPublisher } : {}) })
   }
   ticket.estimateHistory = history
 }
 
-export function personalEstimate(ticket: Ticket, developerId: string) {
-  // Read established legacy evidence without migrating or mutating an unchosen
-  // ticket during appraisal. Real pickup imports that same evidence into history.
-  if (ticket.estimateHistory === undefined) {
-    const original = ticket.initialEffortEstimate
-    const evaluation = ticket.lastEstimateEvaluation
-    if (evaluation?.published && evaluation.developerId === developerId) {
-      return { baseline: original?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate!,
-        totalWork: evaluation.candidate, index: -1 }
-    }
-    if (original?.developerId === developerId) return { baseline: original.totalWork, totalWork: original.totalWork, index: -1 }
-  }
-  const opinions = (ticket.estimateHistory ?? []).flatMap((event, index) =>
-    (event.kind === 'assessment' || event.kind === 'legacy_assessment') && event.developerId === developerId ? [{ event, index }] : [])
-  if (!opinions.length) return undefined
-  const first = opinions[0].event, last = opinions.at(-1)!
-  return { baseline: first.kind === 'legacy_assessment' ? first.baseline : first.totalWork,
-    totalWork: last.event.totalWork, index: last.index }
+export function firstPublishedEstimate(ticket: Ticket) {
+  if (ticket.reportedEffortEstimate === undefined) return null
+  migrateEstimateHistory(ticket)
+  // Board-only legacy saves have no known original author. Freeze the earliest
+  // known shared reference once, rather than compounding work into later reports.
+  const baseline = ticket.initialEffortEstimate?.totalWork ?? (ticket.learningBaseline ??=
+    ticket.estimateHistory?.find(event => event.kind === 'publication' || event.kind === 'legacy_publication')?.totalWork
+    ?? ticket.reportedEffortEstimate)
+  validEffort(ticket, baseline)
+  return baseline
 }
 
-// Upgrade an already-active old save without a new random signal or fictitious
-// past author. This explicitly observed compatibility belief is not an assessment.
-export function restoreLegacyEstimate(ticket: Ticket, developerId: string, at: EventTime) {
-  const migrating = ticket.estimateHistory === undefined
-  migrateHistory(ticket)
-  let opinion = personalEstimate(ticket, developerId)
-  if ((!opinion || migrating && ticket.reportedEffortEstimate !== undefined && opinion.totalWork !== ticket.reportedEffortEstimate)
-      && (ticket.initialEffortEstimate || ticket.reportedEffortEstimate !== undefined)) {
-    const baseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline ?? ticket.reportedEffortEstimate!
-    const totalWork = ticket.reportedEffortEstimate ?? baseline
-    validEffort(ticket, baseline); validEffort(ticket, totalWork)
-    if (!ticket.initialEffortEstimate) ticket.learningBaseline ??= baseline
-    ticket.estimateHistory!.push({ kind: 'legacy_assessment', developerId, baseline, totalWork, evidence: 'active_fallback', at: { ...at } })
-    opinion = personalEstimate(ticket, developerId)
-  }
-  return opinion
-}
-
-export function publishEstimate(ticket: Ticket, developerId: string, reason: Extract<EstimateEvent, {kind: 'publication'}>['reason'], at: EventTime) {
-  const opinion = personalEstimate(ticket, developerId)!
-  const previous = ticket.estimateHistory!.findLast(event => event.kind === 'publication' || event.kind === 'legacy_publication')
+export function publishEstimate(ticket: Ticket, developerId: string, totalWork: number, reason: 'initial' | 'revision', at: EventTime) {
+  validEffort(ticket, totalWork)
+  migrateEstimateHistory(ticket)
+  const previous = ticket.estimateHistory?.at(-1)
   const board = ticket.reportedEffortEstimate
-  ticket.estimateHistory!.push({ kind: 'publication', developerId, totalWork: opinion.totalWork, reason,
-    sourceAssessmentIndex: opinion.index, at: { ...at },
+  const history = ticket.estimateHistory ??= []
+  history.push({ kind: 'publication', developerId, totalWork, reason, at: { ...at },
     ...(board !== undefined ? { replacedTotalWork: board } : {}),
     ...(previous?.totalWork === board && previous?.developerId ? { replacedDeveloperId: previous.developerId } : {}) })
-  ticket.reportedEffortEstimate = opinion.totalWork
+  ticket.reportedEffortEstimate = totalWork
 }
 
-export function encounterEstimate(ticket: Ticket, developer: Developer, at: EventTime, draw: () => number, restoring = false, appraisal?: number) {
-  const legacy = ticket.estimateHistory === undefined && (ticket.initialEffortEstimate !== undefined || ticket.reportedEffortEstimate !== undefined)
-  if (restoring && legacy) {
-    restoreLegacyEstimate(ticket, developer.id, at)
-    return
-  }
-  migrateHistory(ticket)
-  const opinion = personalEstimate(ticket, developer.id)
-  // Restoring an existing active claim is not a return or a publication event.
-  if (restoring && opinion) return
-  if (!opinion) {
-    // Promote the winning transient appraisal, without a second estimate roll.
-    const totalWork = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
-    validEffort(ticket, totalWork)
-    ticket.estimateHistory!.push({ kind: 'assessment', developerId: developer.id, totalWork, reason: 'initial', at: { ...at } })
-    // Existing ticket-original provenance, including unknown legacy authors, is never replaced.
-    if (!legacy && ticket.initialEffortEstimate === undefined && ticket.reportedEffortEstimate === undefined
-        && ticket.estimateHistory!.length === 1) ticket.initialEffortEstimate = { developerId: developer.id, totalWork }
-    publishEstimate(ticket, developer.id, ticket.reportedEffortEstimate === undefined ? 'initial' : 'takeover', at)
-  } else publishEstimate(ticket, developer.id, 'return', at)
+export function encounterEstimate(ticket: Ticket, developer: Developer, at: EventTime, draw: () => number, appraisal?: number) {
+  migrateEstimateHistory(ticket)
+  if (ticket.reportedEffortEstimate !== undefined) return
+  // Promote only an Unknown ticket's winning preview. Existing board estimates
+  // are shared references; takeover/return never grants an estimate or publication.
+  const totalWork = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
+  validEffort(ticket, totalWork)
+  ticket.initialEffortEstimate = { developerId: developer.id, totalWork }
+  delete ticket.learningBaseline
+  publishEstimate(ticket, developer.id, totalWork, 'initial', at)
 }
 
 export function pauseDiscovery(developer: Developer) {

@@ -5,8 +5,8 @@ export function estimatedFixture<T extends GameState>(state: T): T {
   for (const ticket of state.tickets) {
     ticket.initialEffortEstimate = { developerId: state.developers[0]?.id ?? 'previous-engineer', totalWork: ticket.requiredWork }
     ticket.reportedEffortEstimate = ticket.requiredWork
-    ticket.estimateHistory = state.developers.map(developer => ({ kind: 'assessment', developerId: developer.id,
-      totalWork: ticket.requiredWork, reason: 'initial', at: { high: 0, low: 0 } }))
+    ticket.estimateHistory = [{ kind: 'publication', developerId: ticket.initialEffortEstimate.developerId,
+      totalWork: ticket.requiredWork, reason: 'initial', at: { high: 0, low: 0 } }]
   }
   return state
 }

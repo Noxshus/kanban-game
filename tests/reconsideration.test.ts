@@ -2,7 +2,7 @@ import assert from 'node:assert/strict'
 import { test } from 'node:test'
 import { advanceSimulation } from '../src/game/advanceSimulation.ts'
 import { simulationReducer } from '../src/store/simulationControls.ts'
-import { decisionFixture, remember } from './helpers/decisionFixture.ts'
+import { decisionFixture, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { projectWork } from '../src/game/completionTime.ts'
 import { workAmount } from '../src/game/work.ts'
 import { nextRandom } from '../src/game/random.ts'
@@ -30,12 +30,12 @@ test('time and newly available work never reconsider active work; legacy clocks 
 
 function revisionFixture(alternativeSize=1) {
  const s=decisionFixture(),d=s.developers[0],t=s.tickets[0]
- t.estimateHistory=[];remember(t,d.id,80)
+ t.estimateHistory=[];setPublishedEstimate(t,d.id,80)
  t.initialEffortEstimate={developerId:d.id,totalWork:80};t.reportedEffortEstimate=80
  t.overrunEvaluationConsumed=true
  d.estimateDiscovery={ticketId:t.id,boardEstimate:80,requiredWork:100,judgement:0,productive:true,baseline:80,target:workAmount(1)}
  const alt={...decisionFixture().tickets[0],id:'other',rank:2,requiredWork:alternativeSize,actualStatus:'todo' as const,estimateHistory:[]}
- remember(alt,d.id);alt.reportedEffortEstimate=alternativeSize
+ setPublishedEstimate(alt,d.id);alt.reportedEffortEstimate=alternativeSize
  s.tickets.push(alt)
  return s
 }
@@ -50,8 +50,8 @@ test('genuine #58 revision immediately chooses across all alternatives before an
  assert.equal(r.developers[0].flowStreak!.duration,0)
  assert.equal(r.tickets[1].completedWork,0)
  assert.ok(!r.workLog!.some(e=>e.ticketId==='other'))
- const assessment=r.tickets[0].estimateHistory!.at(-2)!
- assert.equal(assessment.kind,'assessment')
+ const assessment=r.tickets[0].estimateHistory!.at(-1)!
+ assert.equal(assessment.kind,'publication')
  assert.deepEqual(assessment.at,r.developers[0].lastAssessment!.at)
 })
 
@@ -61,7 +61,8 @@ test('a revision may rationally stay and preserve Flow; no-op evaluations never 
  assert.equal(result.developers[0].lastAssessment!.outcome,'stay')
  assert.equal(result.developers[0].flowStreak!.duration,due)
  const noop=revisionFixture()
- remember(noop.tickets[0],'a',100) // current accepted belief already exceeds new candidate
+ // Another publication already exceeds the candidate; E0 remains 80.
+ noop.tickets[0].estimateHistory!.push({kind:'publication',developerId:'b',totalWork:100,reason:'revision',at:{high:0,low:0}})
  noop.tickets[0].reportedEffortEstimate=100
  noop.developers[0].estimateDiscovery!.boardEstimate=100
  const count=noop.tickets[0].estimateHistory!.length
@@ -77,7 +78,7 @@ function priorities(unfamiliar=false) {
  s.tickets[0].reportedProgress=99
  for(const [id,rank]of [['left',2],['right',3],['unaffected',4]] as const) {
   const t={...decisionFixture().tickets[0],id,rank,actualStatus:'todo' as const,reportedStatus:'todo' as const,reportedProgress:0,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined}
-  if(!unfamiliar) remember(t,'a')
+  if(!unfamiliar) setPublishedEstimate(t,'a')
   s.tickets.push(t)
  }
  return s
@@ -141,7 +142,7 @@ test('a priority winner promotes its exact temporary appraisal once at the curre
  assert.equal(appraisal.estimateSource,'temporary')
  assert.equal(winner.initialEffortEstimate!.totalWork,appraisal.estimatedTotal)
  assert.equal(winner.reportedEffortEstimate,appraisal.estimatedTotal)
- assert.deepEqual(winner.estimateHistory!.map(e=>[e.kind,e.at]),[['assessment',{high:0,low:0}],['publication',{high:0,low:0}]])
+ assert.deepEqual(winner.estimateHistory!.map(e=>[e.kind,e.at]),[['publication',{high:0,low:0}]])
  assert.ok(r.tickets.filter(t=>t.id!=='current'&&t.id!==winner.id).every(t=>t.estimateHistory===undefined))
  assert.equal(r.randomState,nextRandom(nextRandom(nextRandom(s.randomState).state).state).state)
  assert.equal(r.simulationTime,0)
@@ -163,7 +164,7 @@ test('active claims exclude colleagues tickets and priority choices remain exclu
  const s=priorities()
  s.developers.push({...s.developers[0],id:'b',activeTicketID:'left'})
  s.tickets[0].reportedProgress=0
- for(const t of s.tickets)remember(t,'b',t.requiredWork)
+ for(const t of s.tickets)setPublishedEstimate(t,'b',t.requiredWork)
  const r=reorder(s,'right','left')
  assert.equal(new Set(r.developers.map(d=>d.activeTicketID)).size,2)
  for(const d of r.developers)assert.ok(!d.lastAssessment?.considered.some(t=>t.id===r.developers.find(other=>other.id!==d.id)!.activeTicketID))
@@ -171,9 +172,9 @@ test('active claims exclude colleagues tickets and priority choices remain exclu
 
 test('completion picks new work normally and no estimate/priority event fabricates elapsed work',()=>{
  const s=decisionFixture();s.tickets[0].requiredWork=1
- s.tickets[0].estimateHistory=[];remember(s.tickets[0],'a',1);s.tickets[0].reportedEffortEstimate=1
+ s.tickets[0].estimateHistory=[];setPublishedEstimate(s.tickets[0],'a',1);s.tickets[0].reportedEffortEstimate=1
  s.tickets.push({...s.tickets[0],id:'next',rank:2,actualStatus:'todo',estimateHistory:[]})
- remember(s.tickets[1],'a')
+ setPublishedEstimate(s.tickets[1],'a')
  const r=advanceSimulation(s,1,noDraw)
  assert.equal(r.tickets[0].actualStatus,'done')
  assert.equal(r.developers[0].activeTicketID,'next')

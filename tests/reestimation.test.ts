@@ -10,7 +10,7 @@ import { nextRandom } from '../src/game/random.ts'
 import { eventInterval } from '../src/game/eventTime.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
-import { encounterEstimate, personalEstimate, publishEstimate } from '../src/game/estimateHistory.ts'
+import { encounterEstimate, publishEstimate } from '../src/game/estimateHistory.ts'
 import type { GameState } from '../src/game/types.ts'
 import { close } from './helpers/flowExpectation.ts'
 
@@ -116,10 +116,7 @@ test('any representable upward estimate publishes, while equal or lower candidat
   for (const [board, published] of [[justBelow, true], [candidate / 1.0005, true],
     [candidate, false], [justAbove, false]] as const) {
     const input = structuredClone(state)
-    // #70 improvements compare against the engineer's own accepted opinion.
-    input.tickets[0].estimateHistory!.push({ kind: 'assessment', developerId: input.developers[0].id,
-      totalWork: board, reason: 'discovery', at: { high: input.simulationTime, low: 0 } })
-    publishEstimate(input.tickets[0], input.developers[0].id, 'revision', { high: input.simulationTime, low: 0 })
+    publishEstimate(input.tickets[0], input.developers[0].id, board, 'revision', { high: input.simulationTime, low: 0 })
     evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
     assert.equal(input.tickets[0].lastEstimateEvaluation!.candidate, candidate)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.published, published)
@@ -268,6 +265,7 @@ test('legacy migration preserves provably unused crossings and conservatively cl
           ticket.evaluatedOverrunEstimate = marker
           ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: 0,
             candidate: 40, published: true }
+          delete developer.estimateDiscovery!.baseline // released #58 schema predates personal baselines
           const savedTarget = structuredClone(developer.estimateDiscovery!.target)
           const savedRandom = state.randomState
           const consumed = reason === 'overrun' || source === 'missing' || completedWork >= 20
@@ -315,7 +313,7 @@ test('retained ticket disparity no longer changes a freshly sampled discovery ta
   assert.equal(b.tickets[0].overrunEvaluationConsumed, false)
 })
 
-test('handoff and return publish personal opinions without altering retained work experience', () => {
+test('handoff and return share the board estimate without altering retained work experience', () => {
   const state = fixture(100, 20)
   state.developers.push({ ...state.developers[0], id: 'engineer-B', name: 'Blair', activeTicketID: undefined })
   state.workLog = [
@@ -330,15 +328,14 @@ test('handoff and return publish personal opinions without altering retained wor
   const [a, b] = first.developers, ticket = first.tickets[0]
   const at = { high: first.simulationTime, low: 0 }
   encounterEstimate(ticket, b, at, () => 0.999)
-  assert.equal(ticket.reportedEffortEstimate, personalEstimate(ticket, b.id)!.baseline)
-  assert.notEqual(ticket.reportedEffortEstimate, 60)
+  assert.equal(ticket.reportedEffortEstimate, 60)
   encounterEstimate(ticket, a, at, () => { throw Error('Returning estimate must not reroll') })
   assert.equal(ticket.reportedEffortEstimate, 60)
   assert.deepEqual(first.workLog, work)
   assert.deepEqual(first.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
 })
 
-test('a replacement learns from its own baseline; returning work does not inherit another engineer experience', () => {
+test('a replacement learns from ticket E0; returning work cannot overwrite a better shared estimate', () => {
   const state = fixture()
   state.tickets[0].reportedEffortEstimate = 60
   state.developers[0].activeTicketID = undefined
@@ -348,9 +345,9 @@ test('a replacement learns from its own baseline; returning work does not inheri
     { developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) },
     { developerId: 'engineer-B', ticketId: 'ticket-1', effort: workAmount(30) },
   ]
-  encounterEstimate(state.tickets[0], state.developers[0], { high: 0, low: 0 }, () => { throw Error('Legacy restore') }, true)
+  encounterEstimate(state.tickets[0], state.developers[0], { high: 0, low: 0 }, () => { throw Error('Legacy restore') })
   encounterEstimate(state.tickets[0], state.developers[1], { high: 0, low: 0 }, () => 0.9)
-  const baseline = personalEstimate(state.tickets[0], 'engineer-B')!.baseline
+  const baseline = state.tickets[0].initialEffortEstimate!.totalWork
   const learned = advanceSimulation(state, 1, () => 0.01)
   const improved = learned.tickets[0].reportedEffortEstimate!
   assert.ok(improved > 60)
@@ -360,14 +357,14 @@ test('a replacement learns from its own baseline; returning work does not inheri
   delete learned.developers[1].activeTicketID
   delete learned.developers[1].workSession
   learned.developers[0].activeTicketID = 'ticket-1'
-  encounterEstimate(learned.tickets[0], learned.developers[0], { high: learned.simulationTime, low: 0 }, () => { throw Error('Remember A') })
+  encounterEstimate(learned.tickets[0], learned.developers[0], { high: learned.simulationTime, low: 0 }, () => { throw Error('Read the shared report') })
   const returned = advanceSimulation(learned, 0.001, () => 0.01)
-  assert.equal(returned.tickets[0].reportedEffortEstimate, 60)
+  assert.equal(returned.tickets[0].reportedEffortEstimate, improved)
   const evaluated = advanceSimulation(returned, 1, () => 0.01)
   const snapshot = evaluated.tickets[0].lastEstimateEvaluation!
   assert.equal(snapshot.developerId, 'developer-1')
   close(snapshot.candidate, revisedEffort(100, 20, workAmount(snapshot.personalWork!), 10, 5))
-  assert.equal(evaluated.tickets[0].reportedEffortEstimate, 60)
+  assert.equal(evaluated.tickets[0].reportedEffortEstimate, improved)
 })
 
 test('completion preempts a coincident evaluation, including an exact discovery work target', () => {

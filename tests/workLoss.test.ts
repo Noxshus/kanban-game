@@ -7,12 +7,11 @@ import { accumulateWork, remainingWork, remainingWorkNumber, workAmount } from '
 import { addWorkAmounts, effortNumber, subtractWorkAmounts } from '../src/game/workLog.ts'
 import { getAverageFlowMultiplier, getFlowDuration } from '../src/game/flow.ts'
 import { projectCompletion, projectWork } from '../src/game/completionTime.ts'
-import { personalEstimate } from '../src/game/estimateHistory.ts'
 import { personalEffort, revisedEffort } from '../src/game/reestimation.ts'
 import { selectWork } from '../src/game/selectWork.ts'
 import { simulationReducer } from '../src/store/simulationControls.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
-import { decisionFixture, decideNow, remember } from './helpers/decisionFixture.ts'
+import { decisionFixture, decideNow, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
@@ -113,7 +112,7 @@ test('a handoff protects the first engineer contributions, while ownership and a
   const a = s.developers[0]
   s.developers = [{ ...a, id: 'b', activeTicketID: undefined, flowStreak: undefined, workSession: undefined, workStint: undefined }]
   for (const t of s.tickets) {
-    remember(t, 'b')
+    setPublishedEstimate(t, 'b')
     t.estimateHistory!.at(-1)!.at = { high: s.simulationTime, low: s.simulationTimeRemainder ?? 0 }
   }
   s = choose(s, 'current')
@@ -193,14 +192,14 @@ test('seed-1 XL manual QA switches Alex only on Step, preserving the old report 
   assert.equal(result.game.simulationTime, 2)
 })
 
-test('gross experience, genuine beliefs, lifetime alarm and parked discovery targets survive rollback and return', () => {
+test('gross experience, published estimates, lifetime alarm and parked discovery targets survive rollback and return', () => {
   let s = fixture('XXL', 0), t = s.tickets[0], d = s.developers[0]
   t.initialEffortEstimate!.totalWork = 100; t.reportedEffortEstimate = 100; t.estimateHistory![0].totalWork = 100
   t.overrunEvaluationConsumed = true
   d.estimateDiscovery = { ticketId: t.id, requiredWork: 1000, boardEstimate: 100, judgement: 0,
     productive: true, baseline: 100, target: workAmount(100) }
   s = addWork(s, 30)
-  const target = structuredClone(s.developers[0].estimateDiscovery), opinion = personalEstimate(s.tickets[0], 'a')
+  const target = structuredClone(s.developers[0].estimateDiscovery), publications = structuredClone(s.tickets[0].estimateHistory)
   const experienced = structuredClone(personalEffort(s, s.developers[0], s.tickets[0]))
   const candidate = revisedEffort(1000, 100, experienced, 0, 0)
   s = choose(s, 'right')
@@ -208,7 +207,7 @@ test('gross experience, genuine beliefs, lifetime alarm and parked discovery tar
   assert.equal(revisedEffort(1000, 100, personalEffort(s, s.developers[0], s.tickets[0]), 0, 0), candidate)
   s = choose(JSON.parse(JSON.stringify(s)), 'current')
   assert.deepEqual(s.developers[0].estimateDiscovery, target)
-  assert.deepEqual(personalEstimate(s.tickets[0], 'a'), opinion)
+  assert.deepEqual(s.tickets[0].estimateHistory, publications)
   assert.deepEqual(personalEffort(s, s.developers[0], s.tickets[0]), experienced)
   assert.equal(s.tickets[0].overrunEvaluationConsumed, true)
   assert.equal(s.tickets[0].estimateHistory!.at(-1)!.kind, 'publication')
@@ -279,8 +278,7 @@ test('simultaneous completion and loss-producing revision preserve engineer orde
     s.tickets.push({ ...s.tickets[0], id: 'finish', rank: 4, requiredWork: 10, completedWork: 0,
       reportedEffortEstimate: 10, initialEffortEstimate: { developerId: 'finishing', totalWork: 10 }, estimateHistory: [],
       overrunEvaluationConsumed: false })
-    for (const t of s.tickets) remember(t, 'finishing', t.requiredWork)
-    remember(s.tickets[3], 'a', 10)
+    setPublishedEstimate(s.tickets[3], 'finishing', 10)
     if (reverse) s.developers.reverse()
     const due = projectWork(d, s.tickets[0], workAmount(10)).seconds!
     const r = advanceSimulation(s, due, noDraw)

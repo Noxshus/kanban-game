@@ -23,11 +23,11 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
       <p>Rank: {ticket.rank}</p>
       <p>Work domain: {ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
-      <p>Initial engineer belief: {ticket.initialEffortEstimate
+      <p>First published estimate: {ticket.initialEffortEstimate
         ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + ticket.initialEffortEstimate.developerId + ')' : 'Unknown'}</p>
       <p>Published effort estimate: {formatEffort(ticket.reportedEffortEstimate ?? undefined)}; actual total effort: {formatEffort(ticket.requiredWork)} work units</p>
       <details>
-        <summary>Estimate assessment and publication history ({ticket.estimateHistory.length})</summary>
+        <summary>Estimate publication history ({ticket.estimateHistory.length})</summary>
         {ticket.estimateHistory.length ? <ol>{ticket.estimateHistory.map((event, index) => (
           <li key={index}>
             {event.kind}: {event.developerId ?? 'Unknown author'}; {formatEffort(event.totalWork)} work units;
