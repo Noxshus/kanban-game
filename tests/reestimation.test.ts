@@ -17,7 +17,7 @@ import { close } from './helpers/flowExpectation.ts'
 function fixture(total = 100, estimate = 20): GameState {
   const state = structuredClone(exampleGameState)
   state.developers = [{ ...state.developers[0], productivity: 1, competencies: { frontend: 5, backend: 0 },
-    judgement: 10, focus: 0, assessmentClock: { elapsed: 0, remaining: 10000 } }]
+    judgement: 10, focus: 0, discipline: 1000, estimateReview: { ticketId: 'ticket-1', dueTime: { high: 1e308, low: 0 } }, assessmentClock: { elapsed: 0, remaining: 10000 } }]
   state.tickets = [{ ...state.tickets[0], requiredWork: total, completedWork: 0, reportedProgress: 0,
     actualStatus: 'in_progress', reportedStatus: 'in_progress', initialEffortEstimate: { developerId: 'original', totalWork: estimate },
     reportedEffortEstimate: estimate }]
@@ -79,7 +79,7 @@ test('first and repeated discoveries publish upward only at genuine work events'
     assert.equal(state.tickets[0].lastEstimateEvaluation!.published, true)
   }
   assert.equal(discoveries, 3)
-  assert.equal(draws, 4)
+  assert.equal(draws, 7) // three reporting rolls plus four discovery targets
   assert.deepEqual(state.tickets[0].initialEffortEstimate, original.tickets[0].initialEffortEstimate)
   assert.deepEqual(initial, original)
 })
@@ -90,12 +90,12 @@ test('evaluating the same personal exposure does not compound learning and may l
   state.workLog = [{ developerId: 'developer-1', ticketId: 'ticket-1', effort: workAmount(10) }]
   state.developers[0].workSession = { ticketId: 'ticket-1', requiredWork: 100, productivity: 1, competency: 5,
     focus: 0, initialFlowDuration: 0, elapsed: 0, completionSeconds: null, initialCompletedWork: 0, lastCompletedWork: 0 }
-  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery')
+  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery',()=>0)
   const candidate = state.tickets[0].lastEstimateEvaluation!.candidate
   assert.ok(candidate < 90)
   assert.equal(state.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(state.tickets[0].reportedEffortEstimate, 90)
-  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery')
+  evaluateEstimate(state, state.developers[0], state.tickets[0], 'discovery',()=>0)
   assert.equal(state.tickets[0].lastEstimateEvaluation!.candidate, candidate)
   assert.equal(state.tickets[0].reportedEffortEstimate, 90)
 })
@@ -117,14 +117,14 @@ test('any representable upward estimate publishes, while equal or lower candidat
     [candidate, false], [justAbove, false]] as const) {
     const input = structuredClone(state)
     publishEstimate(input.tickets[0], input.developers[0].id, board, 'revision', { high: input.simulationTime, low: 0 })
-    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
+    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery',()=>0)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.candidate, candidate)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.published, published)
     assert.equal(input.tickets[0].reportedEffortEstimate, published ? candidate : board)
     assert.deepEqual(input.tickets[0].initialEffortEstimate, state.tickets[0].initialEffortEstimate)
     assert.equal(input.randomState, state.randomState)
     assert.equal(input.simulationTime, state.simulationTime)
-    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery')
+    evaluateEstimate(input, input.developers[0], input.tickets[0], 'discovery',()=>0)
     assert.equal(input.tickets[0].lastEstimateEvaluation!.published, false)
     assert.equal(input.tickets[0].reportedEffortEstimate, published ? candidate : board)
   }
@@ -177,7 +177,8 @@ test('a lifetime alarm cannot re-arm after its publication, ordinary discovery, 
   const state = fixture()
   let current = advanceSimulation(state, 0.01, () => 0.999)
   const due = current.developers[0].workSession!.estimateEvents!.overrun!
-  current = advanceSimulation(state, due.high, () => 0.999)
+  let eventDraw=0
+  current = advanceSimulation(state, due.high, () => ++eventDraw===2?0:.999)
   const crossing = structuredClone(current.tickets[0].lastEstimateEvaluation!)
   const board = current.tickets[0].reportedEffortEstimate!
   assert.equal(crossing.reason, 'overrun')
@@ -192,7 +193,8 @@ test('a lifetime alarm cannot re-arm after its publication, ordinary discovery, 
   // Schedule one genuine positive-work discovery using the existing target state.
   current.developers[0].estimateDiscovery!.target = addWorkAmounts(current.workLog![0].effort, workAmount(0.5))
   delete current.developers[0].workSession!.estimateEvents
-  current = advanceSimulation(current, 1, () => 0.999)
+  let revisionDraw=0
+  current = advanceSimulation(current, 1, () => revisionDraw++===0?0:.999)
   const discovery = structuredClone(current.tickets[0].lastEstimateEvaluation!)
   assert.equal(discovery.reason, 'discovery')
   assert.equal(discovery.published, true)
@@ -232,7 +234,8 @@ test('pickup above a legacy report does not consume the first crossing; a later 
   assert.equal(current.developers[0].workSession!.estimateEvents!.overrun, null)
   current.developers[0].estimateDiscovery!.target = addWorkAmounts(current.workLog![0].effort, workAmount(0.5))
   delete current.developers[0].workSession!.estimateEvents
-  current = advanceSimulation(current, 1, () => 0.999)
+  let reportingDraw=0
+  current = advanceSimulation(current, 1, () => reportingDraw++===0?0:.999)
   const board = current.tickets[0].reportedEffortEstimate!
   assert.equal(current.tickets[0].lastEstimateEvaluation!.reason, 'discovery')
   assert.ok(board > current.tickets[0].completedWork)
@@ -373,14 +376,16 @@ test('completion preempts a coincident evaluation, including an exact discovery 
   state.developers[0].estimateDiscovery = { ticketId: 'ticket-1', boardEstimate: 0.5, requiredWork: 1,
     judgement: 10, productive: true, target: workAmount(1) }
   state.tickets[0].overrunEvaluationConsumed = true // isolate the exact completion/discovery tie
-  const result = advanceSimulation(state, 10, () => { throw Error('Completion cannot renew discovery') })
+  const result = advanceSimulation(state, 10, () => .999) // completion reporting only, no discovery renewal
   assert.equal(result.tickets[0].actualStatus, 'done')
-  assert.equal(result.tickets[0].lastEstimateEvaluation, undefined)
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.reason, 'completion')
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(result.tickets[0].reportedEffortEstimate, 0.5)
   assert.equal(result.developers[0].estimateDiscovery, undefined)
   const exactBoard = fixture(1, 1)
   const completed = advanceSimulation(exactBoard, 10, () => { throw Error('No error to discover') })
-  assert.equal(completed.tickets[0].lastEstimateEvaluation, undefined)
+  assert.equal(completed.tickets[0].lastEstimateEvaluation!.reason, 'completion')
+  assert.equal(completed.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(completed.tickets[0].overrunEvaluationConsumed, false)
 })
 
@@ -391,7 +396,7 @@ test('coincident discovery and overrun evaluate once and renew only one seeded t
   const due = projectWork(state.developers[0], state.tickets[0], workAmount(20)).seconds!
   const result = advanceSimulation(state, due)
   assert.equal(result.tickets[0].lastEstimateEvaluation!.reason, 'overrun')
-  assert.equal(result.randomState, nextRandom(state.randomState).state)
+  assert.equal(result.randomState, nextRandom(nextRandom(state.randomState).state).state) // reporting + threshold
   close(result.tickets[0].lastEstimateEvaluation!.personalWork!, 20)
   assert.ok(result.tickets[0].reportedEffortEstimate! > 20)
   assert.equal(result.tickets[0].overrunEvaluationConsumed, true)
@@ -413,6 +418,7 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
     ]
     state.tickets[2].estimateHistory = state.developers.map(developer => ({ kind: 'assessment', developerId: developer.id,
       totalWork: 100, reason: 'initial', at: { high: 0, low: 0 } }))
+    for(const d of state.developers)d.estimateReview={ticketId:d.activeTicketID!,dueTime:{high:1e308,low:0}}
     if (reverse) state.developers.reverse()
     const due = projectWork(base, ticket, workAmount(1)).seconds!
     const whole = advanceSimulation(state, due + 0.25)
@@ -420,10 +426,11 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
     for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
     split = advanceSimulation(split, due + 0.25 - 0.9)
     assert.equal(whole.tickets[0].actualStatus, 'done')
-    assert.equal(whole.tickets[0].lastEstimateEvaluation, undefined)
+    assert.equal(whole.tickets[0].lastEstimateEvaluation!.reason, 'completion')
+    assert.equal(whole.tickets[0].lastEstimateEvaluation!.published, false)
     assert.equal(whole.tickets[1].lastEstimateEvaluation!.developerId, 'learning')
     assert.equal(whole.developers.find(d => d.id === 'finishing')!.activeTicketID, 'contested')
-    assert.equal(whole.randomState, nextRandom(state.randomState).state)
+    assert.equal(whole.randomState, nextRandom(nextRandom(nextRandom(state.randomState).state).state).state) // new review, report, threshold
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]), whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]))
     assert.deepEqual(split.tickets.map(t => [t.id, t.reportedEffortEstimate, t.lastEstimateEvaluation]),

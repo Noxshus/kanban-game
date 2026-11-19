@@ -6,10 +6,12 @@ import { projectWork } from './completionTime.ts'
 import { getFlowDuration } from './flow.ts'
 import { estimateInitialEffort } from './effortEstimate.ts'
 import { scaleWork, workAmount } from './work.ts'
+import { getDiscipline } from './discipline.ts'
 
 export const RANK_PREFERENCE = 0.25
 
-export function validateSelectionAttributes(developer: Pick<Developer, 'judgement' | 'focus'>) {
+export function validateSelectionAttributes(developer: Pick<Developer, 'judgement' | 'focus' | 'discipline'>) {
+  getDiscipline(developer)
   for (const value of [developer.judgement, developer.focus]) {
     if (!Number.isFinite(value) || value < 0) throw new RangeError('Judgement and Focus must be finite and non-negative')
   }
@@ -21,6 +23,7 @@ export function selectWork(
   context: readonly Ticket[], developer: Developer, draw: () => number,
   trigger: AssessmentDecision['trigger'] = 'pickup', at: EventTime = { high: 0, low: 0 },
   current?: Ticket, alternatives?: ReadonlySet<string>,
+  currentInsight?: number,
 ): AssessmentDecision | undefined {
   validateSelectionAttributes(developer)
   const ordered = [...context].sort(compareRank)
@@ -29,7 +32,8 @@ export function selectWork(
   for (const [index, ticket] of ordered.entries()) {
     if (alternatives && ticket.id !== current?.id && !alternatives.has(ticket.id)) continue
     const published = ticket.reportedEffortEstimate
-    const estimatedTotal = published
+    const insight = ticket.id === current?.id ? currentInsight : undefined
+    const estimatedTotal = insight ?? published
       ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
     const reportedProgress = clampReportedProgress(ticket.reportedProgress)
     const remaining = scaleWork(workAmount(estimatedTotal), 1 - reportedProgress / 100)
@@ -41,7 +45,7 @@ export function selectWork(
     const scalar = remaining.mantissa * 2 ** remaining.exponent
     considered.push({
       id: ticket.id, rank: ticket.rank, rankScore, reportedProgress, estimatedTotal,
-      estimateSource: published !== undefined ? 'published' : 'temporary',
+      estimateSource: insight !== undefined ? 'insight' : published !== undefined ? 'published' : 'temporary',
       perceivedRemaining: remaining.mantissa > 0 && (scalar === 0 || !Number.isFinite(scalar)) ? null : scalar,
       completionSeconds: projection.seconds,
       logCompletionTime: Number.isFinite(projection.logSeconds) ? projection.logSeconds : null,

@@ -1,11 +1,13 @@
-import type { Developer, GameState, Ticket } from './types'
+import type { Developer, EffortAssessmentReason, GameState, Ticket } from './types'
 import type { WorkAmount } from './work'
 import { compareWork, integratedWork, remainingWork, workAmount } from './work.ts'
 import { addWorkAmounts, anchorEffort, effortNumber, subtractWorkAmounts } from './workLog.ts'
 import { projectWork } from './completionTime.ts'
 import { addEventTime, compareEventTime, eventTime } from './eventTime.ts'
 import { openUnit } from './reconsideration.ts'
-import { firstPublishedEstimate, migrateEstimateHistory, publishEstimate } from './estimateHistory.ts'
+import { firstPublishedEstimate, migrateEstimateHistory } from './estimateHistory.ts'
+import { estimateInitialEffort } from './effortEstimate.ts'
+import { reportEffort, scheduleReview } from './discipline.ts'
 
 // Provisional #58 balance, deliberately independent of Focus and Flow.
 export const DISCOVERY_BASE = 0.8
@@ -123,7 +125,11 @@ export function prepareDiscovery(state: GameState, developer: Developer, ticket:
   // Capture provenance before baselineFor supplies a fallback for board-only saves.
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const baseline = baselineFor(ticket)
-  if (baseline === null) return
+  if (baseline === null) {
+    delete developer.estimateDiscovery
+    if (developer.workSession) delete developer.workSession.estimateEvents
+    return
+  }
   // Reproject migrated caches from their saved work targets, without resampling
   // RNG. An old suppressed or re-armed crossing may no longer be appropriate.
   if (migrateOverrunState(ticket, originalBaseline) && developer.workSession) delete developer.workSession.estimateEvents
@@ -172,26 +178,40 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
   return session.estimateEvents
 }
 
-export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: 'discovery' | 'overrun'): boolean {
+export function beginEstimateReporting(state: GameState, developer: Developer, ticket: Ticket, at: ReturnType<typeof eventTime>, draw: () => number, appraisal?: number) {
+  if (developer.estimateReview?.ticketId === ticket.id) return
+  migrateEstimateHistory(ticket)
+  if (ticket.reportedEffortEstimate === undefined) {
+    // A failed pickup leaves no baseline, including private-only legacy records.
+    delete ticket.initialEffortEstimate
+    delete ticket.learningBaseline
+    const candidate = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
+    reportEffort(ticket, developer, candidate, 'pickup', effortNumber(personalEffort(state, developer, ticket)), at, draw)
+  }
+  scheduleReview(developer, ticket.id, at, draw)
+}
+
+export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: Exclude<EffortAssessmentReason, 'pickup'>,
+  draw: () => number, at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder),
+  proactive = reason === 'review', initialAppraisal?: number) {
   migrateEstimateHistory(ticket)
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
-  const at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder)
   const baseline = baselineFor(ticket)
-  if (baseline === null) return false
-  migrateOverrunState(ticket, originalBaseline)
+  if (baseline === null && (reason === 'discovery' || reason === 'overrun')) throw new RangeError('Unknown estimates cannot have discovery or overrun events')
+  if (baseline !== null) migrateOverrunState(ticket, originalBaseline)
   const personal = personalEffort(state, developer, ticket)
-  const candidate = revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
-  const published = candidate > ticket.reportedEffortEstimate!
-  if (published) {
-    publishEstimate(ticket, developer.id, candidate, 'revision', at)
-  }
-  ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork: effortNumber(personal), candidate, published }
+  const candidate = baseline === null
+    ? initialAppraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
+    : revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
+  const result = reportEffort(ticket, developer, candidate, reason, effortNumber(personal), at, draw, proactive)
   // One crossing for the entire ticket lifetime, even if this evaluation leaves
   // the report unchanged. Later revisions and handoffs only learn via discovery.
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
-  delete developer.estimateDiscovery
-  if (developer.workSession) delete developer.workSession.estimateEvents
-  // This result denotes a shared board improvement. A takeover never calls
-  // this path, and a no-op evaluation is not a reconsideration opportunity.
-  return published
+  if (reason === 'discovery' || reason === 'overrun') {
+    delete developer.estimateDiscovery
+    if (developer.workSession) delete developer.workSession.estimateEvents
+  }
+  // The caller passes this ephemeral insight directly to the SAME work decision,
+  // independently of reporting success; it never retrieves it from DEV history.
+  return result
 }

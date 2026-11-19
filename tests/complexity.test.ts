@@ -122,7 +122,7 @@ test('complexity influences work choice through time alone, and uncapped compete
   s.tickets[0].actualStatus = 'todo'
   s.tickets.push({ ...s.tickets[0], id: 'simple', rank: 2, complexity: 'S' })
   assert.equal(selectWork(s.tickets, d, noDraw)!.selectedId, 'simple')
-  assert.equal(advanceSimulation(s, 0.1, noDraw).developers[0].activeTicketID, 'simple')
+  assert.equal(advanceSimulation(s, 0.1, () => .5).developers[0].activeTicketID, 'simple')
   d.competencies.frontend = 1e6
   assert.equal(selectWork(s.tickets, d, noDraw)!.selectedId, 'current')
 })

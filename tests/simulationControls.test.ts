@@ -167,7 +167,9 @@ test('paused changes confined to ineligible work clear on Resume without any sim
 })
 
 test('Step flushes seed-1 priorities once at time zero before any productive work', () => {
-  const initial = createSimulationSession(), original = structuredClone(initial)
+  const initial = createSimulationSession()
+  initial.game.developers[0].discipline=1000 // successful publication case
+  const original = structuredClone(initial)
   const staged = simulationReducer(initial, moveFive)
   assert.equal(staged.game.developers[0].activeTicketID, 'ticket-1')
   assert.equal(staged.game.randomState, 1)
@@ -194,7 +196,7 @@ test('Resume flushes priorities immediately with no work or time, then the first
   assert.deepEqual(resumed, { game: reconsiderPriorities(initial.game, staged.game), isPaused: false })
   assert.equal(resumed.game.developers[0].activeTicketID, 'ticket-5')
   assert.equal(resumed.game.developers[0].lastAssessment!.trigger, 'priority')
-  assert.equal(resumed.game.randomState, 217083232)
+  assert.equal(resumed.game.randomState, 2388811721) // initial/report/review, three previews, pickup report/review
   assert.equal(resumed.game.simulationTime, 0)
   assert.equal(resumed.game.workLog, undefined)
   assert.deepEqual(resumed.game.tickets.map(t => t.completedWork), initial.game.tickets.map(t => t.completedWork))

@@ -14,6 +14,7 @@ import { getPlayerView } from '../src/store/playerView.ts'
 import { decisionFixture, decideNow, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import { close } from './helpers/flowExpectation.ts'
+import { nextRandom } from '../src/game/random.ts'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
 
 const noDraw = () => { throw Error('Switch loss must consume no RNG') }
@@ -38,7 +39,11 @@ function choose(s: GameState, ticketId: string) {
   const prepared = structuredClone(s)
   // Controlled reports force a deterministic event decision, without changing its scoring.
   prepared.tickets.forEach(t => { t.reportedProgress = t.id === ticketId ? 100 : 0 })
-  return decideNow(prepared, noDraw)
+  // Reporting/review scheduling has its own controlled draws; isolate the saved
+  // next review from the work-loss arithmetic being measured here.
+  const result = decideNow(prepared, () => .5)
+  for (const d of result.developers) if(d.activeTicketID) d.estimateReview={ticketId:d.activeTicketID,dueTime:{high:1e308,low:0}}
+  return result
 }
 
 function gross(s: GameState, ticketId = 'current', developerId = 'a') {
@@ -79,7 +84,7 @@ test('Option B selects with the unchanged perceived-time score and applies the c
   before.tickets.forEach(t => { t.reportedProgress = t.id === 'right' ? 100 : 0 })
   const d = before.developers[0]
   const decision = selectWork(before.tickets, d, noDraw, 'priority', { high: before.simulationTime, low: before.simulationTimeRemainder ?? 0 }, before.tickets[0])
-  const result = decideNow(before, noDraw)
+  const result = decideNow(before, () => .5)
   assert.deepEqual(result.developers[0].lastAssessment, decision)
   assert.equal(decision!.selectedId, 'right')
   close(result.tickets[0].completedWork, 40 + 30 * 7 / 9)
@@ -179,6 +184,7 @@ test('paused Rank edits defer loss until Resume or Step, and apply it once befor
 test('seed-1 XL manual QA switches Alex only on Step, preserving the old report and gross contribution', () => {
   const game = structuredClone(exampleGameState)
   game.tickets[0].complexity = 'XL'
+  estimatedFixture(game) // isolate loss from the new fallible estimate reporting stream
   const first = simulationReducer({ game, isPaused: true }, { type: 'step' })
   assert.equal(first.game.developers[0].activeTicketID, 'ticket-1')
   const pending = simulationReducer(first, { type: 'reorderTodo', ticketId: 'ticket-4', targetId: 'ticket-3' })
@@ -217,7 +223,7 @@ test('completion and natural next-work pickup never roll back completed useful w
   const s = fixture('XXL', 0), d = s.developers[0], t = s.tickets[0]
   const due = projectCompletion(d, t, true).seconds!
   const half = advanceSimulation(s, due / 2, noDraw)
-  const result = advanceSimulation(half, due / 2, noDraw)
+  const result = advanceSimulation(half, due / 2, () => .5)
   assert.equal(result.tickets[0].completedWork, 1000)
   assert.equal(result.tickets[0].actualStatus, 'done')
   close(gross(result), 960)
@@ -274,27 +280,28 @@ test('a real revision switches at its event boundary, preserving publications, R
 test('simultaneous completion and loss-producing revision preserve engineer order and exclusive new claims', () => {
   for (const reverse of [false, true]) {
     const s = revisionScenario(), d = s.developers[0]
-    s.developers.push({ ...d, id: 'finishing', activeTicketID: 'finish', estimateDiscovery: undefined })
+    s.developers.push({ ...d, id: 'finishing', activeTicketID: 'finish', estimateDiscovery: undefined, estimateReview:{ticketId:'finish',dueTime:{high:1e308,low:0}} })
     s.tickets.push({ ...s.tickets[0], id: 'finish', rank: 4, requiredWork: 10, completedWork: 0,
       reportedEffortEstimate: 10, initialEffortEstimate: { developerId: 'finishing', totalWork: 10 }, estimateHistory: [],
       overrunEvaluationConsumed: false })
     setPublishedEstimate(s.tickets[3], 'finishing', 10)
     if (reverse) s.developers.reverse()
     const due = projectWork(d, s.tickets[0], workAmount(10)).seconds!
-    const r = advanceSimulation(s, due, noDraw)
+    const r = advanceSimulation(s, due, () => .5)
     assert.deepEqual(r.developers.map(e => e.activeTicketID), ['left', 'right'])
     assert.equal(new Set(r.developers.map(e => e.activeTicketID)).size, 2)
     close(r.tickets[0].completedWork, 42)
     assert.equal(r.tickets[3].completedWork, 10)
     assert.equal(r.tickets[3].actualStatus, 'done')
-    assert.equal(r.tickets[3].lastEstimateEvaluation, undefined)
+    assert.equal(r.tickets[3].lastEstimateEvaluation!.reason, 'completion')
+    assert.equal(r.tickets[3].lastEstimateEvaluation!.published, false)
     assert.equal(r.workLog!.length, 2)
     close(gross(r), 10)
     close(gross(r, 'finish', 'finishing'), 10)
-    const whole = advanceSimulation(s, due + 0.25)
+    const whole = advanceSimulation(s, due + 0.25, () => .5)
     let split = s
-    for (const dt of [0.3, 0.3, 0.4]) split = JSON.parse(JSON.stringify(advanceSimulation(split, dt, noDraw)))
-    split = advanceSimulation(split, due + 0.25 - 1, noDraw)
+    for (const dt of [0.3, 0.3, 0.4]) split = JSON.parse(JSON.stringify(advanceSimulation(split, dt, () => .5)))
+    split = advanceSimulation(split, due + 0.25 - 1, () => .5)
     assert.deepEqual(split.developers.map(e => [e.activeTicketID, e.lastAssessment, e.workStint]), whole.developers.map(e => [e.activeTicketID, e.lastAssessment, e.workStint]))
     assert.equal(split.randomState, whole.randomState)
   }
@@ -404,7 +411,7 @@ for (const protectedWork of [40, 100]) {
       assert.ok(result.tickets[0].completedWork <= restored.tickets[0].completedWork)
       assert.equal(result.tickets[0].requiredWork, 1e18)
       assert.deepEqual(remainingWork(result.tickets[0]), addWorkAmounts(remainingWork(restored.tickets[0]), workAmount(24)))
-      assert.equal(result.randomState, restored.randomState)
+      assert.equal(result.randomState, nextRandom(restored.randomState).state) // new-ticket review deadline
       assert.deepEqual(result.workLog, restored.workLog)
       assert.deepEqual(result.tickets[0].estimateHistory, restored.tickets[0].estimateHistory)
       assert.deepEqual(result.developers[0].pausedEstimateDiscoveries!.find(e => e.ticketId === 'current'), restored.developers[0].estimateDiscovery)
@@ -481,7 +488,7 @@ test('supported subnormal loss remains compensated through JSON, subsequent accu
   assert.equal(remainingWorkNumber(accumulated), 24 * unit)
   const returned = choose(after, 'current')
   const due = projectCompletion(returned.developers[0], returned.tickets[0], true).seconds!
-  const done = advanceSimulation(returned, due, noDraw)
+  const done = advanceSimulation(returned, due, () => .5)
   assert.equal(done.tickets[0].completedWork, 32 * unit)
   assert.equal(done.tickets[0].actualStatus, 'done')
   assert.equal(gross(done), 27 * unit)

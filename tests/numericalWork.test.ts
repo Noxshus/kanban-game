@@ -6,6 +6,7 @@ import { projectCompletion } from '../src/game/completionTime.ts'
 import { integratedWork, remainingWorkNumber } from '../src/game/work.ts'
 import { getDiagnosticsView } from '../src/store/diagnosticsView.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
+import { estimatedFixture } from './helpers/estimatedFixture.ts'
 
 function scenario(subnormal: boolean) {
   const state = structuredClone(exampleGameState)
@@ -14,7 +15,7 @@ function scenario(subnormal: boolean) {
     assessmentClock: { elapsed: 0, remaining: 1000 } }]
   state.tickets = [{ ...state.tickets[0], requiredWork: subnormal ? Number.MIN_VALUE : 1e20,
     completedWork: subnormal ? 0 : 1e20 - 16384 }]
-  return state
+  return estimatedFixture(state)
 }
 
 test('large existing totals retain small increments: 20 seconds equals twenty one-second advances', () => {
@@ -112,6 +113,7 @@ test('large session time rejects a positive interval that would be rounded away 
   state.developers[0].assessmentClock = { elapsed: 0, remaining: 1e20 }
   state.tickets[0].requiredWork = 93846940987276820
   state.tickets[0].completedWork = 0
+  estimatedFixture(state)
   const prefix = advanceSimulation(state, 1e16)
   assert.equal(prefix.developers[0].workSession!.elapsed, 1e16)
   assert.equal(prefix.tickets[0].actualStatus, 'in_progress')

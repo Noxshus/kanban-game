@@ -15,7 +15,7 @@ import { close } from './helpers/flowExpectation.ts'
 const at = { high: 0, low: 0 }
 const noDraw = () => { throw Error('No fresh estimation/discovery draw expected') }
 function engineer(id: string): Developer {
-  return { id, name: id, productivity: 1, judgement: 0, focus: 0, competencies: { frontend: 0, backend: 0 } }
+  return { id, name: id, productivity: 1, judgement: 0, focus: 0, competencies: { frontend: 0, backend: 0 }, estimateReview: { ticketId: 'ticket', dueTime: { high: 1e308, low: 0 } } }
 }
 function fixture(): GameState {
   return { randomState: 1, simulationTime: 0, developers: [engineer('a'), engineer('b')], tickets: [
@@ -44,23 +44,23 @@ test('shared improvements survive returns and repeated evaluations do not compou
   encounterEstimate(t,a,at,()=>.8)
   const baseline=t.initialEffortEstimate!.totalWork
   s.workLog=[{developerId:'a',ticketId:t.id,effort:workAmount(70)}, {developerId:'b',ticketId:t.id,effort:workAmount(10)}]
-  assert.equal(evaluateEstimate(s,b,t,'discovery'),true)
+  assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,true)
   const expected=100-(100-baseline)*(1+10/baseline)**-.3
   close(t.reportedEffortEstimate!,expected)
   const history=structuredClone(t.estimateHistory),work=structuredClone(s.workLog)
   for(let i=0;i<5;i++) {
     encounterEstimate(t,a,at,noDraw)
     encounterEstimate(t,b,at,noDraw)
-    assert.equal(evaluateEstimate(s,b,t,'discovery'),false)
+    assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,false)
     assert.equal(t.reportedEffortEstimate,history!.at(-1)!.totalWork)
     assert.deepEqual(t.estimateHistory,history)
   }
   // A's earlier gross contribution remains usable, with the SAME ticket E0.
-  assert.equal(evaluateEstimate(s,a,t,'discovery'),true)
+  assert.equal(evaluateEstimate(s,a,t, 'discovery',()=>0).improved,true)
   close(t.reportedEffortEstimate!,100-(100-baseline)*(1+70/baseline)**-.3)
   const shared=structuredClone(t.estimateHistory)
-  assert.equal(evaluateEstimate(s,a,t,'discovery'),false)
-  assert.equal(evaluateEstimate(s,b,t,'discovery'),false)
+  assert.equal(evaluateEstimate(s,a,t, 'discovery',()=>0).improved,false)
+  assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,false)
   assert.deepEqual(t.estimateHistory,shared)
   assert.deepEqual(s.workLog,work)
   assert.equal(firstPublishedEstimate(t),baseline)
@@ -74,7 +74,7 @@ test('return after a coworker revision uses the board; attribute changes refresh
     t.completedWork=11;t.overrunEvaluationConsumed=true
     prepareDiscovery(s,a,t,()=>.2)
     pauseDiscovery(a)
-    assert.equal(evaluateEstimate(s,b,t,'discovery'),true)
+    assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,true)
     const board=t.reportedEffortEstimate,history=structuredClone(t.estimateHistory),work=structuredClone(s.workLog)
     if(attribute==='judgement')a.judgement=10;else a.competencies.frontend=10
     encounterEstimate(t,a,at,noDraw);resumeDiscovery(a,t.id)
@@ -247,10 +247,11 @@ test('completion preempts coincident discovery without a publication or addition
   const a=s.developers[0],t=s.tickets[0]
   encounterEstimate(t,a,at,()=>.5);a.activeTicketID=t.id;t.overrunEvaluationConsumed=true
   a.estimateDiscovery={ticketId:t.id,boardEstimate:50,requiredWork:100,judgement:0,productive:true,target:workAmount(100)}
-  const result=advanceSimulation(s,projectWork(a,t,workAmount(100)).seconds!,noDraw)
+  const result=advanceSimulation(s,projectWork(a,t,workAmount(100)).seconds!,()=>.999)
   assert.equal(result.tickets[0].actualStatus,'done')
   assert.equal(result.tickets[0].estimateHistory!.length,1)
-  assert.equal(result.tickets[0].lastEstimateEvaluation,undefined)
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.reason,'completion')
+  assert.equal(result.tickets[0].lastEstimateEvaluation!.published,false)
   assert.equal(result.randomState,s.randomState)
 })
 
@@ -296,7 +297,7 @@ test('the earliest genuine publication supplies E0 when original provenance is a
   assert.equal(firstPublishedEstimate(t),20)
   assert.equal(t.initialEffortEstimate,undefined)
   s.workLog=[{developerId:a.id,ticketId:t.id,effort:workAmount(10)}]
-  assert.equal(evaluateEstimate(s,a,t,'discovery'),false)
+  assert.equal(evaluateEstimate(s,a,t, 'discovery',()=>0).improved,false)
   close(t.lastEstimateEvaluation!.candidate,100-80*(1+10/20)**-.3)
   assert.equal(t.reportedEffortEstimate,60)
   assert.equal(firstPublishedEstimate(JSON.parse(JSON.stringify(t))),20)
@@ -333,7 +334,7 @@ test('HEAD private-only original followed by B initial publication establishes E
       const r=.5,rate=.8*2*r/(r+.2)
       close(effortNumber(b.estimateDiscovery!.target!)!,10+(50+10)*Math.expm1(-Math.log1p(-.1)/rate))
     }
-    assert.equal(evaluateEstimate(s,b,t,'discovery'),true)
+    assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,true)
     assert.equal(firstPublishedEstimate(t),50)
     assert.deepEqual(t.initialEffortEstimate,{developerId:b.id,totalWork:50})
     close(t.lastEstimateEvaluation!.candidate,52.661375950046306)
@@ -343,7 +344,7 @@ test('HEAD private-only original followed by B initial publication establishes E
     assert.equal(t.estimateHistory!.length,2)
     assert.equal(t.overrunEvaluationConsumed,false)
     assert.equal(s.randomState,1)
-    assert.equal(evaluateEstimate(s,b,t,'discovery'),false)
+    assert.equal(evaluateEstimate(s,b,t, 'discovery',()=>0).improved,false)
     prepareDiscovery(s,b,t,()=>.1)
     const pending=structuredClone(b.estimateDiscovery)
     const history=structuredClone(t.estimateHistory)

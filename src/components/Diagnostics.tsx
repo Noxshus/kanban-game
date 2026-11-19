@@ -42,7 +42,9 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
         ? ticket.lastEstimateEvaluation.reason + ' by ' + ticket.lastEstimateEvaluation.developerId
           + '; personal work ' + (ticket.lastEstimateEvaluation.personalWork === null ? 'below scalar range' : formatEffort(ticket.lastEstimateEvaluation.personalWork))
           + '; candidate ' + formatEffort(ticket.lastEstimateEvaluation.candidate)
-          + (ticket.lastEstimateEvaluation.published ? '; published' : '; board unchanged') : 'None'}</p>
+          + (ticket.lastEstimateEvaluation.published ? '; published' : ticket.lastEstimateEvaluation.improved ? '; report missed; board unchanged' : '; board unchanged')
+          + (ticket.lastEstimateEvaluation.reportDraw !== undefined
+            ? '; reporting draw ' + ticket.lastEstimateEvaluation.reportDraw + ' / probability ' + ticket.lastEstimateEvaluation.reportProbability : '') : 'None'}</p>
       <details>
         <summary>Productive effort by engineer</summary>
         {ticket.contributions.length ? <ul>{ticket.contributions.map(contribution => (
@@ -74,6 +76,8 @@ export function DeveloperDiagnostics({ developer }: { developer: DiagnosticsView
         ? `${developer.activeTicket.id}: ${developer.activeTicket.title}` : 'Idle'}</p>
       <p>Assigned tickets (ownership): {developer.assignedTicketCount}</p>
       <p>Judgement: {format(developer.judgement)}; Focus: {format(developer.focus)}</p>
+      <p>Discipline: {format(developer.discipline)}</p>
+      <p>Next effort review: {developer.nextReviewSeconds === null ? 'Not scheduled (idle or legacy)' : format(developer.nextReviewSeconds) + ' simulated seconds'}</p>
       <details>
         <summary>Most recent assessment</summary>
         {developer.lastAssessment ? <>

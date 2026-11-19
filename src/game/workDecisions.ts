@@ -2,12 +2,13 @@ import type { AssessmentDecision, Developer, GameState, Ticket } from './types'
 import type { EventTime } from './eventTime'
 import { eventTime } from './eventTime.ts'
 import { isWorkComplete } from './work.ts'
-import { encounterEstimate, pauseDiscovery, resumeDiscovery } from './estimateHistory.ts'
-import { prepareDiscovery } from './reestimation.ts'
+import { pauseDiscovery, resumeDiscovery } from './estimateHistory.ts'
+import { beginEstimateReporting, evaluateEstimate, prepareDiscovery } from './reestimation.ts'
 import { selectWork } from './selectWork.ts'
 import { compareRank } from './rank.ts'
 import { nextRandom } from './random.ts'
 import { applySwitchLoss, beginWorkStint } from './workLoss.ts'
+import { validateReview } from './discipline.ts'
 
 export function simulationDraw(state: GameState) {
   return () => {
@@ -31,6 +32,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     delete developer.estimateDiscovery
     delete developer.assessmentClock
     delete developer.workStint
+    delete developer.estimateReview
   }
   // Reserve existing work before any idle pickup, irrespective of engineer order.
   for (const developer of state.developers) {
@@ -43,6 +45,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     (t.id === developer.activeTicketID || !claimed.has(t.id)) && !isWorkComplete(t)
     && (t.actualStatus === 'todo' || t.actualStatus === 'in_progress'))
   const restore = (developer: Developer) => {
+    validateReview(developer)
     delete developer.assessmentClock
     // Old decision snapshots use a different formula; never mislabel them as a new assessment.
     if (developer.lastAssessment && !('trigger' in developer.lastAssessment)) delete developer.lastAssessment
@@ -55,16 +58,23 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       delete developer.flowStreak
       delete developer.workSession
     }
-    encounterEstimate(ticket, developer, now, draw)
+    beginEstimateReporting(state, developer, ticket, now, draw)
     resumeDiscovery(developer, ticket.id)
   }
-  const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>) => {
+  const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>, currentInsight?: number) => {
     const previous = current(developer)
-    const decision = selectWork(context(developer), developer, draw, trigger, now, previous, alternatives)
+    const decision = selectWork(context(developer), developer, draw, trigger, now, previous, alternatives, currentInsight)
     if (!decision) return
     developer.lastAssessment = decision
     if (decision.selectedId === previous?.id) return
     if (previous) {
+      // A discovery-triggered switch already had its one reporting opportunity.
+      // Rank departure may freshly assess own work, reusing an Unknown preview.
+      if (trigger !== 'estimate_revision') {
+        const preview = decision.considered.find(option => option.id === previous.id)!
+        evaluateEstimate(state, developer, previous, 'departure', draw, now, false,
+          preview.estimateSource === 'temporary' ? preview.estimatedTotal : undefined)
+      }
       applySwitchLoss(state, developer, previous)
       claimed.delete(previous.id)
       previous.actualStatus = 'in_progress'
@@ -79,11 +89,12 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     delete developer.workSession
     delete developer.estimateDiscovery
     delete developer.assessmentClock
+    delete developer.estimateReview
     claimed.add(ticket.id)
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
     ticket.reportedStatus = 'in_progress'
-    encounterEstimate(ticket, developer, now, draw,
+    beginEstimateReporting(state, developer, ticket, now, draw,
       appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined)
     resumeDiscovery(developer, ticket.id)
   }

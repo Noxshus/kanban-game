@@ -42,7 +42,7 @@ function revisionFixture(alternativeSize=1) {
 
 test('genuine #58 revision immediately chooses across all alternatives before another interval of work',()=>{
  const s=revisionFixture(),due=projectWork(s.developers[0],s.tickets[0],workAmount(1)).seconds!
- const r=advanceSimulation(s,due,noDraw)
+ const r=advanceSimulation(s,due,()=>0)
  assert.equal(r.tickets[0].lastEstimateEvaluation!.published,true)
  assert.equal(r.developers[0].lastAssessment!.trigger,'estimate_revision')
  assert.deepEqual(r.developers[0].lastAssessment!.considered.map(t=>t.id),['current','other'])
@@ -133,6 +133,7 @@ test('repeated genuine reversals get fresh transient appraisals without cooldown
 
 test('a priority winner promotes its exact temporary appraisal once at the current time without advancing work',()=>{
  const s=priorities(true)
+ s.developers[0].discipline=1000 // successful-publication path
  s.tickets[0].reportedProgress=0
  // The unaffected ticket must not be previewed or consume a hidden third draw.
  const r=reorder(s,'right','left'),decision=r.developers[0].lastAssessment!
@@ -144,7 +145,7 @@ test('a priority winner promotes its exact temporary appraisal once at the curre
  assert.equal(winner.reportedEffortEstimate,appraisal.estimatedTotal)
  assert.deepEqual(winner.estimateHistory!.map(e=>[e.kind,e.at]),[['publication',{high:0,low:0}]])
  assert.ok(r.tickets.filter(t=>t.id!=='current'&&t.id!==winner.id).every(t=>t.estimateHistory===undefined))
- assert.equal(r.randomState,nextRandom(nextRandom(nextRandom(s.randomState).state).state).state)
+ assert.equal(r.randomState,nextRandom(nextRandom(nextRandom(nextRandom(nextRandom(s.randomState).state).state).state).state).state)
  assert.equal(r.simulationTime,0)
  assert.equal(r.workLog,undefined)
  assert.ok(r.tickets.every(t=>t.completedWork===0))
@@ -175,7 +176,7 @@ test('completion picks new work normally and no estimate/priority event fabricat
  s.tickets[0].estimateHistory=[];setPublishedEstimate(s.tickets[0],'a',1);s.tickets[0].reportedEffortEstimate=1
  s.tickets.push({...s.tickets[0],id:'next',rank:2,actualStatus:'todo',estimateHistory:[]})
  setPublishedEstimate(s.tickets[1],'a')
- const r=advanceSimulation(s,1,noDraw)
+ const r=advanceSimulation(s,1,()=>.5)
  assert.equal(r.tickets[0].actualStatus,'done')
  assert.equal(r.developers[0].activeTicketID,'next')
  assert.equal(r.developers[0].lastAssessment!.trigger,'pickup')

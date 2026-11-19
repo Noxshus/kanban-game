@@ -4,6 +4,8 @@ import { getEffectiveProductivity } from '../game/productivity.ts'
 import { getFlowBonus, getFlowDuration } from '../game/flow.ts'
 import { isWorkComplete, remainingWorkNumber } from '../game/work.ts'
 import { effortNumber } from '../game/workLog.ts'
+import { getDiscipline } from '../game/discipline.ts'
+import { eventInterval, eventTime } from '../game/eventTime.ts'
 
 // Authoritative development information stays separate from player reports so visibility can evolve.
 export function getDiagnosticsView(state: GameState) {
@@ -26,6 +28,9 @@ export function getDiagnosticsView(state: GameState) {
       competencies: { ...developer.competencies },
       judgement: developer.judgement,
       focus: developer.focus,
+      discipline: getDiscipline(developer),
+      nextReviewSeconds: activeTicket && developer.estimateReview?.ticketId === activeTicket.id
+        ? Math.max(0, eventInterval(developer.estimateReview.dueTime, eventTime(state.simulationTime, state.simulationTimeRemainder))) : null,
       lastAssessment: developer.lastAssessment && 'trigger' in developer.lastAssessment ? structuredClone(developer.lastAssessment) : null,
       activeTicket: activeTicket ? { id: activeTicket.id, title: activeTicket.title } : null,
       flowDuration,

@@ -45,6 +45,8 @@ test('#68 restores the real pre-crossing legacy seed 1 save without consuming it
   assert.equal(ticket.initialEffortEstimate!.totalWork, 4.41411834256028)
   assert.equal(ticket.lastEstimateEvaluation!.reason, 'discovery')
   assert.equal(ticket.overrunEvaluationConsumed, undefined)
+  // Preserve the old #68 discovery regression independently of new review setup.
+  for (const d of saved.developers) if(d.activeTicketID)d.estimateReview={ticketId:d.activeTicketID,dueTime:{high:1e308,low:0}}
   const original = structuredClone(saved)
   const control = structuredClone(saved)
   control.tickets.find(t => t.id === ticket.id)!.overrunEvaluationConsumed = false

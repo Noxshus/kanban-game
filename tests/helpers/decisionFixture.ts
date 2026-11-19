@@ -24,6 +24,7 @@ export function setPublishedEstimate(ticket: Ticket, developerId: string, totalW
 
 export function decisionFixture(): GameState {
   const developer = { id: 'a', name: 'A', productivity: 1, judgement: 0, focus: 5,
+    estimateReview: { ticketId: 'current', dueTime: { high: 1e308, low: 0 } },
     competencies: { frontend: 10, backend: 10 }, activeTicketID: 'current' }
   const ticket: Ticket = { id: 'current', title: 'Current', rank: 1, workDomain: 'frontend',
     actualStatus: 'in_progress', reportedStatus: 'in_progress', reportedProgress: 0,

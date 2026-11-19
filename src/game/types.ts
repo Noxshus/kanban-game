@@ -4,6 +4,7 @@ import type { WorkAmount } from './work'
 export type WorkflowStatus = 'backlog' | 'todo' | 'in_progress' | 'done'
 export type WorkDomain = 'frontend' | 'backend'
 export type TicketComplexity = 'S' | 'M' | 'L' | 'XL' | 'XXL'
+export type EffortAssessmentReason = 'pickup' | 'discovery' | 'overrun' | 'review' | 'departure' | 'completion'
 
 // Only publications are written now. Assessment variants/source indices are
 // accepted solely to migrate old saves; they never supply engineer knowledge.
@@ -52,7 +53,8 @@ export interface Ticket {
   // on the first positive advance; its presence alone is not proof of evaluation.
   evaluatedOverrunEstimate?: number
   // One DEV snapshot, not private belief history or a knowledge attribute.
-  lastEstimateEvaluation?: { developerId: string; reason: 'discovery' | 'overrun'; personalWork: number | null; candidate: number; published: boolean }
+  lastEstimateEvaluation?: { developerId: string; reason: EffortAssessmentReason; personalWork: number | null; candidate: number; published: boolean
+    improved?: boolean; reportProbability?: number; reportDraw?: number }
   requiredWork: number
   completedWork: number
   // Numerical remainder preserves work lost when the displayed total rounds.
@@ -72,6 +74,11 @@ export interface Developer {
   competencies: Record<WorkDomain, number>
   judgement: number
   focus: number
+  // Independent reporting conscientiousness. Missing on legacy saves means 0.
+  discipline?: number
+  // One anchored own-ticket review deadline; also marks pickup as already handled.
+  // This is scheduling state, never an unpublished estimate or private memory.
+  estimateReview?: { ticketId: string; dueTime: EventTime }
   // Missing means zero Flow; ticket identity prevents carrying it between tickets.
   flowStreak?: { ticketId: string; duration: number }
   // Gameplay stint: the gross-ledger baseline survives numerical cache refreshes.
@@ -106,7 +113,7 @@ export interface TicketAppraisal {
   reportedProgress: number
   rankScore: number
   estimatedTotal: number
-  estimateSource: 'published' | 'temporary'
+  estimateSource: 'published' | 'temporary' | 'insight'
   perceivedRemaining: number | null
   completionSeconds: number | null
   logCompletionTime: number | null

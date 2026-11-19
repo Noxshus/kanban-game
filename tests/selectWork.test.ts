@@ -64,8 +64,9 @@ test('unfamiliar appraisals can rationally choose objectively worse work without
   assert.ok(!('draw' in decision) && !('nomination' in decision))
 })
 
-test('winning preview becomes exactly one official personal assessment/publication, without resampling', () => {
+test('winning Unknown preview publishes once on reporting success, without resampling', () => {
   const s=decisionFixture(),d=s.developers[0]
+  d.discipline=1000 // isolate successful promotion; #63 also covers missed reports
   delete d.activeTicketID
   s.tickets=[{...s.tickets[0],id:'one',rank:1,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined},
     {...s.tickets[0],id:'two',rank:2,estimateHistory:undefined,initialEffortEstimate:undefined,reportedEffortEstimate:undefined}]
@@ -77,7 +78,7 @@ test('winning preview becomes exactly one official personal assessment/publicati
   assert.equal(winner.reportedEffortEstimate,preview.estimatedTotal)
   assert.deepEqual(winner.estimateHistory!.map(e=>e.kind),['publication'])
   assert.equal(result.tickets.find(t=>t.id!==winner.id)!.estimateHistory,undefined)
-  assert.equal(result.randomState,nextRandom(second.state).state) // two previews, one discovery target
+  assert.equal(result.randomState,nextRandom(nextRandom(nextRandom(second.state).state).state).state) // two previews, report, review, discovery
 })
 
 test('Judgement and relevant competency improve the SAME existing temporary estimate distribution', () => {

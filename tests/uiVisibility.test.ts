@@ -112,7 +112,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const liveHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(advanced).tickets[0] }))
         assert.ok(!liveHtml.includes('Alex (developer-1): 32 work units'))
         const learning = structuredClone(exampleGameState)
-        learning.developers = [{ ...learning.developers[0], judgement: 10, focus: 0, productivity: 1,
+        learning.developers = [{ ...learning.developers[0], judgement: 10, focus: 0, productivity: 1, estimateReview: { ticketId: 'ticket-1', dueTime: { high: 1e308, low: 0 } },
           competencies: { frontend: 5, backend: 0 }, assessmentClock: { elapsed: 0, remaining: 10000 } }]
         learning.tickets = [{ ...learning.tickets[0], completedWork: 0, requiredWork: 100,
           initialEffortEstimate: { developerId: 'original', totalWork: 20 }, reportedEffortEstimate: 20 }]
@@ -125,7 +125,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
           view: getPlayerView(learned), diagnostics: null,
         }))
         assert.ok(!withoutDiagnostics.includes('role="tooltip"'))
-        for (const text of ['Judgement:', 'Focus:', 'Most recent assessment', 'Time until next reconsideration:', 'Time since previous assessment:', 'Current candidate:', 'RNG draw:']) {
+        for (const text of ['Judgement:', 'Focus:', 'Discipline:', 'Next effort review:', 'Most recent assessment', 'Time until next reconsideration:', 'Time since previous assessment:', 'Current candidate:', 'RNG draw:']) {
           assert.ok(!withoutDiagnostics.includes(text))
         }
         for (const label of ['Work domain:', 'Frontend competency:', 'Backend competency:', 'Effective productivity:', 'Base productivity:', 'Uninterrupted work duration:', 'Flow bonus:']) {

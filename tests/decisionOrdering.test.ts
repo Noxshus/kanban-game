@@ -25,6 +25,7 @@ function coincident(reverse=false,offset=0,complexity: TicketComplexity='S') {
  const quantity=offset===0?workAmount(1):integratedWork(s.developers[1],s.tickets[1],due+offset,0)
  s.developers[1].estimateDiscovery={ticketId:'ongoing',boardEstimate:600,requiredWork:1000,judgement:0,productive:true,baseline:600,target:quantity}
  s.tickets[1].overrunEvaluationConsumed=true
+ for(const d of s.developers)d.estimateReview={ticketId:d.activeTicketID!,dueTime:{high:1e308,low:0}}
  if(reverse)s.developers.reverse()
  return {s,due}
 }
@@ -56,7 +57,10 @@ test('nonbinary partitions and JSON preserve mixed-event coincidence, histories,
   for(const dt of parts)split=JSON.parse(JSON.stringify(advanceSimulation(split,dt)))
   split=advanceSimulation(split,due+.25-parts.reduce((a,b)=>a+b,0))
   equivalent(split,whole)
-  assert.equal(whole.randomState,nextRandom(s.randomState).state)
+  let expected=s.randomState
+  // Discovery report + new-ticket review(s) + renewed discovery threshold.
+  for(let n=0;n<(reverse?4:3);n++)expected=nextRandom(expected).state
+  assert.equal(whole.randomState,expected)
  }
 })
 
@@ -97,7 +101,8 @@ test('completion wins a discovery tie on the same ticket and releases every clai
  const due=projectWork(d,t,workAmount(100)).seconds!
  const r=advanceSimulation(s,due,()=>{throw Error('Completion cannot trigger reconsideration')})
  assert.equal(r.tickets[0].actualStatus,'done')
- assert.equal(r.tickets[0].lastEstimateEvaluation,undefined)
+ assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'completion')
+ assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)
  assert.equal(r.developers[0].lastAssessment,undefined)
  assert.equal(r.developers[0].activeTicketID,undefined)
 })

@@ -12,7 +12,7 @@ import { projectCompletion } from '../src/game/completionTime.ts'
 function scenario(active = false) {
   const state = structuredClone(exampleGameState)
   state.developers = [{ ...state.developers[0], activeTicketID: active ? 'ticket-1' : undefined,
-    judgement: 0, focus: 0, productivity: 1, competencies: { frontend: 0, backend: 100 } }]
+    judgement: 0, focus: 0, discipline: 1000, productivity: 1, competencies: { frontend: 0, backend: 100 } }]
   state.tickets = [{ ...state.tickets[0], actualStatus: active ? 'in_progress' : 'todo',
     reportedStatus: 'todo', requiredWork: 1e6, completedWork: 0, reportedProgress: 0, assignedDeveloperId: undefined }]
   return state
@@ -23,7 +23,7 @@ test('a genuine pickup publishes total work once, with one estimate draw before 
   const firstDraw = nextRandom(1), secondDraw = nextRandom(firstDraw.state)
   const first = advanceSimulation(input, 0.1)
   const expected = estimateInitialEffort(1e6, 0, 0, firstDraw.value)
-  assert.equal(first.randomState, secondDraw.state) // initial preview plus discovery threshold; no periodic schedule
+  assert.equal(first.randomState, nextRandom(nextRandom(secondDraw.state).state).state) // preview, report, review, discovery
   assert.deepEqual(first.tickets[0].initialEffortEstimate, { developerId: input.developers[0].id, totalWork: expected })
   assert.equal(first.tickets[0].reportedEffortEstimate, expected)
   assert.equal(first.tickets[0].assignedDeveloperId, input.developers[0].id)
@@ -45,7 +45,7 @@ test('legacy active claims use the actual worker/domain, not owner, remaining wo
     input.developers[0].focus = 1000
     let draws = 0
     const result = advanceSimulation(input, 0.1, () => { draws++; return 0.5 })
-    assert.equal(draws, 2) // one initial estimate, one #58 discovery threshold
+    assert.equal(draws, 4) // initial estimate, report, review, discovery threshold
     assert.equal(result.tickets[0].reportedEffortEstimate,
       estimateInitialEffort(1e6, 0, input.developers[0].competencies[domain], 0.5))
     assert.equal(result.tickets[0].initialEffortEstimate?.developerId, input.developers[0].id)
@@ -75,7 +75,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
     { ...state.tickets[0], id: 'done', rank: 3, actualStatus: 'done', completedWork: 1e6 })
   let draws = 0
   const result = advanceSimulation(state, 0.1, () => { draws++; return 0.5 })
-  assert.equal(draws, 2) // initial estimate and discovery threshold
+  assert.equal(draws, 4) // initial estimate, report, review and discovery threshold
   assert.equal(result.developers[1].activeTicketID, undefined)
   assert.equal(result.developers[2].activeTicketID, undefined)
   assert.ok(result.tickets.slice(1).every(t => t.initialEffortEstimate === undefined))
@@ -94,12 +94,13 @@ test('a replacement adopts the board with no estimate draw; legacy Unknown claim
   delete initial.developers[0].estimateDiscovery // the replacement does not inherit A's scheduled personal exposure
   const draws: number[] = []
   const handed = advanceSimulation(initial, 0.1, () => { draws.push(0.5); return 0.5 })
-  assert.equal(draws.length, 1) // discovery threshold only; the report is already known
+  assert.equal(draws.length, 2) // new worker review and discovery; no estimate/report draw
   assert.equal(handed.tickets[0].reportedEffortEstimate, 123)
   assert.deepEqual(handed.tickets[0].initialEffortEstimate, belief)
   assert.equal(handed.tickets[0].assignedDeveloperId, 'replacement')
   const boardOnly = scenario(true)
   boardOnly.tickets[0].reportedEffortEstimate = boardOnly.tickets[0].requiredWork
+  boardOnly.developers[0].estimateReview = {ticketId:'ticket-1',dueTime:{high:1e308,low:0}}
   const restored = advanceSimulation(JSON.parse(JSON.stringify(boardOnly)), .1, () => { throw Error('No duplicate draw') })
   assert.equal(restored.tickets[0].initialEffortEstimate, undefined)
   assert.equal(restored.tickets[0].reportedEffortEstimate, 1e6)
@@ -107,7 +108,7 @@ test('a replacement adopts the board with no estimate draw; legacy Unknown claim
   unknown.tickets[0].initialEffortEstimate = { developerId: 'legacy-private-author', totalWork: 321 }
   let calls = 0
   const published = advanceSimulation(JSON.parse(JSON.stringify(unknown)), .1, () => { calls++; return .5 })
-  assert.equal(calls, 2) // Unknown active work: one estimate, one discovery threshold
+  assert.equal(calls, 4) // Unknown active work: estimate, report, review, discovery
   assert.equal(published.tickets[0].reportedEffortEstimate, 500000)
   assert.deepEqual(published.tickets[0].initialEffortEstimate, { developerId: unknown.developers[0].id, totalWork: 500000 })
 })
@@ -118,11 +119,11 @@ test('event switches and returns retain shared estimates and pending discovery w
   s.tickets.push({...scenario().tickets[0],id:'other',rank:2,reportedProgress:99.999})
   let calls=0
   s=decideNow(s,()=>{calls++;return .5})
-  assert.equal(calls,1)
+  assert.equal(calls,4) // departure revision, preview, reporting, new-ticket review
   assert.equal(s.developers[0].activeTicketID,'other')
   const beliefs=s.tickets.map(t=>structuredClone(t.initialEffortEstimate))
   s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
-  const returned=decideNow(s,()=>{throw Error('Published reports require no RNG')})
+  const returned=decideNow(s,()=>.5) // published selection needs only the new-ticket review
   assert.equal(returned.developers[0].activeTicketID,'ticket-1')
   assert.deepEqual(returned.developers[0].estimateDiscovery,pending)
   assert.deepEqual(returned.tickets.map(t=>t.initialEffortEstimate),beliefs)
@@ -150,8 +151,8 @@ test('estimate failures leave original tickets, developers and seeded RNG untouc
   const before = structuredClone(state)
   assert.throws(() => advanceSimulation(state, 0.1, () => 0.9), /positive numeric range/)
   assert.deepEqual(state, before)
-  // This seeded first-estimation stream reaches the tiny claim without a schedule draw.
-  state.randomState = 100000
+  // This seeded stream reaches the tiny claim after the first report and review draws.
+  state.randomState = 1
   const seededBefore = structuredClone(state)
   assert.throws(() => advanceSimulation(state, 0.1), /positive numeric range/)
   assert.deepEqual(state, seededBefore)
@@ -184,6 +185,7 @@ function coincident(reverse: boolean) {
   }
   const due = projectCompletion(state.developers[0], state.tickets[0], true).seconds!
   state.developers[1].assessmentClock!.remaining = due
+  for(const d of state.developers)d.estimateReview={ticketId:d.activeTicketID!,dueTime:{high:1e308,low:0}}
   if (reverse) state.developers.reverse()
   return { state, due }
 }
@@ -197,7 +199,7 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
     split = advanceSimulation(split, due + 0.25 - 0.9)
     let expectedSeed = state.randomState
-    for (let i = 0; i < 2; i++) expectedSeed = nextRandom(expectedSeed).state
+    for (let i = 0; i < 4; i++) expectedSeed = nextRandom(expectedSeed).state
     assert.equal(whole.randomState, expectedSeed)
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]),
