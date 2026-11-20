@@ -3,6 +3,7 @@ import type { EventTime } from './eventTime'
 import { addEventTime, compareEventTime, eventTime } from './eventTime.ts'
 import { openUnit } from './reconsideration.ts'
 import { encounterEstimate, publishEstimate } from './estimateHistory.ts'
+import type { InternalObserver } from './simulationActivity'
 
 // Provisional #63 calibration, independent of estimation quality and work rate.
 export const DISCIPLINE_SCALE = 10
@@ -40,13 +41,14 @@ export function validateReview(developer: Developer) {
   }
 }
 
-// Recognition and publication are separate. Only this bounded DEV snapshot may
-// retain a missed candidate; no selection or future assessment reads it back.
+// Recognition and publication are separate. Bounded DEV observations may retain
+// a missed candidate; no selection or future assessment reads them back.
 export function reportEffort(ticket: Ticket, developer: Developer, candidate: number,
-  reason: EffortAssessmentReason, personalWork: number | null, at: EventTime, draw: () => number, guaranteed = false) {
+  reason: EffortAssessmentReason, personalWork: number | null, at: EventTime, draw: () => number, guaranteed = false, internal?: InternalObserver) {
   if (!Number.isFinite(candidate) || candidate < 0 || candidate > ticket.requiredWork || ticket.requiredWork > 0 && candidate === 0) {
     throw new RangeError('Report candidate must be representable and within actual total effort')
   }
+  const boardBefore = ticket.reportedEffortEstimate ?? null
   const improved = ticket.reportedEffortEstimate === undefined || candidate > ticket.reportedEffortEstimate
   let probability: number | undefined, uniform: number | undefined
   if (improved && !guaranteed) {
@@ -64,5 +66,9 @@ export function reportEffort(ticket: Ticket, developer: Developer, candidate: nu
   }
   ticket.lastEstimateEvaluation = { developerId: developer.id, reason, personalWork, candidate, improved, published,
     ...(probability !== undefined ? { reportProbability: probability, reportDraw: uniform } : {}) }
+  internal?.({ kind: 'assessment', ticketId: ticket.id, ticketTitle: ticket.title, at: { ...at },
+    developerId: developer.id, developerName: developer.name, reason, candidate, boardBefore,
+    boardAfter: ticket.reportedEffortEstimate ?? null, improved, published, proactive: guaranteed,
+    probability: probability ?? null, draw: uniform ?? null })
   return { candidate, improved, published }
 }

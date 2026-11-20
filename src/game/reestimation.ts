@@ -8,6 +8,7 @@ import { openUnit } from './reconsideration.ts'
 import { firstPublishedEstimate, migrateEstimateHistory } from './estimateHistory.ts'
 import { estimateInitialEffort } from './effortEstimate.ts'
 import { reportEffort, scheduleReview } from './discipline.ts'
+import type { InternalObserver } from './simulationActivity'
 
 // Provisional #58 balance, deliberately independent of Focus and Flow.
 export const DISCOVERY_BASE = 0.8
@@ -178,7 +179,7 @@ export function projectEstimateEvents(state: GameState, developer: Developer, ti
   return session.estimateEvents
 }
 
-export function beginEstimateReporting(state: GameState, developer: Developer, ticket: Ticket, at: ReturnType<typeof eventTime>, draw: () => number, appraisal?: number) {
+export function beginEstimateReporting(state: GameState, developer: Developer, ticket: Ticket, at: ReturnType<typeof eventTime>, draw: () => number, appraisal?: number, internal?: InternalObserver) {
   if (developer.estimateReview?.ticketId === ticket.id) return
   migrateEstimateHistory(ticket)
   if (ticket.reportedEffortEstimate === undefined) {
@@ -186,14 +187,14 @@ export function beginEstimateReporting(state: GameState, developer: Developer, t
     delete ticket.initialEffortEstimate
     delete ticket.learningBaseline
     const candidate = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
-    reportEffort(ticket, developer, candidate, 'pickup', effortNumber(personalEffort(state, developer, ticket)), at, draw)
+    reportEffort(ticket, developer, candidate, 'pickup', effortNumber(personalEffort(state, developer, ticket)), at, draw, false, internal)
   }
   scheduleReview(developer, ticket.id, at, draw)
 }
 
 export function evaluateEstimate(state: GameState, developer: Developer, ticket: Ticket, reason: Exclude<EffortAssessmentReason, 'pickup'>,
   draw: () => number, at = developer.workSession?.currentTime ?? eventTime(state.simulationTime, state.simulationTimeRemainder),
-  proactive = reason === 'review', initialAppraisal?: number) {
+  proactive = reason === 'review', initialAppraisal?: number, internal?: InternalObserver) {
   migrateEstimateHistory(ticket)
   const originalBaseline = ticket.initialEffortEstimate?.totalWork ?? ticket.learningBaseline
   const baseline = baselineFor(ticket)
@@ -203,7 +204,7 @@ export function evaluateEstimate(state: GameState, developer: Developer, ticket:
   const candidate = baseline === null
     ? initialAppraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
     : revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
-  const result = reportEffort(ticket, developer, candidate, reason, effortNumber(personal), at, draw, proactive)
+  const result = reportEffort(ticket, developer, candidate, reason, effortNumber(personal), at, draw, proactive, internal)
   // One crossing for the entire ticket lifetime, even if this evaluation leaves
   // the report unchanged. Later revisions and handoffs only learn via discovery.
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true

@@ -5,6 +5,14 @@ import { DeveloperDiagnostics, TicketDiagnostics } from './Diagnostics'
 import { useEffect, useRef, useState } from 'react'
 import { createEdgeScroller, edgeSpeed } from './edgeScroll'
 import { formatEffort } from './formatEffort'
+import type { BoardActivity } from '../game/boardActivity'
+import { BoardActivityLog } from './BoardActivity'
+import type { ActivityDisplay } from './BoardActivity'
+import { focusActivityTicket } from './boardActivityPresentation'
+import { BoardEmphasis } from './BoardEmphasis'
+
+const noActivity: BoardActivity[] = []
+type ActivityTarget = { rowId: string; ticketId: string; order: number }
 
 const columns: { status: WorkflowStatus; title: string }[] = [
   { status: 'backlog', title: 'Backlog' },
@@ -17,9 +25,57 @@ interface Props {
   onReorder?: (ticketId: string, targetId: string, after: boolean) => void
   view: ReturnType<typeof getPlayerView>
   diagnostics?: DiagnosticsView | null
+  activity?: readonly BoardActivity[]
+  activityDisplay?: ActivityDisplay
 }
 
-export function GameBoard({ view, diagnostics, onReorder }: Props) {
+export function GameBoard({ view, diagnostics, onReorder, activity = noActivity, activityDisplay }: Props) {
+  const [targets, setTargets] = useState<{ hover: ActivityTarget | null; focus: ActivityTarget | null; order: number }>({ hover: null, focus: null, order: 0 })
+  const visibleRows = new Set(activityDisplay?.rows ? activityDisplay.rows.map(row => row.id) : activity.map(event => `board-${event.id}`))
+  // Only currently visible origins can highlight a card. Keep pointer and focus
+  // independent so an older leave/blur cannot cancel a newer interaction.
+  const hovered = targets.hover && visibleRows.has(targets.hover.rowId) ? targets.hover : null
+  const focused = targets.focus && visibleRows.has(targets.focus.rowId) ? targets.focus : null
+  if (hovered !== targets.hover || focused !== targets.focus) {
+    // Reset invalid origins with the changed rows, before children are committed.
+    // Restoring a filter must not resurrect an earlier interaction.
+    setTargets({ ...targets, hover: hovered, focus: focused })
+  }
+  const highlightedTicket = hovered && (!focused || hovered.order > focused.order) ? hovered.ticketId : focused?.ticketId
+  function targetActivity(source: 'hover' | 'focus', ticketId: string | null, rowId: string) {
+    setTargets(previous => {
+      if (ticketId === null) return previous[source]?.rowId === rowId ? { ...previous, [source]: null } : previous
+      const other = previous[source === 'hover' ? 'focus' : 'hover']
+      if (previous[source]?.rowId === rowId && (!other || previous[source]!.order > other.order)) return previous
+      const order = previous.order + 1
+      return { ...previous, order, [source]: { ticketId, rowId, order } }
+    })
+  }
+  const cards = useRef(new Map<string, HTMLLIElement>())
+  const [feedback, setFeedback] = useState<ReadonlySet<number>>(() => new Set())
+  const lastActivity = useRef(activity.at(-1)?.id ?? 0)
+  const feedbackTimers = useRef(new Map<number, number>())
+  useEffect(() => {
+    const current = new Set(activity.map(event => event.id))
+    const fresh = activity.filter(event => event.id > lastActivity.current && event.kind !== 'assignment')
+    lastActivity.current = activity.at(-1)?.id ?? 0
+    // Lifetime belongs to the board, not the card: changing columns remounts a
+    // card and must not replay an old estimate cue. Initial history is silent.
+    for (const [id, timer] of feedbackTimers.current) if (!current.has(id)) {
+      window.clearTimeout(timer); feedbackTimers.current.delete(id)
+    }
+    setFeedback(previous => new Set([...previous].filter(id => current.has(id)).concat(fresh.map(event => event.id))))
+    for (const event of fresh) {
+      feedbackTimers.current.set(event.id, window.setTimeout(() => {
+        feedbackTimers.current.delete(event.id)
+        setFeedback(previous => new Set([...previous].filter(id => id !== event.id)))
+      }, 1500))
+    }
+  }, [activity])
+  useEffect(() => {
+    const timers = feedbackTimers.current
+    return () => { for (const timer of timers.values()) window.clearTimeout(timer); timers.clear() }
+  }, [])
   const [dragged, setDragged] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [dropAfter, setDropAfter] = useState(false)
@@ -105,6 +161,8 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
           <h2 id="board-heading">Kanban board</h2>
           <p>The team’s reports. Your priorities.</p>
         </div>
+        <div className="board-workspace">
+        <div className="board-content">
         <div className="board">
           {columns.map(({ status, title }) => {
             // Board placement reflects reports, independently of simulation progress.
@@ -121,8 +179,12 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                       (developer) => developer.id === ticket.assignedDeveloperId,
                     )
                     const diagnostic = diagnostics?.tickets.find((item) => item.id === ticket.id)
+                    const statusEvent = activity.findLast(event => event.ticketId === ticket.id && event.kind === 'status')
+                    const estimateEvent = activity.findLast(event => event.ticketId === ticket.id && event.kind === 'estimate')
                     return (
-                      <li className={`ticket${dropTarget === ticket.id ? (dropAfter ? ' drop-after' : ' drop-before') : ''}`} key={ticket.id}
+                      <li className={`ticket${highlightedTicket === ticket.id ? ' activity-target' : ''}${dropTarget === ticket.id ? (dropAfter ? ' drop-after' : ' drop-before') : ''}`} key={ticket.id}
+                        ref={card => { if (card) cards.current.set(ticket.id, card); else cards.current.delete(ticket.id) }}
+                        tabIndex={-1} aria-label={`${ticket.id}: ${ticket.title}`}
                         data-todo-ticket={status === 'todo' ? ticket.id : undefined}
                         draggable={status === 'todo'}
                         onDragStart={status === 'todo' ? (event) => {
@@ -161,7 +223,9 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                           <div><dt>Assigned to:</dt><dd className={assignee ? undefined : 'report-unset'}>{assignee?.name ?? 'Unassigned'}</dd></div>
                           <div className="ticket-estimate"><dt>Estimated effort:</dt><dd>
                             <span className={ticket.reportedEffortEstimate === undefined ? 'report-unset' : undefined}
-                              title={ticket.reportedEffortEstimate === undefined ? 'No effort estimate has been reported yet' : 'Published estimate of total effort'}>{formatEffort(ticket.reportedEffortEstimate)}</span>
+                              title={ticket.reportedEffortEstimate === undefined ? 'No effort estimate has been reported yet' : 'Published estimate of total effort'}>
+                              {estimateEvent && feedback.has(estimateEvent.id) ? <BoardEmphasis key={`estimate-${estimateEvent.id}`} kind="estimate">{formatEffort(ticket.reportedEffortEstimate)}</BoardEmphasis> : formatEffort(ticket.reportedEffortEstimate)}
+                            </span>
                             {ticket.reportedEffortEstimate !== undefined && <small> work units</small>}
                           </dd></div>
                         </dl>
@@ -169,6 +233,7 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
                           <span>Reported progress: <strong>{Math.round(ticket.reportedProgress)}%</strong></span>
                           <progress aria-label={`${ticket.id} reported progress`} max={100} value={ticket.reportedProgress} />
                         </label>
+                        {statusEvent && feedback.has(statusEvent.id) && <BoardEmphasis key={`status-${statusEvent.id}`} kind="status" />}
                         {diagnostic && <TicketDiagnostics ticket={diagnostic} />}
                       </li>
                     )
@@ -180,6 +245,10 @@ export function GameBoard({ view, diagnostics, onReorder }: Props) {
           })}
         </div>
         <p className="board-note">Rank 1 is highest priority. Unknown effort means no estimate has been reported.</p>
+        </div>
+        <BoardActivityLog events={activity} engineers={view.developers} onHover={(ticketId, rowId) => targetActivity('hover', ticketId, rowId)} onFocus={(ticketId, rowId) => targetActivity('focus', ticketId, rowId)}
+          onActivate={id => focusActivityTicket(cards.current.get(id))} display={activityDisplay} />
+        </div>
       </section>
 
       <section className="developers-section" aria-labelledby="developers-heading">

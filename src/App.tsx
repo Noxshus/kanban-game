@@ -1,12 +1,18 @@
 import { useEffect, useReducer } from 'react'
-import { createSimulationSession, simulationReducer } from './store/simulationControls'
+import { createBoardSession, createDevelopmentBoardSession, boardReducer } from './store/boardSession'
 import { getPlayerView } from './store/playerView'
 import { DevelopmentUI } from './components/DevelopmentUI'
 import { GameBoard } from './components/GameBoard'
 import './App.css'
 
 function App() {
-  const [{ game: state, isPaused }, dispatch] = useReducer(simulationReducer, undefined, createSimulationSession)
+  // One build-mode boundary gates both diagnostic collection and its UI. A
+  // production session never allocates a hidden diagnostic activity history.
+  return import.meta.env.DEV ? <GameApplication development /> : <GameApplication />
+}
+
+function GameApplication({ development = false }: { development?: boolean }) {
+  const [{ simulation: { game: state, isPaused }, activity, diagnosticActivity }, dispatch] = useReducer(boardReducer, undefined, development ? createDevelopmentBoardSession : createBoardSession)
   const view = getPlayerView(state)
 
   useEffect(() => {
@@ -36,12 +42,11 @@ function App() {
         </div>
       </header>
 
-      {/* One build-mode boundary owns all true-state development UI. */}
-      {import.meta.env.DEV ? (
-        <DevelopmentUI state={state} isPaused={isPaused} dispatch={dispatch}>
-          {(diagnostics) => <GameBoard onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
+      {development ? (
+        <DevelopmentUI state={state} isPaused={isPaused} dispatch={dispatch} activity={diagnosticActivity}>
+          {(diagnostics, activityDisplay) => <GameBoard activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
         </DevelopmentUI>
-      ) : <GameBoard onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
+      ) : <GameBoard activity={activity} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
     </main>
   )
 }

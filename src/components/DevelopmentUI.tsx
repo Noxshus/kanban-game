@@ -6,18 +6,27 @@ import { getDiagnosticsView } from '../store/diagnosticsView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DevelopmentControls } from './DevelopmentControls'
 import { TeamDiagnostics } from './Diagnostics'
+import { filterDiagnosticActivity } from '../game/simulationActivity'
+import type { DiagnosticActivity } from '../game/simulationActivity'
+import type { ActivityDisplay } from './BoardActivity'
+import { describeDiagnosticActivity } from './developmentActivityPresentation'
 
 interface Props {
   state: GameState
   isPaused: boolean
   dispatch: Dispatch<SimulationAction>
-  children: (diagnostics: DiagnosticsView | null) => ReactNode
+  activity?: readonly DiagnosticActivity[]
+  children: (diagnostics: DiagnosticsView | null, activityDisplay: ActivityDisplay) => ReactNode
 }
 
 // Mounted only by App's Vite DEV boundary. Future overlays can live here without
 // changing the reported player view or putting build-mode decisions in the engine.
-export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
+export function DevelopmentUI({ state, isPaused, dispatch, children, activity = [] }: Props) {
   const [showDiagnostics, setShowDiagnostics] = useState(true)
+  const [includeInternal, setIncludeInternal] = useState(false)
+  const [assessments, setAssessments] = useState(true)
+  const [decisions, setDecisions] = useState(true)
+  const [noopReviews, setNoopReviews] = useState(false)
   const simulationPanel = useRef<HTMLDetailsElement>(null)
   const teamPanel = useRef<HTMLDetailsElement>(null)
   const toolbar = useRef<HTMLDivElement>(null)
@@ -31,6 +40,18 @@ export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
     return () => observer.disconnect()
   }, [])
   const diagnostics = showDiagnostics ? getDiagnosticsView(state) : null
+  const activityDisplay: ActivityDisplay = {
+    rows: includeInternal ? filterDiagnosticActivity(activity, { assessments, decisions, noopReviews }).map(event => describeDiagnosticActivity(event, state.developers)) : undefined,
+    controls: <fieldset className="activity-filters">
+      <legend className="visually-hidden">Development activity filters</legend>
+      <label><input type="checkbox" checked={includeInternal} onChange={event => setIncludeInternal(event.target.checked)} />Include internal activity (DEV)</label>
+      {includeInternal && <div>
+        <label><input type="checkbox" checked={assessments} onChange={event => setAssessments(event.target.checked)} />Assessments</label>
+        <label><input type="checkbox" checked={decisions} onChange={event => setDecisions(event.target.checked)} />Work decisions</label>
+        <label><input type="checkbox" checked={noopReviews} disabled={!assessments} onChange={event => setNoopReviews(event.target.checked)} />No-op reviews</label>
+      </div>}
+    </fieldset>,
+  }
 
   function closePanel(panel: HTMLDetailsElement | null) {
     if (!panel) return
@@ -67,7 +88,7 @@ export function DevelopmentUI({ state, isPaused, dispatch, children }: Props) {
         Diagnostics
       </label>
       </div>
-      {children(diagnostics)}
+      {children(diagnostics, activityDisplay)}
       <div aria-hidden="true" style={{ height: toolbarHeight + 24 }} />
     </>
   )

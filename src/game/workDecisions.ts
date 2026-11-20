@@ -9,6 +9,9 @@ import { compareRank } from './rank.ts'
 import { nextRandom } from './random.ts'
 import { applySwitchLoss, beginWorkStint } from './workLoss.ts'
 import { validateReview } from './discipline.ts'
+import { observeBoard } from './boardActivity.ts'
+import type { BoardObserver } from './boardActivity'
+import type { InternalObserver } from './simulationActivity'
 
 export function simulationDraw(state: GameState) {
   return () => {
@@ -20,7 +23,7 @@ export function simulationDraw(state: GameState) {
 
 // Mutates only the caller-owned clone. Both elapsed events and reducer actions
 // use this same reservation/claim/publication path, without another event queue.
-export function workTransitions(state: GameState, now: EventTime, draw: () => number) {
+export function workTransitions(state: GameState, now: EventTime, draw: () => number, observe?: BoardObserver, internal?: InternalObserver) {
   const byId = new Map(state.tickets.map(t => [t.id, t]))
   const claimed = new Set<string>()
   const clear = (developer: Developer) => {
@@ -58,7 +61,8 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       delete developer.flowStreak
       delete developer.workSession
     }
-    beginEstimateReporting(state, developer, ticket, now, draw)
+    beginEstimateReporting(state, developer, ticket, now, draw, undefined, internal)
+    observeBoard(observe, ticket, now)
     resumeDiscovery(developer, ticket.id)
   }
   const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>, currentInsight?: number) => {
@@ -66,6 +70,8 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     const decision = selectWork(context(developer), developer, draw, trigger, now, previous, alternatives, currentInsight)
     if (!decision) return
     developer.lastAssessment = decision
+    internal?.({ kind: 'decision', ticketId: decision.selectedId, ticketTitle: byId.get(decision.selectedId)!.title,
+      developerId: developer.id, developerName: developer.name, at: { ...now }, decision: structuredClone(decision) })
     if (decision.selectedId === previous?.id) return
     if (previous) {
       // A discovery-triggered switch already had its one reporting opportunity.
@@ -73,7 +79,8 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       if (trigger !== 'estimate_revision') {
         const preview = decision.considered.find(option => option.id === previous.id)!
         evaluateEstimate(state, developer, previous, 'departure', draw, now, false,
-          preview.estimateSource === 'temporary' ? preview.estimatedTotal : undefined)
+          preview.estimateSource === 'temporary' ? preview.estimatedTotal : undefined, internal)
+        observeBoard(observe, previous, now)
       }
       applySwitchLoss(state, developer, previous)
       claimed.delete(previous.id)
@@ -94,8 +101,10 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
     ticket.reportedStatus = 'in_progress'
+    observeBoard(observe, ticket, now)
     beginEstimateReporting(state, developer, ticket, now, draw,
-      appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined)
+      appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined, internal)
+    observeBoard(observe, ticket, now)
     resumeDiscovery(developer, ticket.id)
   }
   return { claimed, clear, context, current, restore, decide }
@@ -112,14 +121,14 @@ function changedRelativeOrder(before: ReadonlyMap<string, Ticket>, options: Tick
   return affected
 }
 
-export function reconsiderPriorities(before: GameState, reordered: GameState): GameState {
+export function reconsiderPriorities(before: GameState, reordered: GameState, observe?: BoardObserver, internal?: InternalObserver): GameState {
   if (reordered === before) return before
   const original = workTransitions(structuredClone(before), eventTime(before.simulationTime, before.simulationTimeRemainder), () => { throw Error('No preview during relevance filtering') })
   const initiallyEligible = new Map(before.developers.map(d => [d.id,
     new Set(original.current(d) ? original.context(d).map(t => t.id) : [])]))
   const result = structuredClone(reordered)
   const now = eventTime(result.simulationTime, result.simulationTimeRemainder)
-  const draw = simulationDraw(result), transitions = workTransitions(result, now, draw)
+  const draw = simulationDraw(result), transitions = workTransitions(result, now, draw, observe, internal)
   const oldTickets = new Map(before.tickets.map(t => [t.id, t]))
   let assessed = false
   const prepared: Developer[] = []

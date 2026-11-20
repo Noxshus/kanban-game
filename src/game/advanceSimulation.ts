@@ -11,8 +11,11 @@ import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
 import { getTicketComplexity } from './complexity.ts'
 import { scheduleReview, validateReview } from './discipline.ts'
+import { observeBoard } from './boardActivity.ts'
+import type { BoardObserver } from './boardActivity'
+import type { InternalObserver } from './simulationActivity'
 
-export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number): GameState {
+export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number, observe?: BoardObserver, internal?: InternalObserver): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
     throw new RangeError('Elapsed time and resulting simulation time must be finite and non-negative')
   }
@@ -29,14 +32,14 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   developers.forEach(validateReview)
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = random ?? simulationDraw(result)
-  let transitions = workTransitions(result, now, draw)
+  let transitions = workTransitions(result, now, draw, observe, internal)
   const complete = isWorkComplete
   for (const developer of developers) transitions.restore(developer)
   const completedAtInstant = new Map<string, Ticket>()
   const decideDue = () => {
     // Completed claims are released first; pickups and revision decisions then
     // share one engineer-ordered pass. No-op evaluations never trigger a choice.
-    transitions = workTransitions(result, now, draw)
+    transitions = workTransitions(result, now, draw, observe, internal)
     for (const developer of developers) {
       const events = developer.workSession?.estimateEvents
       const overrun = events?.overrun && compareEventTime(events.overrun, now) <= 0
@@ -45,12 +48,16 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       const reviewDue = review && compareEventTime(review.dueTime, now) <= 0
       let insight: number | undefined
       const finished = completedAtInstant.get(developer.id)
-      if (finished) evaluateEstimate(result, developer, finished, 'completion', draw, now)
+      if (finished) {
+        evaluateEstimate(result, developer, finished, 'completion', draw, now, false, undefined, internal)
+        observeBoard(observe, finished, now)
+      }
       else if (developer.activeTicketID !== undefined && (overrun || discovery || reviewDue)) {
         const ticket = byId.get(developer.activeTicketID)!
         // Completion wins. At a work/review tie assess once, using the review's
         // guaranteed follow-through; only the work event can trigger a decision.
-        const assessment = evaluateEstimate(result, developer, ticket, overrun ? 'overrun' : discovery ? 'discovery' : 'review', draw, now, !!reviewDue)
+        const assessment = evaluateEstimate(result, developer, ticket, overrun ? 'overrun' : discovery ? 'discovery' : 'review', draw, now, !!reviewDue, undefined, internal)
+        observeBoard(observe, ticket, now)
         if ((overrun || discovery) && assessment.improved) insight = assessment.candidate
       }
       if (developer.activeTicketID === undefined) transitions.decide(developer, 'pickup')
@@ -77,6 +84,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         ticket.reportedStatus = ticket.actualStatus
         ticket.reportedProgress = clampReportedProgress(ticket.completedWork / ticket.requiredWork * 100)
       }
+      observeBoard(observe, ticket, now)
     }
   }
   report()
@@ -150,6 +158,14 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       }
       developer.flowStreak = { ticketId: ticket.id, duration: session.initialFlowDuration + session.elapsed }
       ticket.assignedDeveloperId = developer.id
+      // Existing active claims synchronize visible ownership on their first work
+      // interval. Anchor that observation to the interval's start, not an arbitrary
+      // caller's slice endpoint; the original assignment/work mutation is unchanged.
+      observeBoard(observe, ticket, now)
+      // A restored active To Do claim starts work at this interval's beginning,
+      // even if the first caller's slice also completes it. Observe that report
+      // without moving the existing actual/reported status writes or work integral.
+      if (observe && ticket.actualStatus === 'todo') observeBoard(observe, { ...ticket, reportedStatus: 'in_progress' }, now)
       ticket.actualStatus = complete(ticket) ? 'done' : 'in_progress'
     }
     const previous = now

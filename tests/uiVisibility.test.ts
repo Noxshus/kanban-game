@@ -8,6 +8,7 @@ import { resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { exampleGameState as fixture } from '../src/data/exampleGameState.ts'
 import { getPlayerView as playerView } from '../src/store/playerView.ts'
+import { boardReducer, createDevelopmentBoardSession } from '../src/store/boardSession.ts'
 
 const textContent = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
@@ -19,7 +20,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
     // Render real Vite transforms in dev, and a production SSR build for the same App.
     // A dev server with mode='production' still uses DEV=true and cannot test this boundary.
     const server = mode === 'development'
-      ? await createServer({ server: { middlewareMode: true }, appType: 'custom' }) : null
+      ? await createServer({ server: { middlewareMode: true, ws: false }, appType: 'custom' }) : null
     const temporaryRoot = resolve('node_modules/.tmp')
     mkdirSync(temporaryRoot, { recursive: true })
     const output = mode === 'production' ? mkdtempSync(resolve(temporaryRoot, 'ui-visibility-')) : null
@@ -29,11 +30,25 @@ test('Vite development shows diagnostics; production retains only the player UI'
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
       const text = textContent(html)
+      assert.equal(text.includes('Include internal activity (DEV)'), mode === 'development')
+      assert.ok(!html.includes('activity-internal')) // Internal display defaults off even locally.
       assert.equal((text.match(/Estimated effort: Unknown/g) ?? []).length, 7)
       assert.equal((html.match(/class="ticket-complexity"/g) ?? []).length, 7)
       for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</span>`), mode)
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
+      // Exercise the real published/unpublished histories, not just an empty App.
+      const populated = boardReducer(createDevelopmentBoardSession(), { type: 'step' })
+      assert.ok(populated.activity.length > 0)
+      assert.ok(populated.diagnosticActivity!.some(event => event.kind === 'assessment' && event.improved && !event.published))
+      assert.ok(populated.diagnosticActivity!.some(event => event.kind === 'decision'))
+      const publishedRendering = renderToStaticMarkup(createElement(Board, {
+        view: playerView(populated.simulation.game), activity: populated.activity, diagnostics: null,
+      }))
+      assert.ok(publishedRendering.includes('Effort published:'))
+      for (const hidden of ['report missed', 'candidate', 'Reporting draw', 'probability', 'DEV diagnostics', 'activity-internal', 'Include internal activity']) {
+        assert.ok(!publishedRendering.includes(hidden), `${mode}: populated histories leaked ${hidden}`)
+      }
       const estimates = structuredClone(fixture)
       estimates.workLog = [{ developerId: 'private-effort-contributor', ticketId: 'ticket-1', effort: { mantissa: 1, exponent: 5, correction: 0 } }]
       estimates.tickets.forEach((ticket, index) => {
@@ -45,6 +60,13 @@ test('Vite development shows diagnostics; production retains only the player UI'
         ticket.complexity = (['S', 'M', 'L', 'XL', 'XXL', 'S', 'M'] as const)[index]
       })
       const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
+      const activityHtml = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null,
+        activity: [{ id: 1, ticketId: 'ticket-1', ticketTitle: estimates.tickets[0].title,
+          at: { high: 3.125, low: 0 }, kind: 'estimate', from: null, to: 8.5 }] }))
+      assert.ok(activityHtml.includes('Board Activity'), mode)
+      assert.ok(activityHtml.includes('Effort published: 8.5 work units'), mode)
+      assert.ok(activityHtml.includes('3.1s'), mode)
+      assert.ok(!activityHtml.includes('private-estimator') && !activityHtml.includes('9876543'), mode)
       const estimateText = textContent(visibleEstimates)
       assert.equal((visibleEstimates.match(/class="ticket-estimate"/g) ?? []).length, 7)
       for (const size of ['S', 'M', 'L', 'XL', 'XXL']) assert.ok(visibleEstimates.includes(`Complexity: ${size}</span>`), mode)
