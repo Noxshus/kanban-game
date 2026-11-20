@@ -379,6 +379,8 @@ A desktop application may be produced in the future.
 
 The visual identity, aesthetic direction, and user experience conventions remain undecided.
 
+**First readability pass (#76, local prototype):** A restrained operations-desk presentation uses warm neutral surfaces, ink typography and subtle teal/amber accents. Ticket titles lead; ID/global managerial Rank and domain/complexity are secondary, with assignment, published effort and explicitly reported progress grouped for scanning. The board remains primary, with compact simulation controls and the existing separate development tools. This is an initial visual direction for feedback, not a final identity, theme system or engineer-profile feature.
+
 ## 7. Open Design Questions
 
 The following questions remain unresolved:

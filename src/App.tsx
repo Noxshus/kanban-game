@@ -22,11 +22,14 @@ function App() {
 
   return (
     <main className="game">
-      <header>
-        <h1>Kanban Game</h1>
-        <div className="simulation-controls">
-          <p>Simulation time: {view.simulationTime} seconds</p>
-          <p role="status">{isPaused ? 'Paused' : 'Running'}</p>
+      <header className="game-header">
+        <div className="game-identity">
+          <p className="eyebrow">Engineering operations</p>
+          <h1>Kanban Game<span aria-hidden="true">.</span></h1>
+        </div>
+        <div className="simulation-controls" aria-label="Simulation controls">
+          <p className="simulation-clock"><span>Simulation time</span><strong>{view.simulationTime}<small>seconds</small></strong></p>
+          <p className={`simulation-status ${isPaused ? 'is-paused' : 'is-running'}`} role="status">{isPaused ? 'Paused' : 'Running'}</p>
           <button type="button" onClick={() => dispatch({ type: 'togglePause' })}>
             {isPaused ? 'Resume' : 'Pause'}
           </button>

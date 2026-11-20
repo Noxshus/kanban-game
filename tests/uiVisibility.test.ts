@@ -9,6 +9,8 @@ import { pathToFileURL } from 'node:url'
 import { exampleGameState as fixture } from '../src/data/exampleGameState.ts'
 import { getPlayerView as playerView } from '../src/store/playerView.ts'
 
+const textContent = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
+
 test('Vite development shows diagnostics; production retains only the player UI', async () => {
   for (const mode of ['development', 'production']) {
     const previousNodeEnv = process.env.NODE_ENV
@@ -26,9 +28,10 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const html = renderToStaticMarkup(createElement(App))
-      assert.equal((html.match(/Estimated effort: Unknown/g) ?? []).length, 7)
+      const text = textContent(html)
+      assert.equal((text.match(/Estimated effort: Unknown/g) ?? []).length, 7)
       assert.equal((html.match(/class="ticket-complexity"/g) ?? []).length, 7)
-      for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</p>`), mode)
+      for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</span>`), mode)
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
       const estimates = structuredClone(fixture)
@@ -42,11 +45,12 @@ test('Vite development shows diagnostics; production retains only the player UI'
         ticket.complexity = (['S', 'M', 'L', 'XL', 'XXL', 'S', 'M'] as const)[index]
       })
       const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
+      const estimateText = textContent(visibleEstimates)
       assert.equal((visibleEstimates.match(/class="ticket-estimate"/g) ?? []).length, 7)
-      for (const size of ['S', 'M', 'L', 'XL', 'XXL']) assert.ok(visibleEstimates.includes(`Complexity: ${size}</p>`), mode)
+      for (const size of ['S', 'M', 'L', 'XL', 'XXL']) assert.ok(visibleEstimates.includes(`Complexity: ${size}</span>`), mode)
       for (const text of ['Estimated effort: 8.5 work units', 'Estimated effort: 0 work units',
         'Estimated effort: 1E-200 work units', 'Estimated effort: 1E200 work units', 'Estimated effort: Unknown']) {
-        assert.ok(visibleEstimates.includes(text), mode + ': missing ' + text)
+        assert.ok(estimateText.includes(text), mode + ': missing ' + text)
       }
       for (const text of ['private-original-author', '7654321', '9876543', 'First published estimate:', 'actual total effort:',
         'private-effort-contributor', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'private-estimator', '8765432', '6543210']) {
@@ -55,16 +59,16 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.equal((html.match(/class="ticket-domain"/g) ?? []).length, 7)
       assert.match(html, /class="ticket-domain">Frontend<\/span>/)
       assert.match(html, /class="ticket-domain">Backend<\/span>/)
-      assert.match(html, /ticket-2<\/span><h4>Fix the search filter<\/h4><span class="ticket-domain">Frontend<\/span>/)
+      assert.match(html, /ticket-2<\/span><span class="ticket-rank"[^>]*>Rank: 2<\/span><\/div><h4>Fix the search filter<\/h4><div class="ticket-categories"><span class="ticket-domain">Frontend<\/span>/)
       assert.equal(html.includes('>Mismatch</button>'), mode === 'development')
       assert.equal(html.includes('role="tooltip"'), mode === 'development')
-      assert.match(html, /<li[^>]*draggable="true"[^>]*><span class="ticket-id">ticket-2<\/span>/)
+      assert.match(html, /<li[^>]*draggable="true"[^>]*><div class="ticket-reference"><span class="ticket-id">ticket-2<\/span>/)
       assert.ok(!html.includes('Move ticket-2 up'))
       assert.ok(!html.includes('Move ticket-2 down'))
-      assert.equal(html.includes('Rank: 2'), mode === 'development')
-      assert.doesNotMatch(html, /<li[^>]*draggable="true"[^>]*><span class="ticket-id">ticket-6<\/span>/)
-      const header = html.match(/<header>(.*?)<\/header>/)?.[1] ?? ''
-      assert.match(header, /Simulation time: 0 seconds/)
+      assert.ok(html.includes('Rank: 2')) // Managerial priority is player-visible in every mode.
+      assert.doesNotMatch(html, /<li[^>]*draggable="true"[^>]*><div class="ticket-reference"><span class="ticket-id">ticket-6<\/span>/)
+      const header = html.match(/<header[^>]*>(.*?)<\/header>/)?.[1] ?? ''
+      assert.ok(textContent(header).includes('Simulation time 0 seconds'))
       assert.match(header, /role="status">Paused/)
       assert.match(header, />Resume<\/button>/)
       assert.equal((html.match(/>Resume<\/button>/g) ?? []).length, mode === 'development' ? 2 : 1)
@@ -148,8 +152,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
       }
       for (const playerText of ['Kanban board', 'Backlog', 'To Do', 'In Progress', 'Done',
         'Reported progress:', 'Assigned to:', 'Developers', 'Productivity:', 'Resume',
-        'Simulation time: 0 seconds']) {
-        assert.ok(html.includes(playerText), `${mode}: missing ${playerText}`)
+        'Simulation time 0 seconds']) {
+        assert.ok(text.includes(playerText), `${mode}: missing ${playerText}`)
       }
       for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',

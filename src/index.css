@@ -1,8 +1,27 @@
 :root {
-  font-family: system-ui, sans-serif;
+  --ink: #253736;
+  --muted: #5e6965;
+  --paper: #eeece5;
+  --surface: #faf9f4;
+  --surface-raised: #fffef9;
+  --line: #d3d6cb;
+  --teal: #356c65;
+  --teal-wash: #e3ece6;
+  --amber: #876022;
+  --amber-wash: #f3ead7;
+  --font-body: 'Segoe UI', system-ui, sans-serif;
+  --font-title: 'Iowan Old Style', 'Palatino Linotype', Georgia, serif;
+  --font-data: 'Cascadia Mono', Consolas, monospace;
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-6: 24px;
+  --space-8: 32px;
+  font-family: var(--font-body);
   line-height: 1.5;
-  color: #202a33;
-  background: #f8f9fa;
+  color: var(--ink);
+  background: var(--paper);
   font-synthesis: none;
   text-rendering: optimizeLegibility;
 }
@@ -27,19 +46,27 @@ p {
 
 button {
   font: inherit;
+  font-size: 0.875rem;
+  font-weight: 600;
   color: inherit;
-  background: white;
-  border: 1px solid #526170;
-  border-radius: 4px;
-  padding: 6px 16px;
+  background: var(--surface-raised);
+  border: 1px solid #88958b;
+  border-radius: 3px;
+  padding: 8px 16px;
+  min-height: 36px;
   cursor: pointer;
 }
 
 button:hover {
-  background: #e9edf1;
+  background: var(--teal-wash);
 }
 
-button:focus-visible {
-  outline: 3px solid #245da8;
+button:focus-visible,
+summary:focus-visible,
+input:focus-visible {
+  outline: 3px solid var(--teal);
   outline-offset: 3px;
 }
+
+button:disabled { cursor: not-allowed; }
+::selection { background: #c8ddd2; color: var(--ink); }
