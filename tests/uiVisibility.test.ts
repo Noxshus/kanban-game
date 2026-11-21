@@ -94,6 +94,15 @@ test('Vite development shows diagnostics; production retains only the player UI'
         'private-effort-contributor', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'private-estimator', '8765432', '6543210']) {
         assert.ok(!visibleEstimates.includes(text), mode + ': leaked ' + text)
       }
+      const completed = structuredClone(fixture)
+      completed.tickets[0].actualStatus = completed.tickets[0].reportedStatus = 'done'
+      completed.tickets[0].completedWork = completed.tickets[0].requiredWork
+      completed.tickets[0].reportedProgress = 100
+      completed.developers[0].activeTicketID = 'ticket-5'
+      const playerCompleted = renderToStaticMarkup(createElement(Board, { view: playerView(completed) }))
+      for (const hidden of ['Historical owner:', 'Active work: N/A', 'All applicable comparisons match.', 'comparison-match', 'comparison-mismatch']) {
+        assert.ok(!playerCompleted.includes(hidden), `${mode}: completed diagnostic leaked ${hidden}`)
+      }
       assert.equal((html.match(/class="ticket-domain"/g) ?? []).length, 7)
       assert.match(html, /class="ticket-domain">Frontend<\/span>/)
       assert.match(html, /class="ticket-domain">Backend<\/span>/)
@@ -130,6 +139,18 @@ test('Vite development shows diagnostics; production retains only the player UI'
         const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
         const { getDiagnosticsView } = await server!.ssrLoadModule('/src/store/diagnosticsView.ts')
         const { DeveloperDiagnostics, TicketDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
+        const completedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(completed).tickets[0] }))
+        assert.ok(completedHtml.includes('class="comparison-match"'))
+        for (const text of ['Active work: N/A — completed.', 'Historical owner: Alex (developer-1).', 'All applicable comparisons match.']) assert.ok(completedHtml.includes(text))
+        const completedTooltipId = completedHtml.match(/<span id="([^"]+)" role="tooltip" class="comparison-tooltip">/)![1]
+        assert.ok(completedHtml.includes(`aria-describedby="${completedTooltipId}"`))
+        completed.tickets[0].reportedStatus = 'todo'
+        completed.tickets[0].reportedProgress = 0
+        completed.developers[0].activeTicketID = completed.tickets[0].id
+        const badCompletedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(completed).tickets[0] }))
+        assert.ok(badCompletedHtml.includes('class="comparison-mismatch"'))
+        for (const text of ['Unexpected active claims: Alex (developer-1).', 'Historical owner: Alex (developer-1).', 'Status: reported todo; actual done.', 'Progress: reported 0%; actual 100%.']) assert.ok(badCompletedHtml.includes(text))
+        assert.ok(!badCompletedHtml.includes('All applicable comparisons match.'))
         const { advanceSimulation } = await server!.ssrLoadModule('/src/game/advanceSimulation.ts')
         const conflictResult = advanceSimulation(exampleGameState, 1, () => 0.5)
         const conflictHtml = renderToStaticMarkup(createElement(DeveloperDiagnostics, {
