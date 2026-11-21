@@ -3,6 +3,7 @@ import { createBoardSession, createDevelopmentBoardSession, boardReducer } from 
 import { getPlayerView } from './store/playerView'
 import { DevelopmentUI } from './components/DevelopmentUI'
 import { GameBoard } from './components/GameBoard'
+import { getPlayerObservations } from './store/playerObservations'
 import './App.css'
 
 function App() {
@@ -12,8 +13,9 @@ function App() {
 }
 
 function GameApplication({ development = false }: { development?: boolean }) {
-  const [{ simulation: { game: state, isPaused }, activity, diagnosticActivity }, dispatch] = useReducer(boardReducer, undefined, development ? createDevelopmentBoardSession : createBoardSession)
+  const [{ simulation: { game: state, isPaused }, activity, diagnosticActivity, observations }, dispatch] = useReducer(boardReducer, undefined, development ? createDevelopmentBoardSession : createBoardSession)
   const view = getPlayerView(state)
+  const observationView = getPlayerObservations(observations)
 
   useEffect(() => {
     if (isPaused) return
@@ -44,9 +46,9 @@ function GameApplication({ development = false }: { development?: boolean }) {
 
       {development ? (
         <DevelopmentUI state={state} isPaused={isPaused} dispatch={dispatch} activity={diagnosticActivity}>
-          {(diagnostics, activityDisplay) => <GameBoard activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
+          {(diagnostics, activityDisplay) => <GameBoard isPaused={isPaused} observations={observationView} activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
         </DevelopmentUI>
-      ) : <GameBoard activity={activity} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
+      ) : <GameBoard isPaused={isPaused} observations={observationView} activity={activity} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
     </main>
   )
 }

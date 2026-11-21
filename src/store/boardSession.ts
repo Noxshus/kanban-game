@@ -4,17 +4,23 @@ import { createSimulationSession, simulationReducer } from './simulationControls
 import type { SimulationAction, SimulationSession } from './simulationControls'
 import { collectSimulationActivity } from '../game/simulationActivity.ts'
 import type { DiagnosticActivity } from '../game/simulationActivity'
+import { collectPlayerObservations, createPlayerObservations } from './playerObservations.ts'
+import type { TicketObservation } from './playerObservations'
+import { getPlayerView } from './playerView.ts'
 
 export interface BoardSession {
   simulation: SimulationSession
   activity: BoardActivity[]
   nextActivityId: number
+  observations?: TicketObservation[]
   diagnosticActivity?: DiagnosticActivity[]
   nextDiagnosticId?: number
 }
 
 export function createBoardSession(): BoardSession {
-  return { simulation: createSimulationSession(), activity: [], nextActivityId: 1 }
+  const simulation = createSimulationSession()
+  return { simulation, activity: [], nextActivityId: 1,
+    observations: createPlayerObservations(getPlayerView(simulation.game).tickets) }
 }
 
 export function createDevelopmentBoardSession(): BoardSession {
@@ -27,9 +33,18 @@ export function boardReducer(session: BoardSession, action: SimulationAction): B
   if (action.type === 'restart') return session.diagnosticActivity ? createDevelopmentBoardSession() : createBoardSession()
   const diagnostic = session.diagnosticActivity ? collectSimulationActivity(session.simulation.game.tickets, session.nextActivityId, session.nextDiagnosticId) : undefined
   const collected = diagnostic?.board ?? collectBoardActivity(session.simulation.game.tickets, session.nextActivityId)
-  const simulation = simulationReducer(session.simulation, action, collected.observe, diagnostic?.internal)
+  const game = session.simulation.game
+  const evidence = collectPlayerObservations(session.observations ?? createPlayerObservations(
+    getPlayerView(game).tickets))
+  // Both consumers see every public report boundary, even if a single action
+  // exceeds the ticker limit. Neither consumer drives simulation or reporting.
+  const simulation = simulationReducer(session.simulation, action, (report, at) => {
+    collected.observe(report, at)
+    evidence.observe(report, at)
+  }, diagnostic?.internal)
   if (simulation === session.simulation) return session
-  return { simulation, activity: collected.events.length ? [...session.activity, ...collected.events].slice(-ACTIVITY_LIMIT) : session.activity, nextActivityId: collected.nextId,
+  return { simulation, observations: evidence.observations,
+    activity: collected.events.length ? [...session.activity, ...collected.events].slice(-ACTIVITY_LIMIT) : session.activity, nextActivityId: collected.nextId,
     ...(diagnostic ? { diagnosticActivity: diagnostic.diagnostics.length ? [...session.diagnosticActivity!, ...diagnostic.diagnostics].slice(-ACTIVITY_LIMIT) : session.diagnosticActivity,
       nextDiagnosticId: diagnostic.nextDiagnosticId } : {}) }
 }

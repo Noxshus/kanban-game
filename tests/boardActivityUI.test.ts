@@ -25,7 +25,7 @@ const events: BoardActivity[] = Array.from({ length: 5 }, (_, i) => ({
 // A small hook host uses the existing Vite transforms and actual GameBoard tree.
 // This exercises its state, effects, row handlers and rendered card classes without
 // adding a DOM package or putting test seams in production components.
-async function mountedBoard() {
+async function mountedBoard(component = 'GameBoard') {
   const hookId = 'virtual:board-test-hooks'
   const server = await createServer({ server: { middlewareMode: true, ws: false }, appType: 'custom', plugins: [{
     name: 'board-test-hook-host', enforce: 'pre',
@@ -44,6 +44,12 @@ async function mountedBoard() {
         }
         export function useRef(value) {
           const index = cursor++; return slots[index] ??= { current: value };
+        }
+        export function useId() { return useRef('manager-view-test').current; }
+        export function useSyncExternalStore(subscribe, getSnapshot) {
+          const [, update] = useState(0);
+          useEffect(() => subscribe(() => update(value => value + 1)), [subscribe]);
+          return getSnapshot();
         }
         export function useEffect(effect, dependencies) {
           const index = cursor++, previous = slots[index];
@@ -66,7 +72,10 @@ async function mountedBoard() {
     },
     transform(code, id) {
       if (id.replaceAll('\\', '/').endsWith('/src/components/GameBoard.tsx')) {
-        return code.replace("import { useEffect, useRef, useState } from 'react'", `import { useEffect, useRef, useState } from '${hookId}'`)
+        return code.replace("import { useEffect, useRef, useState, useSyncExternalStore } from 'react'", `import { useEffect, useRef, useState, useSyncExternalStore } from '${hookId}'`)
+      }
+      if (id.replaceAll('\\', '/').endsWith('/src/components/TicketObservations.tsx')) {
+        return code.replace("import { useId, useState } from 'react'", `import { useId, useState } from '${hookId}'`)
       }
     },
   }] })
@@ -75,14 +84,16 @@ async function mountedBoard() {
   let now = 0, nextTimer = 1
   const timers = new Map<number, { at: number; run: () => void }>()
   Object.defineProperty(globalThis, 'window', { configurable: true, value: {
+    performance: { now: () => now },
     setTimeout(run: () => void, delay: number) { const id = nextTimer++; timers.set(id, { at: now + delay, run }); return id },
     clearTimeout(id: number) { timers.delete(id) },
   } })
   Object.defineProperty(globalThis, 'document', { configurable: true, value: { addEventListener() {}, removeEventListener() {} } })
   const { GameBoard } = await server.ssrLoadModule('/src/components/GameBoard.tsx')
+  const { ManagerView } = await server.ssrLoadModule('/src/components/TicketObservations.tsx')
   const hooks = await server.ssrLoadModule(hookId)
   return {
-    render: (props: Record<string, unknown>) => hooks.render(GameBoard, props),
+    render: (props: Record<string, unknown>) => hooks.render(component === 'ManagerView' ? ManagerView : GameBoard, props),
     advance(ms: number) {
       now += ms
       for (const [id, timer] of [...timers]) if (timer.at <= now) { timers.delete(id); timer.run() }
@@ -164,23 +175,73 @@ test('GameBoard invalidates the originating row on filtering, eviction and Resta
   } finally { await board.close() }
 })
 
-test('GameBoard emphasis expires, retriggers on a new event and clears its timers on Restart', async () => {
+test('GameBoard emphasis expires after five running seconds, retriggers and clears its timers on Restart', async () => {
   const board = await mountedBoard()
   try {
-    const view = getPlayerView(exampleGameState), initial = { view, activity: [] as BoardActivity[] }
+    const view = getPlayerView(exampleGameState), initial = { view, isPaused: false, activity: [] as BoardActivity[] }
+    view.tickets[0].reportedEffortEstimate = events[0].to as number
     board.render(initial)
-    const event = events[0], updated = { view, activity: [event] }
+    const event = events[0], updated = { view, isPaused: false, activity: [event] }
     const cues = (tree: ReactNode) => elements(tree).filter(node => typeof node.type === 'function' && node.type.name === 'BoardEmphasis').length
     assert.equal(cues(board.render(updated)), 1)
-    board.advance(1499); assert.equal(cues(board.render(updated)), 1)
+    board.advance(4999); assert.equal(cues(board.render(updated)), 1)
     board.advance(1); assert.equal(cues(board.render(updated)), 0)
-    const newer = { view, activity: [event, { ...event, id: 6, to: 9 }] }
+    const newer = { view, isPaused: false, activity: [event, { ...event, id: 6, to: 9 }] }
     assert.equal(cues(board.render(newer)), 1)
     board.advance(1000); assert.equal(cues(board.render(newer)), 1)
     assert.equal(cues(board.render(initial)), 0)
     board.advance(1000); assert.equal(cues(board.render(initial)), 0)
     assert.equal(cues(board.render(updated)), 1) // A genuinely new run can show new events with IDs starting at 1.
   } finally { await board.close() }
+})
+
+test('GameBoard Step cues freeze while paused and Resume consumes only their remaining active time', async () => {
+  const board = await mountedBoard()
+  try {
+    let session = createDevelopmentBoardSession()
+    const props = () => ({ view: getPlayerView(session.simulation.game), activity: session.activity, isPaused: session.simulation.isPaused })
+    const cues = (tree: ReactNode) => elements(tree).filter(node => typeof node.type === 'function' && node.type.name === 'BoardEmphasis')
+    board.render(props())
+    session = boardReducer(session, { type: 'step' })
+    const count = cues(board.render(props())).length
+    assert.ok(count > 0)
+    assert.ok(cues(board.render(props())).every(node => node.props.isPaused === true))
+    board.advance(60000); assert.equal(cues(board.render(props())).length, count)
+    session = boardReducer(session, { type: 'togglePause' })
+    board.render(props())
+    board.advance(2000)
+    session = boardReducer(session, { type: 'togglePause' })
+    assert.ok(cues(board.render(props())).every(node => node.props.elapsedMs === 2000))
+    board.advance(60000); assert.equal(cues(board.render(props())).length, count)
+    session = boardReducer(session, { type: 'togglePause' })
+    board.render(props())
+    board.advance(2999); assert.equal(cues(board.render(props())).length, count)
+    board.advance(1); assert.equal(cues(board.render(props())).length, 0)
+    session = boardReducer(session, { type: 'restart' })
+    assert.equal(cues(board.render(props())).length, 0)
+  } finally { await board.close() }
+})
+
+test('Manager View exposes the same evidence on hover, keyboard focus and activation with consistent dismissal', async () => {
+  const manager = await mountedBoard('ManagerView')
+  try {
+    const props = { estimateUnknown: true }
+    const nodes = () => elements(manager.render(props))
+    const button = () => nodes().find(node => node.type === 'button')!.props as Record<string, () => void>
+    const panel = () => nodes().find(node => node.props.role === 'region')!
+    const wrapper = () => nodes()[0].props as Record<string, (event?: unknown) => void>
+    assert.equal(panel().props.hidden, true)
+    wrapper().onMouseEnter(); assert.equal(panel().props.hidden, false)
+    wrapper().onMouseLeave({ currentTarget: { contains: () => false } }); assert.equal(panel().props.hidden, true)
+    button().onFocus(); assert.equal(panel().props.hidden, false)
+    wrapper().onMouseLeave({ currentTarget: { contains: () => true } }); assert.equal(panel().props.hidden, false)
+    wrapper().onBlur({ currentTarget: { contains: () => true }, relatedTarget: {} }); assert.equal(panel().props.hidden, false)
+    wrapper().onKeyDown({ key: 'Escape' }); assert.equal(panel().props.hidden, true)
+    button().onClick(); assert.equal(panel().props.hidden, false)
+    wrapper().onBlur({ currentTarget: { contains: () => false }, relatedTarget: null }); assert.equal(panel().props.hidden, true)
+    assert.equal(nodes().filter(node => node.type === 'button').length, 1)
+    assert.equal(nodes().find(node => node.type === 'button')!.props['aria-controls'], panel().props.id)
+  } finally { await manager.close() }
 })
 
 test('activity entry handlers associate hover/focus without navigation, and activation focuses the ticket', async () => {
@@ -248,6 +309,10 @@ test('activity and finite feedback render from public reports, retain drag hooks
     assert.ok(valueCue.includes('board-emphasis emphasis-estimate'))
     assert.ok(valueCue.includes('Updated'))
     assert.ok(renderToStaticMarkup(createElement(BoardEmphasis, { kind: 'status' })).includes('aria-hidden="true"'))
+    const pausedCue = renderToStaticMarkup(createElement(BoardEmphasis, { kind: 'status', isPaused: true, elapsedMs: 2000 }))
+    assert.ok(pausedCue.includes('animation-play-state:paused') && pausedCue.includes('animation-delay:-2000ms'))
+    const runningCue = renderToStaticMarkup(createElement(BoardEmphasis, { kind: 'status', isPaused: false, elapsedMs: 2000 }))
+    assert.ok(runningCue.includes('animation-play-state:running') && runningCue.includes('animation-delay:-2000ms'))
     assert.match(html, /tabindex="-1" aria-label="ticket-1: Build the navigation menu"/)
     assert.match(html, /data-todo-ticket="ticket-2" draggable="true"/)
     for (const text of ['Actual work:', 'Discipline:', 'lastEstimateEvaluation', 'actualStatus']) assert.ok(!html.includes(text))
@@ -257,6 +322,7 @@ test('activity and finite feedback render from public reports, retain drag hooks
     const css = readFileSync('src/App.css', 'utf8')
     assert.match(css, /@media \(prefers-reduced-motion: reduce\)\s*\{\s*\.emphasis-status\s*\{\s*animation: none;/)
     assert.match(css, /\.emphasis-status[^}]*pointer-events: none/)
+    assert.match(css, /\.emphasis-status[^}]*animation: board-change-fade 5s/)
     assert.match(css, /\.ticket\.activity-target, \.ticket:focus/)
     assert.match(css, /\.board-workspace[^}]*grid-template-columns: minmax\(0, 1fr\) 280px/)
     assert.match(css, /\.activity-list\s*\{[^}]*max-height:[^}]*overflow-y: auto/)

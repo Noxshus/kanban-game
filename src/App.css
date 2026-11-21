@@ -124,10 +124,10 @@
 
 .ticket.activity-target, .ticket:focus { outline: 3px solid var(--teal); outline-offset: 3px; }
 .ticket { position: relative; scroll-margin-block: var(--space-6); }
-.emphasis-status { position: absolute; inset: -2px; pointer-events: none; border: 2px solid var(--teal); border-radius: 4px; animation: board-change-fade 1.5s ease-out both; }
-.emphasis-estimate { display: inline-block; background: var(--amber-wash); outline: 1px solid #b39763; outline-offset: 2px; }
+.emphasis-status { position: absolute; inset: -2px; pointer-events: none; border: 3px solid var(--teal); border-radius: 4px; animation: board-change-fade 5s linear both; }
+.emphasis-estimate { display: inline-block; background: var(--amber-wash); outline: 2px solid #a2824c; outline-offset: 2px; }
 .ticket-estimate .activity-update-label { display: inline-block; margin-left: 6px; font: 500 0.625rem var(--font-body); color: var(--amber); }
-@keyframes board-change-fade { from { opacity: 1; } to { opacity: 0; } }
+@keyframes board-change-fade { from, 75% { opacity: 1; } to { opacity: 0.6; } }
 @media (prefers-reduced-motion: reduce) {
   .emphasis-status { animation: none; }
 }
@@ -176,6 +176,35 @@
 .ticket-estimate dd { font-family: var(--font-data); font-size: 0.9375rem; }
 .ticket-estimate small { display: block; font: 400 0.6875rem var(--font-body); color: var(--muted); }
 .report-unset { color: var(--muted); font-weight: 400; }
+
+.manager-view { position: relative; margin-top: var(--space-3); padding-top: var(--space-2); border-top: 1px solid var(--line); }
+.manager-view-heading { display: block; margin-bottom: var(--space-1); color: var(--muted); font-size: 0.625rem; }
+.manager-view > button { padding: 3px 6px; text-align: left; font-size: 0.6875rem; font-weight: 500; line-height: 1.4; color: var(--muted); background: var(--surface); border-color: var(--line); }
+.manager-missing > button { border-style: dashed; color: var(--amber); }
+.manager-observations > button { color: var(--amber); background: var(--amber-wash); border-color: #b39763; }
+.manager-view-details {
+  position: absolute;
+  z-index: 6;
+  /* Touch the shared hover region: a visual gap would close the panel in transit. */
+  bottom: 100%;
+  left: 0;
+  width: min(320px, calc(100vw - 48px));
+  max-height: min(320px, 55vh);
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+  padding: var(--space-3);
+  border: 1px solid var(--line);
+  background: var(--surface-raised);
+  color: var(--ink);
+  box-shadow: 0 2px 8px #25373612;
+  font: 400 0.6875rem/1.5 var(--font-body);
+}
+.manager-view > button:focus-visible,
+.manager-view-details:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.manager-view-details p + ul { margin-top: var(--space-2); }
+.manager-view-details ul, .manager-view-details ol { padding-left: var(--space-4); }
+.manager-view-details li + li { margin-top: var(--space-2); }
+.manager-view-details .observation-time { font-family: var(--font-data); }
 
 .developer-summary { display: flex; flex-wrap: wrap; justify-content: space-between; gap: var(--space-2); width: 100%; }
 .developer-summary > strong { font: 600 1.125rem var(--font-title); }

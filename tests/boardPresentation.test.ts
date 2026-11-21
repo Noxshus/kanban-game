@@ -38,7 +38,7 @@ test('reported board presentation handles sparse data, extremes and reordered pr
       }
       for (const value of ['Unknown', '0 work units', '5E-324 work units', '1E200 work units']) assert.ok(text.includes('Estimated effort: ' + value))
       assert.ok(html.includes('&lt;markup&gt; &amp;'))
-      assert.ok(html.includes('No effort estimate has been reported yet'))
+      assert.ok(html.includes('No effort estimate has been published.'))
       assert.equal((html.match(/draggable="true"/g) ?? []).length, 1)
       for (const hidden of ['Actual work:', 'Remaining:', 'ETA:', 'Frontend competency:', 'Discipline:', 'ticket-diagnostics']) assert.ok(!html.includes(hidden))
       assert.deepEqual(state, input) // Rendering never changes the fixture or its estimates.

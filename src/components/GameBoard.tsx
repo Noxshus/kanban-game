@@ -2,7 +2,7 @@ import type { WorkflowStatus } from '../game/types'
 import type { getPlayerView } from '../store/playerView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DeveloperDiagnostics, TicketDiagnostics } from './Diagnostics'
-import { useEffect, useRef, useState } from 'react'
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react'
 import { createEdgeScroller, edgeSpeed } from './edgeScroll'
 import { formatEffort } from './formatEffort'
 import type { BoardActivity } from '../game/boardActivity'
@@ -10,6 +10,9 @@ import { BoardActivityLog } from './BoardActivity'
 import type { ActivityDisplay } from './BoardActivity'
 import { focusActivityTicket } from './boardActivityPresentation'
 import { BoardEmphasis } from './BoardEmphasis'
+import { ManagerView } from './TicketObservations'
+import type { TicketObservationView } from '../store/playerObservations'
+import { createBoardEmphasisClock } from './boardEmphasisClock'
 
 const noActivity: BoardActivity[] = []
 type ActivityTarget = { rowId: string; ticketId: string; order: number }
@@ -27,9 +30,11 @@ interface Props {
   diagnostics?: DiagnosticsView | null
   activity?: readonly BoardActivity[]
   activityDisplay?: ActivityDisplay
+  observations?: readonly TicketObservationView[]
+  isPaused?: boolean
 }
 
-export function GameBoard({ view, diagnostics, onReorder, activity = noActivity, activityDisplay }: Props) {
+export function GameBoard({ view, diagnostics, onReorder, activity = noActivity, activityDisplay, observations, isPaused = true }: Props) {
   const [targets, setTargets] = useState<{ hover: ActivityTarget | null; focus: ActivityTarget | null; order: number }>({ hover: null, focus: null, order: 0 })
   const visibleRows = new Set(activityDisplay?.rows ? activityDisplay.rows.map(row => row.id) : activity.map(event => `board-${event.id}`))
   // Only currently visible origins can highlight a card. Keep pointer and focus
@@ -52,30 +57,18 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
     })
   }
   const cards = useRef(new Map<string, HTMLLIElement>())
-  const [feedback, setFeedback] = useState<ReadonlySet<number>>(() => new Set())
-  const lastActivity = useRef(activity.at(-1)?.id ?? 0)
-  const feedbackTimers = useRef(new Map<number, number>())
+  const [feedbackClock] = useState(() => createBoardEmphasisClock(activity, {
+    now: () => window.performance.now(),
+    setTimeout: (run, delay) => window.setTimeout(run, delay),
+    clearTimeout: id => window.clearTimeout(id),
+  }))
+  const feedback = useSyncExternalStore(feedbackClock.subscribe, feedbackClock.getSnapshot, feedbackClock.getSnapshot)
   useEffect(() => {
-    const current = new Set(activity.map(event => event.id))
-    const fresh = activity.filter(event => event.id > lastActivity.current && event.kind !== 'assignment')
-    lastActivity.current = activity.at(-1)?.id ?? 0
-    // Lifetime belongs to the board, not the card: changing columns remounts a
-    // card and must not replay an old estimate cue. Initial history is silent.
-    for (const [id, timer] of feedbackTimers.current) if (!current.has(id)) {
-      window.clearTimeout(timer); feedbackTimers.current.delete(id)
-    }
-    setFeedback(previous => new Set([...previous].filter(id => current.has(id)).concat(fresh.map(event => event.id))))
-    for (const event of fresh) {
-      feedbackTimers.current.set(event.id, window.setTimeout(() => {
-        feedbackTimers.current.delete(event.id)
-        setFeedback(previous => new Set([...previous].filter(id => id !== event.id)))
-      }, 1500))
-    }
-  }, [activity])
-  useEffect(() => {
-    const timers = feedbackTimers.current
-    return () => { for (const timer of timers.values()) window.clearTimeout(timer); timers.clear() }
-  }, [])
+    feedbackClock.update(activity, isPaused)
+    // Retain the remaining budget across effect cleanup/setup, including React
+    // StrictMode replay. Unmount still cancels every outstanding timer.
+    return feedbackClock.suspend
+  }, [activity, isPaused, feedbackClock])
   const [dragged, setDragged] = useState<string | null>(null)
   const [dropTarget, setDropTarget] = useState<string | null>(null)
   const [dropAfter, setDropAfter] = useState(false)
@@ -179,8 +172,8 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
                       (developer) => developer.id === ticket.assignedDeveloperId,
                     )
                     const diagnostic = diagnostics?.tickets.find((item) => item.id === ticket.id)
-                    const statusEvent = activity.findLast(event => event.ticketId === ticket.id && event.kind === 'status')
-                    const estimateEvent = activity.findLast(event => event.ticketId === ticket.id && event.kind === 'estimate')
+                    const statusEvent = feedback.find(cue => cue.ticketId === ticket.id && cue.kind === 'status')
+                    const estimateEvent = feedback.find(cue => cue.ticketId === ticket.id && cue.kind === 'estimate')
                     return (
                       <li className={`ticket${highlightedTicket === ticket.id ? ' activity-target' : ''}${dropTarget === ticket.id ? (dropAfter ? ' drop-after' : ' drop-before') : ''}`} key={ticket.id}
                         ref={card => { if (card) cards.current.set(ticket.id, card); else cards.current.delete(ticket.id) }}
@@ -222,9 +215,8 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
                         <dl className="ticket-report">
                           <div><dt>Assigned to:</dt><dd className={assignee ? undefined : 'report-unset'}>{assignee?.name ?? 'Unassigned'}</dd></div>
                           <div className="ticket-estimate"><dt>Estimated effort:</dt><dd>
-                            <span className={ticket.reportedEffortEstimate === undefined ? 'report-unset' : undefined}
-                              title={ticket.reportedEffortEstimate === undefined ? 'No effort estimate has been reported yet' : 'Published estimate of total effort'}>
-                              {estimateEvent && feedback.has(estimateEvent.id) ? <BoardEmphasis key={`estimate-${estimateEvent.id}`} kind="estimate">{formatEffort(ticket.reportedEffortEstimate)}</BoardEmphasis> : formatEffort(ticket.reportedEffortEstimate)}
+                            <span className={ticket.reportedEffortEstimate === undefined ? 'report-unset' : undefined} title={ticket.reportedEffortEstimate === undefined ? undefined : 'Published estimate of total effort'}>
+                              {estimateEvent ? <BoardEmphasis key={`estimate-${estimateEvent.id}`} kind="estimate" isPaused={isPaused} elapsedMs={estimateEvent.elapsedMs} runningSince={estimateEvent.runningSince}>{formatEffort(ticket.reportedEffortEstimate)}</BoardEmphasis> : formatEffort(ticket.reportedEffortEstimate)}
                             </span>
                             {ticket.reportedEffortEstimate !== undefined && <small> work units</small>}
                           </dd></div>
@@ -233,7 +225,8 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
                           <span>Reported progress: <strong>{Math.round(ticket.reportedProgress)}%</strong></span>
                           <progress aria-label={`${ticket.id} reported progress`} max={100} value={ticket.reportedProgress} />
                         </label>
-                        {statusEvent && feedback.has(statusEvent.id) && <BoardEmphasis key={`status-${statusEvent.id}`} kind="status" />}
+                        <ManagerView estimateUnknown={ticket.reportedEffortEstimate === undefined} observation={observations?.find(item => item.ticketId === ticket.id)} />
+                        {statusEvent && <BoardEmphasis key={`status-${statusEvent.id}`} kind="status" isPaused={isPaused} elapsedMs={statusEvent.elapsedMs} runningSince={statusEvent.runningSince} />}
                         {diagnostic && <TicketDiagnostics ticket={diagnostic} />}
                       </li>
                     )

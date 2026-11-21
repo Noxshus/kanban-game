@@ -9,6 +9,7 @@ import { pathToFileURL } from 'node:url'
 import { exampleGameState as fixture } from '../src/data/exampleGameState.ts'
 import { getPlayerView as playerView } from '../src/store/playerView.ts'
 import { boardReducer, createDevelopmentBoardSession } from '../src/store/boardSession.ts'
+import { collectPlayerObservations, createPlayerObservations, getPlayerObservations } from '../src/store/playerObservations.ts'
 
 const textContent = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
@@ -60,6 +61,21 @@ test('Vite development shows diagnostics; production retains only the player UI'
         ticket.complexity = (['S', 'M', 'L', 'XL', 'XXL', 'S', 'M'] as const)[index]
       })
       const visibleEstimates = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null }))
+      const observedView = playerView(estimates)
+      observedView.tickets[0].reportedStatus = 'in_progress'
+      const observations = collectPlayerObservations(createPlayerObservations(observedView.tickets))
+      for (const value of [9, 10]) {
+        observedView.tickets[0].reportedEffortEstimate = value
+        observations.observe(observedView.tickets[0], { high: value, low: 0 })
+      }
+      const observedHtml = renderToStaticMarkup(createElement(Board, { view: observedView, diagnostics: null,
+        observations: getPlayerObservations(observations.observations) }))
+      assert.ok(observedHtml.includes('<strong>Estimate revised twice</strong>'), mode)
+      assert.ok(!observedHtml.includes('Reported progress unchanged'), mode)
+      assert.equal((observedHtml.match(/class="manager-view /g) ?? []).length, 7, mode)
+      for (const hidden of ['9876543', 'private-estimator', 'private-effort-contributor', 'lastEstimateEvaluation', 'Actual work:', 'report missed']) {
+        assert.ok(!observedHtml.includes(hidden), `${mode}: factual observation leaked ${hidden}`)
+      }
       const activityHtml = renderToStaticMarkup(createElement(Board, { view: playerView(estimates), diagnostics: null,
         activity: [{ id: 1, ticketId: 'ticket-1', ticketTitle: estimates.tickets[0].title,
           at: { high: 3.125, low: 0 }, kind: 'estimate', from: null, to: 8.5 }] }))
@@ -83,7 +99,8 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.match(html, /class="ticket-domain">Backend<\/span>/)
       assert.match(html, /ticket-2<\/span><span class="ticket-rank"[^>]*>Rank: 2<\/span><\/div><h4>Fix the search filter<\/h4><div class="ticket-categories"><span class="ticket-domain">Frontend<\/span>/)
       assert.equal(html.includes('>Mismatch</button>'), mode === 'development')
-      assert.equal(html.includes('role="tooltip"'), mode === 'development')
+      assert.equal((html.match(/aria-label="Manager view: Missing estimate"/g) ?? []).length, 7)
+      assert.equal(html.includes('class="comparison-tooltip"'), mode === 'development')
       assert.match(html, /<li[^>]*draggable="true"[^>]*><div class="ticket-reference"><span class="ticket-id">ticket-2<\/span>/)
       assert.ok(!html.includes('Move ticket-2 up'))
       assert.ok(!html.includes('Move ticket-2 down'))
