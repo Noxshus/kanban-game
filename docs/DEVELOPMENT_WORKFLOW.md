@@ -144,6 +144,6 @@ Conclude with a clear recommendation: ready to commit, or changes required.
 - **`GAME_DESIGN.md`:** Confirmed and proposed gameplay decisions, design rationale and open gameplay questions.
 - **`AGENTS.md`:** Concise project/agent instructions and a link to this workflow.
 - **This guide:** Workflow conventions, review expectations and role ownership. Update it directly when the process changes.
-- **`README.md`:** Public project overview and getting-started information (it currently retains some Vite starter text tracked by cleanup issue #15).
+- **`README.md`:** Public project overview and getting-started information.
 
 This workflow is adaptable: prefer the smallest process that reliably protects the current change.
