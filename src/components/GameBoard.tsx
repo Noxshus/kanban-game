@@ -13,6 +13,10 @@ import { BoardEmphasis } from './BoardEmphasis'
 import { ManagerView } from './TicketObservations'
 import type { TicketObservationView } from '../store/playerObservations'
 import { createBoardEmphasisClock } from './boardEmphasisClock'
+import { TicketProgress } from './TicketProgress'
+import { createProgressProjections } from '../store/progressProjection'
+import type { ProgressProjection } from '../store/progressProjection'
+import { eventTime } from '../game/eventTime'
 
 const noActivity: BoardActivity[] = []
 type ActivityTarget = { rowId: string; ticketId: string; order: number }
@@ -32,9 +36,12 @@ interface Props {
   activityDisplay?: ActivityDisplay
   observations?: readonly TicketObservationView[]
   isPaused?: boolean
+  projections?: readonly ProgressProjection[]
 }
 
-export function GameBoard({ view, diagnostics, onReorder, activity = noActivity, activityDisplay, observations, isPaused = true }: Props) {
+export function GameBoard({ view, diagnostics, onReorder, activity = noActivity, activityDisplay, observations, projections, isPaused = true }: Props) {
+  const at = eventTime(view.simulationTime, view.simulationTimeRemainder)
+  const forecasts = projections ?? createProgressProjections(view.tickets, view.developers, at)
   const [targets, setTargets] = useState<{ hover: ActivityTarget | null; focus: ActivityTarget | null; order: number }>({ hover: null, focus: null, order: 0 })
   const visibleRows = new Set(activityDisplay?.rows ? activityDisplay.rows.map(row => row.id) : activity.map(event => `board-${event.id}`))
   // Only currently visible origins can highlight a card. Keep pointer and focus
@@ -221,10 +228,7 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
                             {ticket.reportedEffortEstimate !== undefined && <small> work units</small>}
                           </dd></div>
                         </dl>
-                        <label className="ticket-progress">
-                          <span>Reported progress: <strong>{Math.round(ticket.reportedProgress)}%</strong></span>
-                          <progress aria-label={`${ticket.id} reported progress`} max={100} value={ticket.reportedProgress} />
-                        </label>
+                        <TicketProgress ticket={ticket} projection={forecasts.find(item => item.ticketId === ticket.id) ?? createProgressProjections([ticket], view.developers, at)[0]} at={at} />
                         <ManagerView estimateUnknown={ticket.reportedEffortEstimate === undefined} observation={observations?.find(item => item.ticketId === ticket.id)} />
                         {statusEvent && <BoardEmphasis key={`status-${statusEvent.id}`} kind="status" isPaused={isPaused} elapsedMs={statusEvent.elapsedMs} runningSince={statusEvent.runningSince} />}
                         {diagnostic && <TicketDiagnostics ticket={diagnostic} />}
@@ -237,7 +241,7 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
             )
           })}
         </div>
-        <p className="board-note">Rank 1 is highest priority. Unknown effort means no estimate has been reported.</p>
+        <p className="board-note">Rank 1 is highest priority. Unknown effort means no estimate has been reported. Progress fill is your forecast; the tick marks the engineer percentage. Assignment is ownership, not proof of active work.</p>
         </div>
         <BoardActivityLog events={activity} engineers={view.developers} onHover={(ticketId, rowId) => targetActivity('hover', ticketId, rowId)} onFocus={(ticketId, rowId) => targetActivity('focus', ticketId, rowId)}
           onActivate={id => focusActivityTicket(cards.current.get(id))} display={activityDisplay} />

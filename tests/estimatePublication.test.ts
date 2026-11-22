@@ -94,7 +94,7 @@ test('a replacement adopts the board with no estimate draw; legacy Unknown claim
   delete initial.developers[0].estimateDiscovery // the replacement does not inherit A's scheduled personal exposure
   const draws: number[] = []
   const handed = advanceSimulation(initial, 0.1, () => { draws.push(0.5); return 0.5 })
-  assert.equal(draws.length, 2) // new worker review and discovery; no estimate/report draw
+  assert.equal(draws.length, 3) // progress reporting, new worker review and discovery; no effort estimate/report draw
   assert.equal(handed.tickets[0].reportedEffortEstimate, 123)
   assert.deepEqual(handed.tickets[0].initialEffortEstimate, belief)
   assert.equal(handed.tickets[0].assignedDeveloperId, 'replacement')
@@ -119,7 +119,7 @@ test('event switches and returns retain shared estimates and pending discovery w
   s.tickets.push({...scenario().tickets[0],id:'other',rank:2,reportedProgress:99.999})
   let calls=0
   s=decideNow(s,()=>{calls++;return .5})
-  assert.equal(calls,4) // departure revision, preview, reporting, new-ticket review
+  assert.equal(calls,6) // preview, departure effort/progress, pickup effort/progress, new-ticket review
   assert.equal(s.developers[0].activeTicketID,'other')
   const beliefs=s.tickets.map(t=>structuredClone(t.initialEffortEstimate))
   s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
@@ -199,7 +199,7 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
     split = advanceSimulation(split, due + 0.25 - 0.9)
     let expectedSeed = state.randomState
-    for (let i = 0; i < 4; i++) expectedSeed = nextRandom(expectedSeed).state
+    for (let i = 0; i < 5; i++) expectedSeed = nextRandom(expectedSeed).state // preview, effort/progress, review, discovery
     assert.equal(whole.randomState, expectedSeed)
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]),

@@ -171,7 +171,7 @@ test('paused Rank edits defer loss until Resume or Step, and apply it once befor
   const resumed = simulationReducer(JSON.parse(JSON.stringify(pending)), { type: 'togglePause' })
   assert.equal(resumed.game.developers[0].activeTicketID, 'right')
   close(resumed.game.tickets[0].completedWork, 40 + 30 * 7 / 9)
-  assert.equal(resumed.game.tickets[0].reportedProgress, s.tickets[0].reportedProgress)
+  close(resumed.game.tickets[0].reportedProgress, 100 * gross(s) / s.tickets[0].reportedEffortEstimate!) // Departure successfully reports gross effort, before loss.
   assert.equal(resumed.game.simulationTime, s.simulationTime)
   assert.deepEqual(resumed.game.workLog, s.workLog)
   const stepped = simulationReducer(pending, { type: 'step' })
@@ -181,7 +181,7 @@ test('paused Rank edits defer loss until Resume or Step, and apply it once befor
   assert.deepEqual(simulationReducer(paused, { type: 'togglePause' }).game, resumed.game)
 })
 
-test('seed-1 XL manual QA switches Alex only on Step, preserving the old report and gross contribution', () => {
+test('seed-1 XL manual QA switches Alex only on Step, preserving gross contribution with an independent departure report', () => {
   const game = structuredClone(exampleGameState)
   game.tickets[0].complexity = 'XL'
   estimatedFixture(game) // isolate loss from the new fallible estimate reporting stream
@@ -193,7 +193,7 @@ test('seed-1 XL manual QA switches Alex only on Step, preserving the old report 
   assert.equal(result.game.developers[0].activeTicketID, 'ticket-3')
   const contribution = gross(first.game, 'ticket-1', 'developer-1')
   close(result.game.tickets[0].completedWork, 4 + contribution * 7 / 9)
-  assert.equal(result.game.tickets[0].reportedProgress, first.game.tickets[0].reportedProgress)
+  close(result.game.tickets[0].reportedProgress, 100 * contribution / first.game.tickets[0].reportedEffortEstimate!)
   assert.deepEqual(result.game.workLog!.find(e => e.ticketId === 'ticket-1'), first.game.workLog!.find(e => e.ticketId === 'ticket-1'))
   assert.equal(result.game.simulationTime, 2)
 })
@@ -261,7 +261,7 @@ test('a real revision switches at its event boundary, preserving publications, R
   assert.notEqual(boundary.developers[0].activeTicketID, 'current')
   close(boundary.tickets[0].completedWork, 42)
   close(gross(boundary), 10)
-  assert.equal(boundary.tickets[0].reportedProgress, 5)
+  close(boundary.tickets[0].reportedProgress, 100 * gross(boundary) / boundary.tickets[0].reportedEffortEstimate!)
   assert.equal(boundary.workLog!.length, 1)
   const whole = advanceSimulation(s, due + 0.25)
   let split = s
@@ -411,7 +411,7 @@ for (const protectedWork of [40, 100]) {
       assert.ok(result.tickets[0].completedWork <= restored.tickets[0].completedWork)
       assert.equal(result.tickets[0].requiredWork, 1e18)
       assert.deepEqual(remainingWork(result.tickets[0]), addWorkAmounts(remainingWork(restored.tickets[0]), workAmount(24)))
-      assert.equal(result.randomState, nextRandom(restored.randomState).state) // new-ticket review deadline
+      assert.equal(result.randomState, nextRandom(nextRandom(nextRandom(restored.randomState).state).state).state) // departure/pickup progress, new-ticket review
       assert.deepEqual(result.workLog, restored.workLog)
       assert.deepEqual(result.tickets[0].estimateHistory, restored.tickets[0].estimateHistory)
       assert.deepEqual(result.developers[0].pausedEstimateDiscoveries!.find(e => e.ticketId === 'current'), restored.developers[0].estimateDiscovery)

@@ -3,6 +3,7 @@ import type { EventTime } from './eventTime'
 
 export const ACTIVITY_LIMIT = 100
 export type BoardReport = Pick<Ticket, 'id' | 'title' | 'reportedStatus' | 'reportedEffortEstimate' | 'assignedDeveloperId'>
+  & Partial<Pick<Ticket, 'reportedProgress' | 'progressReport'>>
 export type BoardObserver = (report: Readonly<BoardReport>, at: Readonly<EventTime>) => void
 
 type BoardChange =
@@ -13,7 +14,9 @@ export type BoardActivity = { id: number; ticketId: string; ticketTitle: string;
 
 function boardReport(ticket: BoardReport): BoardReport {
   return { id: ticket.id, title: ticket.title, reportedStatus: ticket.reportedStatus,
-    reportedEffortEstimate: ticket.reportedEffortEstimate, assignedDeveloperId: ticket.assignedDeveloperId }
+    reportedEffortEstimate: ticket.reportedEffortEstimate, assignedDeveloperId: ticket.assignedDeveloperId,
+    reportedProgress: ticket.reportedProgress,
+    ...(ticket.progressReport ? { progressReport: { at: { high: ticket.progressReport.at.high, low: ticket.progressReport.at.low }, estimate: ticket.progressReport.estimate } } : {}) }
 }
 
 // The observation boundary copies ONLY board fields, never handing a callback

@@ -14,6 +14,7 @@ import { scheduleReview, validateReview } from './discipline.ts'
 import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
+import { publishProgress } from './progressReporting.ts'
 
 export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number, observe?: BoardObserver, internal?: InternalObserver): GameState {
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
@@ -72,17 +73,21 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       }
     }
   }
-  const report = () => {
+  const report = (workBoundary = false) => {
     for (const ticket of tickets) {
       if (ticket.actualStatus === 'backlog') continue
       ticket.reportedProgress = clampReportedProgress(ticket.reportedProgress)
       if (complete(ticket)) {
         ticket.actualStatus = 'done'
         ticket.reportedStatus = 'done'
-        ticket.reportedProgress = 100
+        if (workBoundary && transitions.claimed.has(ticket.id)) publishProgress(ticket, 100, now)
+        else {
+          // A restored inconsistent Done snapshot supplies no historical report time.
+          if (ticket.reportedProgress !== 100) delete ticket.progressReport
+          ticket.reportedProgress = 100
+        }
       } else if (transitions.claimed.has(ticket.id)) {
         ticket.reportedStatus = ticket.actualStatus
-        ticket.reportedProgress = clampReportedProgress(ticket.completedWork / ticket.requiredWork * 100)
       }
       observeBoard(observe, ticket, now)
     }
@@ -170,7 +175,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     }
     const previous = now
     now = nextTime
-    report()
+    report(true)
     // Release all completed claims before anybody makes a decision at this instant.
     for (const developer of active) {
       const ticket = byId.get(developer.activeTicketID!)!

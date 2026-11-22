@@ -109,11 +109,13 @@ test('a later proactive review of Unknown forms a fresh assessment and establish
 test('failed discovery reporting still supplies same-event insight and switches without a second departure roll',()=>{
   const s=fixture(),a=s.developers[0],t=s.tickets[0]
   a.estimateDiscovery!.target=workAmount(1)
-  s.tickets.push({...t,id:'other',title:'Other',rank:2,requiredWork:16.95,reportedEffortEstimate:16.95,
-    initialEffortEstimate:{developerId:'other-author',totalWork:16.95},actualStatus:'todo'})
-  const due=projectWork(a,t,workAmount(1)).seconds!,random=sequence([.9,.5])
+  // Without automatic 1%-of-true-work reporting at this boundary (#87), 17.5
+  // lies between the board-only and transient-insight decision scores.
+  s.tickets.push({...t,id:'other',title:'Other',rank:2,requiredWork:17.5,reportedEffortEstimate:17.5,
+    initialEffortEstimate:{developerId:'other-author',totalWork:17.5},actualStatus:'todo'})
+  const due=projectWork(a,t,workAmount(1)).seconds!,random=sequence([.9,.9,.5])
   const r=advanceSimulation(s,due,random.draw),d=r.developers[0]
-  assert.equal(random.count(),2) // one missed report, one new-ticket review; no duplicate departure roll
+  assert.equal(random.count(),3) // missed effort and progress reports, new-ticket review; no duplicate departure rolls
   assert.equal(d.activeTicketID,'other')
   assert.equal(r.tickets[0].reportedEffortEstimate,20)
   assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)
@@ -149,13 +151,13 @@ test('recognised but unreported staying insight is discarded before a later unre
   assert.equal(selectWork([t],a,noDraw,'priority',{high:0,low:0},t)!.considered[0].estimatedTotal,20)
 })
 
-test('no-op discovery consumes no reporting or decision draw, only the next work threshold',()=>{
+test('no-op effort discovery consumes only an independent progress chance and the next work threshold',()=>{
   const s=fixture(),a=s.developers[0],t=s.tickets[0]
   t.reportedEffortEstimate=90;t.completedWork=10
   a.estimateDiscovery!.boardEstimate=90;a.estimateDiscovery!.target=workAmount(11)
   s.workLog=[{developerId:a.id,ticketId:t.id,effort:workAmount(10)}]
-  const random=sequence([.999999]),r=advanceSimulation(s,projectWork(a,t,workAmount(1)).seconds!,random.draw)
-  assert.equal(random.count(),1)
+  const random=sequence([.99,.999999]),r=advanceSimulation(s,projectWork(a,t,workAmount(1)).seconds!,random.draw)
+  assert.equal(random.count(),2)
   assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)
   assert.equal(r.tickets[0].lastEstimateEvaluation!.reportDraw,undefined)
   assert.equal(r.developers[0].lastAssessment,undefined)
@@ -165,9 +167,9 @@ test('one-lifetime overrun is consumed even when a genuine correction fails to p
   const s=fixture(),a=s.developers[0],t=s.tickets[0]
   t.initialEffortEstimate!.totalWork=.2;t.reportedEffortEstimate=1
   a.estimateDiscovery!.baseline=.2;a.estimateDiscovery!.boardEstimate=1
-  const random=sequence([.9,.999999]),due=projectWork(a,t,workAmount(1)).seconds!
+  const random=sequence([.9,.9,.999999]),due=projectWork(a,t,workAmount(1)).seconds!
   const r=advanceSimulation(s,due,random.draw)
-  assert.equal(random.count(),2)
+  assert.equal(random.count(),3) // missed effort/progress plus next discovery threshold
   assert.equal(r.tickets[0].overrunEvaluationConsumed,true)
   assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'overrun')
   assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)
@@ -315,10 +317,10 @@ test('a fresh Rank departure has one reporting opportunity, with no work or time
   s.workLog=[{developerId:a.id,ticketId:t.id,effort:workAmount(10)}];t.completedWork=10
   s.tickets.push({...t,id:'alternative',rank:2,requiredWork:5,completedWork:0,reportedEffortEstimate:5,
     initialEffortEstimate:{developerId:'other-author',totalWork:5},actualStatus:'todo'})
-  const before=structuredClone(s.workLog),random=sequence([.9,.5])
+  const before=structuredClone(s.workLog),random=sequence([.9,.9,.5])
   const transitions=workTransitions(s,{high:0,low:0},random.draw)
   transitions.restore(a);transitions.decide(a,'priority')
-  assert.equal(random.count(),2) // departure report + new-ticket review
+  assert.equal(random.count(),3) // independent departure effort/progress + new-ticket review
   assert.equal(a.activeTicketID,'alternative')
   assert.equal(t.lastEstimateEvaluation!.reason,'departure')
   assert.equal(t.lastEstimateEvaluation!.reportDraw,.9)
@@ -347,7 +349,7 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
       initialEffortEstimate:{developerId:'previous-author',totalWork:5}},
   )
   const before=structuredClone(working)
-  const appraisalDraw=nextRandom(working.randomState),reportDraw=nextRandom(appraisalDraw.state),reviewDraw=nextRandom(reportDraw.state)
+  const appraisalDraw=nextRandom(working.randomState),reportDraw=nextRandom(appraisalDraw.state),progressDraw=nextRandom(reportDraw.state),reviewDraw=nextRandom(progressDraw.state)
   assert.ok(reportDraw.value<.5) // exactly one successful Discipline-0 departure chance
   const e0=100*Math.exp(Math.log1p(-appraisalDraw.value))
   assert.notEqual(e0,failedCandidate)
@@ -357,7 +359,7 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
   assert.equal(decision.trigger,'priority');assert.equal(decision.outcome,'switch');assert.equal(d.activeTicketID,'fast')
   assert.equal(decision.considered.find(option=>option.id==='ticket')!.estimateSource,'temporary')
   close(decision.considered.find(option=>option.id==='ticket')!.estimatedTotal,e0)
-  assert.equal(reordered.randomState,reviewDraw.state) // current appraisal, departure report, new-ticket review; no resampling
+  assert.equal(reordered.randomState,reviewDraw.state) // appraisal, independent effort/progress, review; no resampling
   assert.equal(t.lastEstimateEvaluation!.reason,'departure');assert.equal(t.lastEstimateEvaluation!.published,true)
   assert.equal(t.lastEstimateEvaluation!.reportDraw,reportDraw.value)
   close(t.reportedEffortEstimate!,e0);close(firstPublishedEstimate(t)!,e0)
@@ -368,11 +370,11 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
   assert.deepEqual(working,before)
 
   // Completion naturally returns the engineer to the original ticket. A saved
-  // board reference is reused: only the new review and discovery target draw.
+  // board reference is reused: progress chance, new review and discovery target.
   const finishTime=projectWork(d,reordered.tickets[2],workAmount(5)).seconds!
-  const returnDraws=sequence([.5,.001])
+  const returnDraws=sequence([.9,.5,.001])
   const returned=advanceSimulation(JSON.parse(JSON.stringify(reordered)),finishTime,returnDraws.draw)
-  assert.equal(returnDraws.count(),2)
+  assert.equal(returnDraws.count(),3)
   const returning=returned.developers[0],original=returned.tickets[0],schedule=returning.estimateDiscovery!
   assert.equal(returning.activeTicketID,'ticket')
   assert.equal(schedule.baseline,e0);assert.equal(schedule.boardEstimate,e0)
@@ -383,9 +385,9 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
 
   // Reach that actual work threshold and publish a genuine upward revision.
   const exposure=subtractWorkAmounts(schedule.target!,historicalWork)
-  const discoveryTime=projectWork(returning,original,exposure).seconds!,revisionDraws=sequence([0,.999999])
+  const discoveryTime=projectWork(returning,original,exposure).seconds!,revisionDraws=sequence([0,.9,.999999])
   const revised=advanceSimulation(returned,discoveryTime,revisionDraws.draw),learned=revised.tickets[0]
-  assert.equal(revisionDraws.count(),2) // one report, one renewed discovery target
+  assert.equal(revisionDraws.count(),3) // effort/progress opportunities, renewed discovery target
   assert.equal(learned.lastEstimateEvaluation!.reason,'discovery');assert.equal(learned.lastEstimateEvaluation!.published,true)
   const cumulative=effortNumber(personalEffort(revised,revised.developers[0],learned))!
   close(learned.reportedEffortEstimate!,100-(100-e0)*(1+cumulative/e0)**-.3)

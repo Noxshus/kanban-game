@@ -67,7 +67,7 @@ test('failed pickup and discovery reporting create no estimate activity or priva
   a.estimateDiscovery = { ticketId: ticket.id, boardEstimate: 20, baseline: 20, requiredWork: 100, judgement: 0, productive: true, target: workAmount(1) }
   const failed = collectBoardActivity(known.tickets)
   const due = projectWork(a, ticket, workAmount(1)).seconds!
-  const result = advanceSimulation(known, due, sequence([.99, .999999]).draw, failed.observe)
+  const result = advanceSimulation(known, due, sequence([.99, .99, .999999]).draw, failed.observe) // effort, progress, threshold
   assert.equal(result.tickets[0].lastEstimateEvaluation!.improved, true)
   assert.equal(result.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(failed.events.length, 0)
@@ -79,7 +79,7 @@ test('genuine published revision records board values at the discovery instant',
   setPublishedEstimate(t, d.id, 20)
   d.estimateDiscovery = { ticketId: t.id, boardEstimate: 20, baseline: 20, requiredWork: 100, judgement: 0, productive: true, target: workAmount(1) }
   const c = collectBoardActivity(s.tickets), due = projectWork(d, t, workAmount(1)).seconds!
-  const result = advanceSimulation(s, due, sequence([0, .999999]).draw, c.observe)
+  const result = advanceSimulation(s, due, sequence([0, .99, .999999]).draw, c.observe)
   assert.equal(c.events.length, 1)
   assert.equal(c.events[0].kind, 'estimate')
   assert.deepEqual(c.events[0].at, result.tickets[0].estimateHistory!.at(-1)!.at)
@@ -253,18 +253,19 @@ test('zero time is silent and observer snapshots cannot mutate simulation or exp
     Object.assign(at, { high: 1e200 })
   })
   assert.deepEqual(mutated, advanceSimulation(s, 1, () => .5))
-  assert.ok(reports.every(r => Object.keys(r as object).every(key => ['id', 'title', 'reportedStatus', 'reportedEffortEstimate', 'assignedDeveloperId'].includes(key))))
+  assert.ok(reports.every(r => Object.keys(r as object).every(key => ['id', 'title', 'reportedStatus', 'reportedEffortEstimate', 'assignedDeveloperId', 'reportedProgress', 'progressReport'].includes(key))))
 })
 
 test('a throwing observed transition leaves original session, history and RNG untouched', () => {
   const session = createBoardSession(), game = session.simulation.game
+  game.randomState = 2 // A publishes, then B's estimate underflows with the new progress-report draw included.
   game.tickets = game.tickets.slice(0, 2).map((ticket, i) => ({ ...ticket, requiredWork: i ? Number.MIN_VALUE : 100, completedWork: 0 }))
   game.developers = game.developers.slice(0, 2).map(d => ({ ...d, judgement: 0, discipline: 0, competencies: { frontend: 0, backend: 0 } }))
   const invalid = structuredClone(session)
-  // Seed 1 first publishes successfully for A; B's later initial estimate
+  // The seeded stream first publishes successfully for A; B's later initial estimate
   // underflows. The partially collected event buffer must never reach the UI.
   assert.throws(() => boardReducer(session, { type: 'step' }), /positive numeric range/)
   assert.deepEqual(session, invalid)
   assert.deepEqual(session.activity, [])
-  assert.equal(session.simulation.game.randomState, 1)
+  assert.equal(session.simulation.game.randomState, 2)
 })

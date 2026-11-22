@@ -39,7 +39,9 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
       // Exercise the real published/unpublished histories, not just an empty App.
-      const populated = boardReducer(createDevelopmentBoardSession(), { type: 'step' })
+      const initial = createDevelopmentBoardSession()
+      initial.simulation.game.randomState = 87 // Both genuine public publications and a failed report.
+      const populated = boardReducer(initial, { type: 'step' })
       assert.ok(populated.activity.length > 0)
       assert.ok(populated.diagnosticActivity!.some(event => event.kind === 'assessment' && event.improved && !event.published))
       assert.ok(populated.diagnosticActivity!.some(event => event.kind === 'decision'))
@@ -211,7 +213,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         }
       }
       for (const playerText of ['Kanban board', 'Backlog', 'To Do', 'In Progress', 'Done',
-        'Reported progress:', 'Assigned to:', 'Developers', 'Productivity:', 'Resume',
+        'Projected progress', 'Engineer report:', 'Assigned to:', 'Developers', 'Productivity:', 'Resume',
         'Simulation time 0 seconds']) {
         assert.ok(text.includes(playerText), `${mode}: missing ${playerText}`)
       }

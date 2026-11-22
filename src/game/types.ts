@@ -36,6 +36,9 @@ export interface Ticket {
   reportedStatus: WorkflowStatus
   // A separate report lets the board differ from actual work as reporting evolves.
   reportedProgress: number
+  // Only a genuine publication has a time/denominator. Legacy percentages are
+  // public snapshots, not evidence of when an engineer last reported.
+  progressReport?: { at: EventTime; estimate: number | null }
 
 // Represents ticket ownership, NOT necessarily active work. One developer may be assigned multiple tickets.
 

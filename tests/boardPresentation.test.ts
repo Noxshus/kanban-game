@@ -33,7 +33,8 @@ test('reported board presentation handles sparse data, extremes and reordered pr
       assert.equal((html.match(/class="ticket-rank"/g) ?? []).length, 4)
       assert.equal((html.match(/class="report-unset">Unassigned/g) ?? []).length, 4)
       for (const ticket of state.tickets) {
-        assert.ok(html.includes(`aria-label="${ticket.id} reported progress" max="100" value="${ticket.reportedProgress}"`))
+        assert.ok(html.includes(`aria-label="${ticket.id} projected progress"`))
+        assert.ok(html.includes(`left:${ticket.reportedProgress}%`))
         assert.ok(text.includes(`Rank: ${ticket.rank}`))
       }
       for (const value of ['Unknown', '0 work units', '5E-324 work units', '1E200 work units']) assert.ok(text.includes('Estimated effort: ' + value))

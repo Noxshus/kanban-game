@@ -66,7 +66,9 @@ test('a revision may rationally stay and preserve Flow; no-op evaluations never 
  noop.tickets[0].reportedEffortEstimate=100
  noop.developers[0].estimateDiscovery!.boardEstimate=100
  const count=noop.tickets[0].estimateHistory!.length
- const r=advanceSimulation(noop,due,noDraw)
+ let progressDraws=0
+ const r=advanceSimulation(noop,due,()=>{progressDraws++;return .99})
+ assert.equal(progressDraws,1) // No effort/decision RNG; one missed progress reporting opportunity.
  assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)
  assert.equal(r.developers[0].lastAssessment,undefined)
  assert.equal(r.tickets[0].estimateHistory!.length,count)

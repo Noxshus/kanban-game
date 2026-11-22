@@ -100,7 +100,7 @@ test('review regression: 100s versus JSON-restored 100 x 1s preserves all player
   assert.deepEqual(whole, advanceSimulation(s, 100))
   assert.equal(split.randomState, s.randomState)
   assert.deepEqual(getPlayerView(split), getPlayerView(whole))
-  assert.equal(getPlayerView(whole).tickets[0].reportedProgress, 50.000000000000014)
+  assert.equal(getPlayerView(whole).tickets[0].reportedProgress, 50) // No report event: legacy percentage stays fixed.
   assert.deepEqual(observations, wholeEvidence.observations)
   assert.deepEqual(getPlayerObservations(observations), [{ ticketId: 'current', revisionCount: 0, publications: [] }])
   assert.deepEqual(getPlayerObservations(observations), getPlayerObservations(wholeEvidence.observations))
@@ -129,7 +129,7 @@ test('failed publication is not an observed revision, while a successful work-bo
     setPublishedEstimate(t, d.id, 20)
     d.estimateDiscovery = { ticketId: t.id, boardEstimate: 20, baseline: 20, requiredWork: 100, judgement: 0, productive: true, target: workAmount(1) }
     const c = collectPlayerObservations(seededObservations(s)), due = projectWork(d, t, workAmount(1)).seconds!
-    const draws = [succeeds ? 0 : .99, .999999]
+    const draws = [succeeds ? 0 : .99, .99, .999999] // effort, independent missed progress, discovery target
     const result = advanceSimulation(s, due, () => { assert.ok(draws.length); return draws.shift()! }, c.observe)
     assert.equal(result.tickets[0].lastEstimateEvaluation!.improved, true)
     assert.equal(result.tickets[0].lastEstimateEvaluation!.published, succeeds)

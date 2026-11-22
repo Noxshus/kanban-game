@@ -58,8 +58,8 @@ test('nonbinary partitions and JSON preserve mixed-event coincidence, histories,
   split=advanceSimulation(split,due+.25-parts.reduce((a,b)=>a+b,0))
   equivalent(split,whole)
   let expected=s.randomState
-  // Discovery report + new-ticket review(s) + renewed discovery threshold.
-  for(let n=0;n<(reverse?4:3);n++)expected=nextRandom(expected).state
+  // Effort and independent progress report + new-ticket review(s) + renewed threshold.
+  for(let n=0;n<(reverse?5:4);n++)expected=nextRandom(expected).state
   assert.equal(whole.randomState,expected)
  }
 })

@@ -65,7 +65,7 @@ test('idle or missing active references select eligible work, without leaking hi
   const result=advanceSimulation(input,1,()=>0.5)
   assert.equal(result.developers[0].activeTicketID,'ticket-1')
   assert.equal(result.tickets[0].reportedStatus,'in_progress')
-  close(result.tickets[0].reportedProgress,result.tickets[0].completedWork/10*100)
+  assert.equal(result.tickets[0].reportedProgress,40) // The independent progress roll at .5 fails; work no longer truth-syncs.
  }
 })
 

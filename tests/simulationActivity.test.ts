@@ -56,7 +56,7 @@ test('unpublished discovery precedes its actual stay/switch decision at the exac
       setPublishedEstimate(alternative, 'earlier-author', 1); s.tickets.push(alternative)
     }
     const c = collectSimulationActivity(s.tickets), due = projectWork(d, t, workAmount(1)).seconds!
-    const random = sequence(switches ? [.9, .5] : [.9, .999999])
+    const random = sequence(switches ? [.9, .9, .5] : [.9, .9, .999999]) // independent progress chance at discovery
     const result = advanceSimulation(s, due, random.draw, c.board.observe, c.internal)
     const internal = c.diagnostics.filter(e => e.kind !== 'reported')
     assert.deepEqual(internal.map(e => e.kind), ['assessment', 'decision'])
@@ -184,6 +184,7 @@ test('diagnostic callbacks receive copies and failed transitions discard interna
   })
   assert.deepEqual(observed, advanceSimulation(s, due, () => .9))
   const session = createDevelopmentBoardSession(), g = session.simulation.game
+  g.randomState = 2 // Keep the underflow reproduction after progress reporting adds a draw.
   g.tickets = g.tickets.slice(0, 2).map((t, i) => ({ ...t, completedWork: 0, requiredWork: i ? Number.MIN_VALUE : 100 }))
   g.developers = g.developers.slice(0, 2).map(d => ({ ...d, judgement: 0, discipline: 0, competencies: { frontend: 0, backend: 0 } }))
   const before = structuredClone(session)

@@ -335,7 +335,9 @@ test('DEV rows reuse the sidebar interactions and expose missed-report details o
   try {
     const { BoardActivityLog } = await server.ssrLoadModule('/src/components/BoardActivity.tsx')
     const { describeDiagnosticActivity } = await server.ssrLoadModule('/src/components/developmentActivityPresentation.ts')
-    const session = boardReducer(createDevelopmentBoardSession(), { type: 'step' })
+    const initial = createDevelopmentBoardSession()
+    initial.simulation.game.randomState = 87 // Populated public reports AND a failed effort report with #87 draws.
+    const session = boardReducer(initial, { type: 'step' })
     const filtered = filterDiagnosticActivity(session.diagnosticActivity!, { assessments: true, decisions: true, noopReviews: false })
     const rows = filtered.map(event => describeDiagnosticActivity(event, session.simulation.game.developers))
     const missed = rows.find(row => row.text.includes('report missed'))!

@@ -13,7 +13,7 @@ function App() {
 }
 
 function GameApplication({ development = false }: { development?: boolean }) {
-  const [{ simulation: { game: state, isPaused }, activity, diagnosticActivity, observations }, dispatch] = useReducer(boardReducer, undefined, development ? createDevelopmentBoardSession : createBoardSession)
+  const [{ simulation: { game: state, isPaused }, activity, diagnosticActivity, observations, projections }, dispatch] = useReducer(boardReducer, undefined, development ? createDevelopmentBoardSession : createBoardSession)
   const view = getPlayerView(state)
   const observationView = getPlayerObservations(observations)
 
@@ -46,9 +46,9 @@ function GameApplication({ development = false }: { development?: boolean }) {
 
       {development ? (
         <DevelopmentUI state={state} isPaused={isPaused} dispatch={dispatch} activity={diagnosticActivity}>
-          {(diagnostics, activityDisplay) => <GameBoard isPaused={isPaused} observations={observationView} activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
+          {(diagnostics, activityDisplay) => <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
         </DevelopmentUI>
-      ) : <GameBoard isPaused={isPaused} observations={observationView} activity={activity} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
+      ) : <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} onReorder={(ticketId, targetId, after) => dispatch({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
     </main>
   )
 }

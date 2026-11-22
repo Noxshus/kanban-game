@@ -79,7 +79,7 @@ test('first and repeated discoveries publish upward only at genuine work events'
     assert.equal(state.tickets[0].lastEstimateEvaluation!.published, true)
   }
   assert.equal(discoveries, 3)
-  assert.equal(draws, 7) // three reporting rolls plus four discovery targets
+  assert.equal(draws, 10) // three effort and three progress rolls plus four discovery targets
   assert.deepEqual(state.tickets[0].initialEffortEstimate, original.tickets[0].initialEffortEstimate)
   assert.deepEqual(initial, original)
 })
@@ -146,7 +146,7 @@ test('reaching a board estimate triggers one evaluation, not a mandatory correct
   assert.equal(result.tickets[0].reportedEffortEstimate, 20)
   assert.equal(result.tickets[0].overrunEvaluationConsumed, true)
   close(result.tickets[0].completedWork, 20)
-  assert.equal(draws, 2) // one initial threshold and one renewal, no accuracy RNG
+  assert.equal(draws, 3) // initial threshold, independent progress opportunity, renewal; no accuracy RNG
   const later = advanceSimulation(result, 0.1, () => { throw Error('Overrun must not repeat at every tick') })
   assert.equal(later.tickets[0].reportedEffortEstimate, 20)
   assert.ok(later.tickets[0].completedWork > 20)
@@ -396,7 +396,7 @@ test('coincident discovery and overrun evaluate once and renew only one seeded t
   const due = projectWork(state.developers[0], state.tickets[0], workAmount(20)).seconds!
   const result = advanceSimulation(state, due)
   assert.equal(result.tickets[0].lastEstimateEvaluation!.reason, 'overrun')
-  assert.equal(result.randomState, nextRandom(nextRandom(state.randomState).state).state) // reporting + threshold
+  assert.equal(result.randomState, nextRandom(nextRandom(nextRandom(state.randomState).state).state).state) // effort, progress, threshold
   close(result.tickets[0].lastEstimateEvaluation!.personalWork!, 20)
   assert.ok(result.tickets[0].reportedEffortEstimate! > 20)
   assert.equal(result.tickets[0].overrunEvaluationConsumed, true)
@@ -430,7 +430,7 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
     assert.equal(whole.tickets[0].lastEstimateEvaluation!.published, false)
     assert.equal(whole.tickets[1].lastEstimateEvaluation!.developerId, 'learning')
     assert.equal(whole.developers.find(d => d.id === 'finishing')!.activeTicketID, 'contested')
-    assert.equal(whole.randomState, nextRandom(nextRandom(nextRandom(state.randomState).state).state).state) // new review, report, threshold
+    assert.equal(whole.randomState, nextRandom(nextRandom(nextRandom(nextRandom(state.randomState).state).state).state).state) // new review, effort, progress, threshold
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]), whole.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]))
     assert.deepEqual(split.tickets.map(t => [t.id, t.reportedEffortEstimate, t.lastEstimateEvaluation]),

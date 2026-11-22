@@ -9,6 +9,7 @@ import { firstPublishedEstimate, migrateEstimateHistory } from './estimateHistor
 import { estimateInitialEffort } from './effortEstimate.ts'
 import { reportEffort, scheduleReview } from './discipline.ts'
 import type { InternalObserver } from './simulationActivity'
+import { reportProgress } from './progressReporting.ts'
 
 // Provisional #58 balance, deliberately independent of Focus and Flow.
 export const DISCOVERY_BASE = 0.8
@@ -189,6 +190,7 @@ export function beginEstimateReporting(state: GameState, developer: Developer, t
     const candidate = appraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
     reportEffort(ticket, developer, candidate, 'pickup', effortNumber(personalEffort(state, developer, ticket)), at, draw, false, internal)
   }
+  reportProgress(state, ticket, developer, at, draw)
   scheduleReview(developer, ticket.id, at, draw)
 }
 
@@ -205,6 +207,9 @@ export function evaluateEstimate(state: GameState, developer: Developer, ticket:
     ? initialAppraisal ?? estimateInitialEffort(ticket.requiredWork, developer.judgement, developer.competencies[ticket.workDomain], draw())
     : revisedEffort(ticket.requiredWork, baseline, personal, developer.judgement, developer.competencies[ticket.workDomain])
   const result = reportEffort(ticket, developer, candidate, reason, effortNumber(personal), at, draw, proactive, internal)
+  // Estimate and progress have independent publication chances, in that order.
+  // Completion has already published its terminal 100% without a reporting roll.
+  if (reason !== 'completion') reportProgress(state, ticket, developer, at, draw, proactive)
   // One crossing for the entire ticket lifetime, even if this evaluation leaves
   // the report unchanged. Later revisions and handoffs only learn via discovery.
   if (reason === 'overrun') ticket.overrunEvaluationConsumed = true
