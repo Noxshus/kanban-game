@@ -132,7 +132,8 @@ test('completion wins coincident reviews, forces terminal 100%, and does not inv
   t.requiredWork = 1; setPublishedEstimate(t, d.id, 1)
   const due = projectWork(d, t, workAmount(1)).seconds!
   d.estimateReview!.dueTime = { high: due, low: 0 }
-  const done = advanceSimulation(s, due, noDraw)
+  const idle = sequence([.5]), done = advanceSimulation(s, due, idle.draw)
+  assert.equal(idle.count(), 1) // Completion progress is forced; only the new idle deadline draws.
   assert.equal(done.tickets[0].reportedProgress, 100)
   assert.equal(done.tickets[0].reportedStatus, 'done')
   assert.deepEqual(done.tickets[0].progressReport, { at: { high: due, low: 0 }, estimate: 1 })
@@ -140,7 +141,9 @@ test('completion wins coincident reviews, forces terminal 100%, and does not inv
   delete done.tickets[0].progressReport
   assert.equal(advanceSimulation(done, 1, noDraw).tickets[0].progressReport, undefined)
   t.requiredWork = 0; t.reportedEffortEstimate = 0; delete t.initialEffortEstimate; delete t.estimateHistory
-  assert.equal(advanceSimulation(s, 1, noDraw).tickets[0].reportedProgress, 100)
+  const zeroIdle = sequence([.5])
+  assert.equal(advanceSimulation(s, 1, zeroIdle.draw).tickets[0].reportedProgress, 100)
+  assert.equal(zeroIdle.count(), 1)
 })
 
 test('bounded reports handle huge team sums and subnormal work without unsafe scalar division', () => {

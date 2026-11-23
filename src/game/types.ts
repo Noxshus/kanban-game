@@ -82,6 +82,9 @@ export interface Developer {
   // One anchored own-ticket review deadline; also marks pickup as already handled.
   // This is scheduling state, never an unpublished estimate or private memory.
   estimateReview?: { ticketId: string; dueTime: EventTime }
+  // Persist the next idle search so caller tick frequency/save restoration cannot
+  // grant extra selection attempts. Missing on legacy idle states means check now.
+  idleWorkCheck?: EventTime
   // Missing means zero Flow; ticket identity prevents carrying it between tickets.
   flowStreak?: { ticketId: string; duration: number }
   // Gameplay stint: the gross-ledger baseline survives numerical cache refreshes.

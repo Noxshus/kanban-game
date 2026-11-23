@@ -13,6 +13,7 @@ import { simulationReducer } from '../src/store/simulationControls.ts'
 import type { GameState } from '../src/game/types.ts'
 import { estimatedFixture } from './helpers/estimatedFixture.ts'
 import { close, expectedWork } from './helpers/flowExpectation.ts'
+import { nextRandom } from '../src/game/random.ts'
 
 const expectedEffort = (rate: number, seconds: number) => expectedWork(rate, seconds, 0)
 
@@ -138,7 +139,11 @@ test('completion caps credited productive work, chains tickets and retains finis
   assert.deepEqual(whole.workLog, split.workLog)
   assert.equal(whole.randomState, split.randomState)
   assert.ok(whole.tickets.every(ticket => ticket.actualStatus === 'done'))
-  const later = advanceSimulation(whole, 100, () => { throw Error('Idle work cannot draw') })
+  let checks = 0
+  const due = whole.developers[0].idleWorkCheck!
+  const later = advanceSimulation(whole, 100, () => { checks++; return .5 })
+  // Discipline 0 / U=.5 gives 12s between empty searches. Those draws do not produce work.
+  assert.equal(checks, 1 + Math.floor((whole.simulationTime + 100 - due.high - due.low) / 12))
   assert.deepEqual(later.workLog, whole.workLog)
 })
 
@@ -338,7 +343,7 @@ test('legacy completion normalizes 0.24999999999999997 without attributing unkno
     assert.equal(result.tickets[0].completedWork, 1)
     assert.equal(effort(result), expected)
     assert.equal(result.workLog!.length, 1)
-    assert.equal(result.randomState, legacy.randomState)
+    assert.equal(result.randomState, nextRandom(legacy.randomState).state) // One post-completion idle deadline.
     assert.ok(result.workLog![0].effort.mantissa >= 1 && result.workLog![0].effort.mantissa < 2)
   }
   assert.deepEqual(legacy, original)

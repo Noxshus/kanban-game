@@ -27,6 +27,9 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   const byId = new Map(state.tickets.map(t => [t.id, t]))
   const claimed = new Set<string>()
   const clear = (developer: Developer) => {
+    // Becoming available gets one immediate pickup; already-idle engineers keep
+    // their saved deadline when reservation checks run again at another boundary.
+    if (developer.activeTicketID !== undefined) delete developer.idleWorkCheck
     const previous = byId.get(developer.estimateDiscovery?.ticketId ?? developer.activeTicketID ?? '')
     if (previous && !isWorkComplete(previous)) pauseDiscovery(developer)
     delete developer.activeTicketID
@@ -41,7 +44,10 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   for (const developer of state.developers) {
     const t = byId.get(developer.activeTicketID ?? '')
     if (!t || t.actualStatus === 'backlog' || isWorkComplete(t) || claimed.has(t.id)) clear(developer)
-    else claimed.add(t.id)
+    else {
+      delete developer.idleWorkCheck
+      claimed.add(t.id)
+    }
   }
   const current = (developer: Developer) => byId.get(developer.activeTicketID ?? '')
   const context = (developer: Developer) => state.tickets.filter(t =>
@@ -90,6 +96,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     const appraisal = decision.considered.find(t => t.id === ticket.id)!
     pauseDiscovery(developer)
     developer.activeTicketID = ticket.id
+    delete developer.idleWorkCheck
     developer.flowStreak = { ticketId: ticket.id, duration: 0 }
     delete developer.workStint
     beginWorkStint(state, developer, ticket)

@@ -10,7 +10,7 @@ import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimePr
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
 import { getTicketComplexity } from './complexity.ts'
-import { scheduleReview, validateReview } from './discipline.ts'
+import { scheduleIdleWorkCheck, scheduleReview, validateReview } from './discipline.ts'
 import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
@@ -61,7 +61,13 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         observeBoard(observe, ticket, now)
         if ((overrun || discovery) && assessment.improved) insight = assessment.candidate
       }
-      if (developer.activeTicketID === undefined) transitions.decide(developer, 'pickup')
+      if (developer.activeTicketID === undefined) {
+        const check = developer.idleWorkCheck
+        if (!check || compareEventTime(check, now) <= 0) {
+          transitions.decide(developer, 'pickup')
+          if (developer.activeTicketID === undefined) scheduleIdleWorkCheck(developer, now, draw)
+        }
+      }
       else if (insight !== undefined) transitions.decide(developer, 'estimate_revision', undefined, insight)
       // A switched engineer already scheduled a new ticket's first review.
       if (reviewDue && developer.activeTicketID === review.ticketId) scheduleReview(developer, review.ticketId, now, draw)
@@ -99,7 +105,8 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   // simultaneous claims. Unused time can progress the next naturally selected work.
   while (compareEventTime(now, end) < 0) {
     const active = developers.filter(developer => developer.activeTicketID !== undefined)
-    if (!active.length) break
+    const idleChecks = developers.flatMap(developer => developer.activeTicketID === undefined && developer.idleWorkCheck ? [developer.idleWorkCheck] : [])
+    if (!active.length && !idleChecks.length) break
     for (const developer of active) {
       const ticket = byId.get(developer.activeTicketID!)!
       if (!validWorkSession(developer, ticket)) {
@@ -130,7 +137,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     // Exact ordering of stored compensated instants: no broad epsilon merges
     // near events, and true ties are independent of elapsed-call partitioning.
     const boundaries = [...completions.filter(time => time !== null),
-      ...estimateEvents.flatMap(events => [events.discovery, events.overrun]).filter(time => time !== null), ...reviews]
+      ...estimateEvents.flatMap(events => [events.discovery, events.overrun]).filter(time => time !== null), ...reviews, ...idleChecks]
     const nextTime = boundaries.reduce((first, time) => compareEventTime(time, first) < 0 ? time : first, end)
     const interval = eventInterval(nextTime, now)
     if (interval <= 0) throw new RangeError('Event has no positive representable time interval')
@@ -191,6 +198,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
     if (eventInterval(end, now) === eventInterval(end, previous)
         && !completions.some(time => time && compareEventTime(time, now) === 0)
         && !reviews.some(time => compareEventTime(time, now) === 0)
+        && !idleChecks.some(time => compareEventTime(time, now) === 0)
         && !estimateEvents.some(events => [events.discovery, events.overrun].some(time => time && compareEventTime(time, now) === 0))) {
       // Reject time resolution loss instead of hanging or inventing a minimum tick.
       throw new RangeError('Event interval is below the elapsed-time numeric resolution')

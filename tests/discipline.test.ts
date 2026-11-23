@@ -218,7 +218,8 @@ test('completion wins a coincident review/discovery and cancels its clock before
   t.reportedEffortEstimate=100;t.initialEffortEstimate!.totalWork=100
   a.estimateDiscovery!.boardEstimate=100;a.estimateDiscovery!.baseline=100;a.estimateDiscovery!.target=workAmount(100)
   const due=projectWork(a,t,workAmount(100)).seconds!;a.estimateReview!.dueTime={high:due,low:0}
-  const r=advanceSimulation(s,due,noDraw)
+  const idle=sequence([.5]),r=advanceSimulation(s,due,idle.draw)
+  assert.equal(idle.count(),1) // No review/discovery draw; only the post-completion idle deadline.
   assert.equal(r.tickets[0].actualStatus,'done')
   assert.equal(r.developers[0].activeTicketID,undefined)
   assert.equal(r.developers[0].estimateReview,undefined)
@@ -231,7 +232,8 @@ test('idle, merely assigned, stale and duplicate claimants never review another 
   const s=fixture(),a=s.developers[0],t=s.tickets[0]
   t.assignedDeveloperId='owner'
   s.developers.push({...a,id:'owner',activeTicketID:undefined}, {...a,id:'duplicate'}, {...a,id:'stale',activeTicketID:'missing'})
-  const r=advanceSimulation(s,1,noDraw)
+  const idle=sequence([.5,.5,.5]),r=advanceSimulation(s,1,idle.draw)
+  assert.equal(idle.count(),3) // Independent idle-search schedules, never colleagues' report reviews.
   assert.ok(r.developers.slice(1).every(d=>d.estimateReview===undefined))
   assert.equal(r.tickets[0].lastEstimateEvaluation,undefined)
 })
@@ -425,8 +427,8 @@ test('completion has one fresh departure-report opportunity instead of a coincid
     t.requiredWork=1
     const due=projectWork(a,t,workAmount(1)).seconds!
     a.estimateReview!.dueTime={high:due,low:0}
-    const random=sequence([.5,reportDraw]),r=advanceSimulation(s,due,random.draw)
-    assert.equal(random.count(),2)
+    const random=sequence([.5,reportDraw,.5]),r=advanceSimulation(s,due,random.draw)
+    assert.equal(random.count(),3) // Completion appraisal/report, then idle search schedule.
     assert.equal(r.tickets[0].actualStatus,'done')
     assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'completion')
     assert.equal(r.tickets[0].lastEstimateEvaluation!.published,published)

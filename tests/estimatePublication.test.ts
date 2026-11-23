@@ -75,7 +75,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
     { ...state.tickets[0], id: 'done', rank: 3, actualStatus: 'done', completedWork: 1e6 })
   let draws = 0
   const result = advanceSimulation(state, 0.1, () => { draws++; return 0.5 })
-  assert.equal(draws, 4) // initial estimate, report, review and discovery threshold
+  assert.equal(draws, 6) // initial estimate/report/review/discovery, plus two invalid claimants' idle schedules
   assert.equal(result.developers[1].activeTicketID, undefined)
   assert.equal(result.developers[2].activeTicketID, undefined)
   assert.ok(result.tickets.slice(1).every(t => t.initialEffortEstimate === undefined))

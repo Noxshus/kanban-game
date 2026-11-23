@@ -32,12 +32,25 @@ export function scheduleReview(developer: Developer, ticketId: string, now: Even
   developer.estimateReview = { ticketId, dueTime }
 }
 
+export function scheduleIdleWorkCheck(developer: Developer, now: EventTime, draw: () => number) {
+  // Provisional reuse of own-ticket housekeeping cadence, not a new balance curve.
+  const delay = reviewDelay(getDiscipline(developer), draw())
+  const dueTime = addEventTime(now, delay)
+  if (delay <= 0 || compareEventTime(dueTime, now) <= 0) throw new RangeError('Idle work check has no positive representable time interval')
+  developer.idleWorkCheck = dueTime
+}
+
 export function validateReview(developer: Developer) {
   getDiscipline(developer)
   const review = developer.estimateReview
   if (review && (!review.ticketId || !Number.isFinite(review.dueTime?.high) || !Number.isFinite(review.dueTime?.low)
       || compareEventTime(eventTime(review.dueTime.high, review.dueTime.low), review.dueTime) !== 0)) {
     throw new RangeError('Review requires a ticket and a finite normalized event time')
+  }
+  const idle = developer.idleWorkCheck
+  if (idle && (!Number.isFinite(idle.high) || !Number.isFinite(idle.low)
+      || compareEventTime(eventTime(idle.high, idle.low), idle) !== 0)) {
+    throw new RangeError('Idle work check requires a finite normalized event time')
   }
 }
 

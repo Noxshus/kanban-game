@@ -383,7 +383,9 @@ test('completion preempts a coincident evaluation, including an exact discovery 
   assert.equal(result.tickets[0].reportedEffortEstimate, 0.5)
   assert.equal(result.developers[0].estimateDiscovery, undefined)
   const exactBoard = fixture(1, 1)
-  const completed = advanceSimulation(exactBoard, 10, () => { throw Error('No error to discover') })
+  let idleDraws = 0
+  const completed = advanceSimulation(exactBoard, 10, () => { assert.equal(++idleDraws, 1); return .999999 })
+  assert.equal(idleDraws, 1) // Only the post-completion idle schedule, censored beyond this interval.
   assert.equal(completed.tickets[0].lastEstimateEvaluation!.reason, 'completion')
   assert.equal(completed.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(completed.tickets[0].overrunEvaluationConsumed, false)
@@ -482,7 +484,9 @@ test('accurate tickets, idle workers and zero productive work create no discover
   advanceSimulation(first, 0.1, () => { draws++; return 0.5 })
   assert.equal(draws, 1)
   const zero = fixture(0, 0)
-  assert.equal(advanceSimulation(zero, 1, () => { throw Error('Zero work') }).tickets[0].actualStatus, 'done')
+  let idleDraws = 0
+  assert.equal(advanceSimulation(zero, 1, () => { assert.equal(++idleDraws, 1); return .5 }).tickets[0].actualStatus, 'done')
+  assert.equal(idleDraws, 1) // Zero-size work produces no discovery; it still leaves an idle engineer.
 })
 
 test('invalid baselines fail purely; board-only legacy saves retain E0 without inventing an author', () => {

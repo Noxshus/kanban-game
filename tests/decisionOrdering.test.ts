@@ -99,7 +99,9 @@ test('completion wins a discovery tie on the same ticket and releases every clai
  d.estimateDiscovery={ticketId:t.id,requiredWork:100,boardEstimate:100,judgement:0,productive:true,target:workAmount(100)}
  t.overrunEvaluationConsumed=true
  const due=projectWork(d,t,workAmount(100)).seconds!
- const r=advanceSimulation(s,due,()=>{throw Error('Completion cannot trigger reconsideration')})
+ let idleDraws=0
+ const r=advanceSimulation(s,due,()=>{assert.equal(++idleDraws,1);return .5})
+ assert.equal(idleDraws,1) // Post-completion idle schedule only; no assessment/decision RNG.
  assert.equal(r.tickets[0].actualStatus,'done')
  assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'completion')
  assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)

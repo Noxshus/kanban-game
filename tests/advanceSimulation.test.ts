@@ -160,11 +160,17 @@ test('high Focus with substantial retained Flow still permits a clearly worthwhi
  close(result.developers[0].flowStreak!.duration,0.01)
 })
 
-test('empty queues advance time without RNG, and completed active references cannot accumulate work',()=>{
+test('empty queues schedule idle retries, and completed active references cannot accumulate work',()=>{
  const input=state();input.tickets[0].actualStatus='done';input.tickets[0].completedWork=10
- const result=advanceSimulation(input,2,()=>{throw Error('Unexpected RNG')})
+ let idleDraws=0
+ const draw=()=>{idleDraws++;return .5}
+ const result=advanceSimulation(input,2,draw)
+ assert.equal(idleDraws,1)
+ assert.equal(result.developers[0].idleWorkCheck!.high,12)
  assert.equal(result.developers[0].activeTicketID,undefined)
  assert.equal(result.tickets[0].completedWork,10)
+ assert.deepEqual(advanceSimulation(result,1,()=>{throw Error('Not due yet')}).developers,result.developers)
  input.tickets=[]
- assert.equal(advanceSimulation(input,2,()=>{throw Error('Unexpected RNG')}).simulationTime,2)
+ assert.equal(advanceSimulation(input,2,draw).simulationTime,2)
+ assert.equal(idleDraws,2)
 })

@@ -18,6 +18,10 @@ import { close } from './helpers/flowExpectation.ts'
 const sizes = ['S', 'M', 'L', 'XL', 'XXL'] as const
 const multipliers = [1, 1.5, 2, 3, 5]
 const noDraw = () => { throw Error('Complexity must not consume RNG') }
+function oneIdleSchedule() {
+  let count = 0
+  return { draw: () => { assert.equal(++count, 1, 'Only the new post-completion idle deadline may draw'); return .5 }, count: () => count }
+}
 
 // Equal base effort and seed; change technical difficulty or expertise independently.
 function scenario(complexity: TicketComplexity = 'S', competency = 0, productivity = 1): GameState {
@@ -92,7 +96,8 @@ test('integrated Flow, execution, completion projection and DEV rates use the sa
     assert.equal(diagnostic.tickets[0].workRate, diagnostic.developers[0].workRate)
     const projection = projectCompletion(d, t, true)
     close(effortNumber(integratedWork(d, t, projection.seconds!, 18))!, t.requiredWork)
-    const done = advanceSimulation(s, projection.seconds!, noDraw)
+    const idle = oneIdleSchedule(), done = advanceSimulation(s, projection.seconds!, idle.draw)
+    assert.equal(idle.count(), 1)
     assert.equal(done.tickets[0].actualStatus, 'done')
     assert.equal(done.tickets[0].completedWork, 100)
     assert.equal(effortNumber(done.workLog![0].effort), 100)
@@ -112,7 +117,9 @@ test('perceived decision times and actual completion economics agree when the re
     const actual = projectCompletion(d, t, true)
     assert.equal(decision.considered[0].perceivedRemaining, 60)
     close(decision.considered[0].completionSeconds!, actual.seconds!)
-    assert.equal(advanceSimulation(s, actual.seconds!, noDraw).tickets[0].actualStatus, 'done')
+    const idle = oneIdleSchedule()
+    assert.equal(advanceSimulation(s, actual.seconds!, idle.draw).tickets[0].actualStatus, 'done')
+    assert.equal(idle.count(), 1)
   }
 })
 
@@ -223,10 +230,12 @@ test('scaled complexity rates preserve numeric extremes, subnormal productive wo
     estimatedFixture(s)
     const original = structuredClone(s)
     const end = Math.ceil(projectCompletion(s.developers[0], s.tickets[0], true).seconds!) + 1
-    const whole = advanceSimulation(s, end, noDraw)
+    const wholeIdle = oneIdleSchedule(), splitIdle = oneIdleSchedule()
+    const whole = advanceSimulation(s, end, wholeIdle.draw)
     let split = s
     for (const dt of [0.3, 0.3, 0.4]) split = JSON.parse(JSON.stringify(advanceSimulation(split, dt, noDraw)))
-    for (let i = 1; i < end; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 1, noDraw)))
+    for (let i = 1; i < end; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 1, splitIdle.draw)))
+    assert.equal(wholeIdle.count(), 1); assert.equal(splitIdle.count(), 1)
     compareOutcomes(split, whole)
     assert.equal(whole.tickets[0].actualStatus, 'done')
     assert.equal(whole.tickets[0].completedWork, work)
