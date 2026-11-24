@@ -193,7 +193,7 @@ test('seed-1 XL manual QA switches Alex only on Step, preserving gross contribut
   assert.equal(result.game.developers[0].activeTicketID, 'ticket-3')
   const contribution = gross(first.game, 'ticket-1', 'developer-1')
   close(result.game.tickets[0].completedWork, 4 + contribution * 7 / 9)
-  close(result.game.tickets[0].reportedProgress, 100 * contribution / first.game.tickets[0].reportedEffortEstimate!)
+  assert.equal(result.game.tickets[0].reportedProgress, first.game.tickets[0].reportedProgress) // New status draw shifts the seed; the independent departure-progress roll misses.
   assert.deepEqual(result.game.workLog!.find(e => e.ticketId === 'ticket-1'), first.game.workLog!.find(e => e.ticketId === 'ticket-1'))
   assert.equal(result.game.simulationTime, 2)
 })
@@ -283,7 +283,7 @@ test('simultaneous completion and loss-producing revision preserve engineer orde
     s.developers.push({ ...d, id: 'finishing', activeTicketID: 'finish', estimateDiscovery: undefined, estimateReview:{ticketId:'finish',dueTime:{high:1e308,low:0}} })
     s.tickets.push({ ...s.tickets[0], id: 'finish', rank: 4, requiredWork: 10, completedWork: 0,
       reportedEffortEstimate: 10, initialEffortEstimate: { developerId: 'finishing', totalWork: 10 }, estimateHistory: [],
-      overrunEvaluationConsumed: false })
+      overrunEvaluationConsumed: false, reportedStatus: 'done' }) // Isolate the completion/decision tie from status RNG.
     setPublishedEstimate(s.tickets[3], 'finishing', 10)
     if (reverse) s.developers.reverse()
     const due = projectWork(d, s.tickets[0], workAmount(10)).seconds!
@@ -411,7 +411,7 @@ for (const protectedWork of [40, 100]) {
       assert.ok(result.tickets[0].completedWork <= restored.tickets[0].completedWork)
       assert.equal(result.tickets[0].requiredWork, 1e18)
       assert.deepEqual(remainingWork(result.tickets[0]), addWorkAmounts(remainingWork(restored.tickets[0]), workAmount(24)))
-      assert.equal(result.randomState, nextRandom(nextRandom(nextRandom(restored.randomState).state).state).state) // departure/pickup progress, new-ticket review
+      assert.equal(result.randomState, nextRandom(nextRandom(nextRandom(nextRandom(restored.randomState).state).state).state).state) // departure/pickup progress, review and start-status report
       assert.deepEqual(result.workLog, restored.workLog)
       assert.deepEqual(result.tickets[0].estimateHistory, restored.tickets[0].estimateHistory)
       assert.deepEqual(result.developers[0].pausedEstimateDiscoveries!.find(e => e.ticketId === 'current'), restored.developers[0].estimateDiscovery)

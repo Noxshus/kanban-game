@@ -1,4 +1,4 @@
-import type { Developer, EffortAssessmentReason, Ticket } from './types'
+import type { Developer, EffortAssessmentReason, Ticket, WorkflowStatus } from './types'
 import type { EventTime } from './eventTime'
 import { addEventTime, compareEventTime, eventTime } from './eventTime.ts'
 import { openUnit } from './reconsideration.ts'
@@ -18,6 +18,20 @@ export function getDiscipline(developer: Pick<Developer, 'discipline'>) {
 export function reportProbability(discipline: number) {
   const s = 1 + getDiscipline({ discipline }) / DISCIPLINE_SCALE
   return s / (1 + s)
+}
+
+// Status is an independent publication, never a side effect of work/progress.
+// Existing proactive own-ticket reviews reliably follow through on housekeeping.
+export function reportStatus(ticket: Ticket, developer: Developer, status: Extract<WorkflowStatus, 'in_progress' | 'done'>,
+  draw: () => number, proactive = false) {
+  if (ticket.reportedStatus === status) return false
+  if (!proactive) {
+    const probability = reportProbability(getDiscipline(developer)), uniform = draw()
+    if (!Number.isFinite(uniform) || uniform < 0 || uniform >= 1) throw new RangeError('Status report RNG draw must be in [0, 1)')
+    if (uniform >= probability) return false
+  }
+  ticket.reportedStatus = status
+  return true
 }
 
 export function reviewDelay(discipline: number, uniform: number) {

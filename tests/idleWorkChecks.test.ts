@@ -27,7 +27,8 @@ function idle(): GameState {
 }
 function ticket(id = 'available') {
   const t = decisionFixture().tickets[0]
-  t.id = id; t.actualStatus = 'todo'; t.reportedStatus = 'todo'
+  // Already reported In Progress isolates check timing from new start-status rolls.
+  t.id = id; t.actualStatus = 'todo'; t.reportedStatus = 'in_progress'
   setPublishedEstimate(t, 'previous-author')
   return t
 }
@@ -130,6 +131,7 @@ test('completion and an idle deadline release claims first, then share engineer-
     const s = decisionFixture(), a = s.developers[0], t = s.tickets[0]
     a.focus = 0; a.competencies.frontend = 5
     t.requiredWork = 1; setPublishedEstimate(t, a.id, 1)
+    t.reportedStatus = 'done' // No status change needed; isolate the clock/claim tie.
     const due = projectWork(a, t, workAmount(1)).seconds!
     s.tickets.push({ ...ticket('contested'), rank: 2 })
     s.developers.push({ ...a, id: 'idle', activeTicketID: undefined, estimateReview: undefined, idleWorkCheck: eventTime(due) })
@@ -285,6 +287,7 @@ test('empty teams have no scheduling draws; ineligible work remains untouched an
   const s = idle(); s.tickets = [ticket('backlog'), ticket('done')]
   s.tickets[0].actualStatus = 'backlog'; s.tickets[0].reportedStatus = 'todo'
   s.tickets[1].actualStatus = 'done'; s.tickets[1].completedWork = s.tickets[1].requiredWork
+  s.tickets[1].reportedStatus = 'done'
   const originalBacklog = structuredClone(s.tickets[0]), c = collectSimulationActivity(s.tickets)
   const result = advanceSimulation(s, 60, () => .5, c.board.observe, c.internal)
   assert.deepEqual(result.tickets[0], originalBacklog)
@@ -293,7 +296,7 @@ test('empty teams have no scheduling draws; ineligible work remains untouched an
   assert.equal(result.workLog, undefined)
   assert.equal(result.tickets[0].estimateHistory!.length, s.tickets[0].estimateHistory!.length)
   assert.equal('idleWorkCheck' in getPlayerView(result).developers[0], false)
-  assert.ok(c.diagnostics.every(event => event.kind === 'reported')) // Existing Done synchronization still applies.
+  assert.ok(c.diagnostics.every(event => event.kind === 'reported'))
   assert.equal(result.tickets[1].reportedStatus, 'done')
   assert.equal(result.tickets[1].reportedProgress, 100)
 })

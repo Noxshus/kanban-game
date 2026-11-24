@@ -343,7 +343,7 @@ test('legacy completion normalizes 0.24999999999999997 without attributing unkno
     assert.equal(result.tickets[0].completedWork, 1)
     assert.equal(effort(result), expected)
     assert.equal(result.workLog!.length, 1)
-    assert.equal(result.randomState, nextRandom(legacy.randomState).state) // One post-completion idle deadline.
+    assert.equal(result.randomState, nextRandom(nextRandom(legacy.randomState).state).state) // Completion status and idle deadline.
     assert.ok(result.workLog![0].effort.mantissa >= 1 && result.workLog![0].effort.mantissa < 2)
   }
   assert.deepEqual(legacy, original)

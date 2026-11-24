@@ -161,6 +161,7 @@ test('reported Done does not exempt unfinished tickets from the original active-
 test('a naturally completed ticket retains valid history when its engineer immediately picks up new work', () => {
   const state = decisionFixture(), ticket = state.tickets[0], developer = state.developers[0]
   ticket.requiredWork = 1; setPublishedEstimate(ticket, developer.id, 1)
+  developer.discipline = Number.MAX_VALUE // Successful Done report isolates retained historical ownership.
   const next = { ...ticket, id: 'next', title: 'Next ticket', rank: 2, requiredWork: 100,
     actualStatus: 'todo' as const, reportedStatus: 'todo' as const }
   setPublishedEstimate(next, developer.id, 100)

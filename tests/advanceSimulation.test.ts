@@ -58,10 +58,10 @@ test('actual eligibility reserves claims and ignores stale Backlog/completed/dup
  assert.deepEqual(result.tickets[1],input.tickets[1])
 })
 
-test('idle or missing active references select eligible work, without leaking hidden reported truth',()=>{
+test('idle or missing active references select reported unfinished work and preserve independent progress',()=>{
  for(const activeTicketID of [undefined,'missing']) {
   const input=state();input.developers[0].activeTicketID=activeTicketID
-  input.tickets[0].reportedStatus='backlog'
+  input.tickets[0].reportedStatus='in_progress'
   const result=advanceSimulation(input,1,()=>0.5)
   assert.equal(result.developers[0].activeTicketID,'ticket-1')
   assert.equal(result.tickets[0].reportedStatus,'in_progress')
@@ -115,7 +115,7 @@ test('ownership does not reserve work and may differ from an existing active cla
  assert.equal(result.tickets[1].assignedDeveloperId,'idle')
 })
 
-test('misleading reported columns cannot make Backlog/Done eligible or hide actually eligible work',()=>{
+test('reported unfinished work can expose completed tickets, but never crosses the actual Backlog boundary',()=>{
  const input=state();input.developers[0].activeTicketID=undefined
  input.tickets=[
   {...input.tickets[0],id:'backlog',rank:1,actualStatus:'backlog',reportedStatus:'todo'},
@@ -124,7 +124,9 @@ test('misleading reported columns cannot make Backlog/Done eligible or hide actu
  ]
  const before=structuredClone(input.tickets[0])
  const result=advanceSimulation(input,0.5,()=>0.5)
- assert.equal(result.developers[0].activeTicketID,'eligible')
+ assert.equal(result.developers[0].activeTicketID,undefined)
+ assert.equal(result.developers[0].lastAssessment!.selectedId,'done')
+ assert.deepEqual(result.developers[0].lastAssessment!.considered.map(t=>t.id),['done'])
  assert.deepEqual(result.tickets[0],before)
  assert.equal(result.tickets[1].completedWork,10)
 })
@@ -165,12 +167,12 @@ test('empty queues schedule idle retries, and completed active references cannot
  let idleDraws=0
  const draw=()=>{idleDraws++;return .5}
  const result=advanceSimulation(input,2,draw)
- assert.equal(idleDraws,1)
+ assert.equal(idleDraws,2) // Restored completion status attempt and idle schedule.
  assert.equal(result.developers[0].idleWorkCheck!.high,12)
  assert.equal(result.developers[0].activeTicketID,undefined)
  assert.equal(result.tickets[0].completedWork,10)
  assert.deepEqual(advanceSimulation(result,1,()=>{throw Error('Not due yet')}).developers,result.developers)
  input.tickets=[]
  assert.equal(advanceSimulation(input,2,draw).simulationTime,2)
- assert.equal(idleDraws,2)
+ assert.equal(idleDraws,3)
 })

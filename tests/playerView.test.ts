@@ -60,13 +60,13 @@ test('example committed work progresses through player-visible columns while Bac
   const { advanceSimulation } = await import('../src/game/advanceSimulation.ts')
   let state = structuredClone(exampleGameState)
   const original = structuredClone(state)
-  // Inject a stable sequence to verify the new candidate/pickup path.
-  state = advanceSimulation(state, 1, () => 0.99)
+  // Successful reports exercise visible completion; failures are covered separately.
+  state = advanceSimulation(state, 1, () => 0.1)
   const started = getPlayerView(state)
-  assert.equal(started.tickets.find(t => t.id === 'ticket-2')?.reportedStatus, 'in_progress')
+  assert.equal(started.tickets.find(t => t.id === 'ticket-2')?.reportedStatus, 'todo') // An ongoing restored claim is not a fresh start/report.
   assert.equal(started.tickets.find(t => t.id === 'ticket-5')?.reportedStatus, 'in_progress')
   assert.equal(started.tickets.find(t => t.id === 'ticket-5')?.assignedDeveloperId, 'developer-3')
-  for (let second = 1; second < 30; second++) state = advanceSimulation(state, 1, () => 0.99)
+  for (let second = 1; second < 30; second++) state = advanceSimulation(state, 1, () => 0.1)
   for (const ticket of state.tickets.slice(0, 5)) {
     assert.equal(ticket.actualStatus, 'done')
     assert.equal(ticket.completedWork, ticket.requiredWork)

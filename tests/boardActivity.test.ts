@@ -8,6 +8,7 @@ import { boardReducer, createBoardSession } from '../src/store/boardSession.ts'
 import { simulationReducer } from '../src/store/simulationControls.ts'
 import { decisionFixture, setPublishedEstimate } from './helpers/decisionFixture.ts'
 import { exampleGameState } from '../src/data/exampleGameState.ts'
+import { nextRandom } from '../src/game/random.ts'
 
 const noDraw = () => { throw Error('No RNG expected') }
 function sequence(values: number[]) {
@@ -16,7 +17,7 @@ function sequence(values: number[]) {
 }
 function chain() {
   const s = decisionFixture(), d = s.developers[0], t = s.tickets[0]
-  d.focus = 0; d.competencies.frontend = 5
+  d.focus = 0; d.competencies.frontend = 5; d.discipline = Number.MAX_VALUE
   t.requiredWork = .1; t.reportedStatus = 'todo'
   setPublishedEstimate(t, d.id)
   s.tickets.push({ ...t, id: 'second', title: 'Second', rank: 2, actualStatus: 'todo', assignedDeveloperId: undefined })
@@ -92,7 +93,7 @@ test('one second retains intermediate reported movement, completion, next pickup
   const result = advanceSimulation(s, 1, () => .5, c.observe)
   assert.equal(result.tickets[1].reportedStatus, 'done')
   const second = c.events.filter(e => e.ticketId === 'second')
-  assert.deepEqual(second.map(e => [e.kind, 'to' in e ? e.to : null]), [['status', 'in_progress'], ['assignment', 'a'], ['status', 'done']])
+  assert.deepEqual(second.map(e => [e.kind, 'to' in e ? e.to : null]), [['assignment', 'a'], ['status', 'in_progress'], ['status', 'done']])
   assert.ok(second[0].at.high > 0 && second[0].at.high < second[2].at.high)
   assert.deepEqual(result, advanceSimulation(s, 1, () => .5))
   assert.deepEqual(s, before)
@@ -144,7 +145,7 @@ test('restored active To Do reports work-start at the same instant across JSON-r
   assert.deepEqual(wholeEvents.events, [{ id: 1, ticketId: ticket.id, ticketTitle: ticket.title,
     kind: 'status', from: 'todo', to: 'in_progress', at: { high: 0, low: 0 } }])
   assert.deepEqual(split, whole)
-  assert.equal(split.randomState, s.randomState)
+  assert.equal(split.randomState, nextRandom(s.randomState).state) // One genuine work-start status attempt.
   assert.deepEqual(whole, advanceSimulation(s, 1))
   const zero = collectBoardActivity(s.tickets)
   assert.deepEqual(advanceSimulation(s, 0, noDraw, zero.observe), s)

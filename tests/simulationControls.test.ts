@@ -196,7 +196,7 @@ test('Resume flushes priorities immediately with no work or time, then the first
   assert.deepEqual(resumed, { game: reconsiderPriorities(initial.game, staged.game), isPaused: false })
   assert.equal(resumed.game.developers[0].activeTicketID, 'ticket-5')
   assert.equal(resumed.game.developers[0].lastAssessment!.trigger, 'priority')
-  assert.equal(resumed.game.randomState, 1075679462) // 11 draws: two independent missed progress chances; winning effort now publishes and schedules discovery.
+  assert.equal(resumed.game.randomState, 1814098701) // 12 draws: existing 11 plus the winning pickup's independent status attempt.
   assert.equal(resumed.game.tickets[0].progressReport, undefined)
   assert.ok(resumed.game.tickets.find(ticket => ticket.id === 'ticket-5')!.reportedEffortEstimate !== undefined)
   assert.equal(resumed.game.simulationTime, 0)

@@ -67,17 +67,21 @@ test('reported status/progress observations cannot create a freshness claim or p
   const noDraw = () => { throw Error('No additional RNG expected') }
   assert.deepEqual(advanceSimulation(s, 0, noDraw, whole.observe), s)
   assert.deepEqual(whole.observations, seededObservations(s))
-  const done = advanceSimulation(s, 20, noDraw, (r, time) => { whole.observe(r, time); ticker.observe(r, time) })
+  let wholeDraws = 0, splitDraws = 0
+  const start = () => { assert.equal(++wholeDraws, 1); return 0 }
+  const splitStart = () => { assert.equal(++splitDraws, 1); return 0 }
+  const done = advanceSimulation(s, 20, start, (r, time) => { whole.observe(r, time); ticker.observe(r, time) })
   let split = s, evidence = seededObservations(s)
   for (const seconds of [.3, .3, .4, 19]) {
     const c = collectPlayerObservations(JSON.parse(JSON.stringify(evidence)))
-    split = JSON.parse(JSON.stringify(advanceSimulation(split, seconds, noDraw, c.observe)))
+    split = JSON.parse(JSON.stringify(advanceSimulation(split, seconds, splitStart, c.observe)))
     evidence = c.observations
   }
   assert.deepEqual(evidence, whole.observations)
   assert.deepEqual(getTicketObservation(evidence[0]), { revisionCount: 0, publications: [] })
   assert.deepEqual(ticker.events.map(event => [event.kind, event.at]), [['status', at(0)]])
   assert.deepEqual(split, done)
+  assert.equal(wholeDraws, 1); assert.equal(splitDraws, 1) // One real start-status publication in either partition.
   assert.deepEqual(s, original)
 })
 

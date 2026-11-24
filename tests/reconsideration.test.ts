@@ -147,7 +147,7 @@ test('a priority winner promotes its exact temporary appraisal once at the curre
  assert.equal(winner.reportedEffortEstimate,appraisal.estimatedTotal)
  assert.deepEqual(winner.estimateHistory!.map(e=>[e.kind,e.at]),[['publication',{high:0,low:0}]])
  assert.ok(r.tickets.filter(t=>t.id!=='current'&&t.id!==winner.id).every(t=>t.estimateHistory===undefined))
- assert.equal(r.randomState,nextRandom(nextRandom(nextRandom(nextRandom(nextRandom(s.randomState).state).state).state).state).state)
+ assert.equal(r.randomState,nextRandom(nextRandom(nextRandom(nextRandom(nextRandom(nextRandom(s.randomState).state).state).state).state).state).state) // Existing appraisal/publication/scheduling draws plus one start-status roll.
  assert.equal(r.simulationTime,0)
  assert.equal(r.workLog,undefined)
  assert.ok(r.tickets.every(t=>t.completedWork===0))

@@ -8,7 +8,7 @@ import { selectWork } from './selectWork.ts'
 import { compareRank } from './rank.ts'
 import { nextRandom } from './random.ts'
 import { applySwitchLoss, beginWorkStint } from './workLoss.ts'
-import { validateReview } from './discipline.ts'
+import { reportStatus, scheduleIdleWorkCheck, validateReview } from './discipline.ts'
 import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
@@ -26,6 +26,9 @@ export function simulationDraw(state: GameState) {
 export function workTransitions(state: GameState, now: EventTime, draw: () => number, observe?: BoardObserver, internal?: InternalObserver) {
   const byId = new Map(state.tickets.map(t => [t.id, t]))
   const claimed = new Set<string>()
+  // Call-local restoration encounters, not saved completion knowledge. Clearing
+  // the old active claim prevents another chance on every subsequent advance.
+  const completed = new Map<string, Ticket>()
   const clear = (developer: Developer) => {
     // Becoming available gets one immediate pickup; already-idle engineers keep
     // their saved deadline when reservation checks run again at another boundary.
@@ -43,6 +46,8 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   // Reserve existing work before any idle pickup, irrespective of engineer order.
   for (const developer of state.developers) {
     const t = byId.get(developer.activeTicketID ?? '')
+    if (t && t.actualStatus !== 'backlog' && isWorkComplete(t)
+        && ![...completed.values()].some(previous => previous.id === t.id)) completed.set(developer.id, t)
     if (!t || t.actualStatus === 'backlog' || isWorkComplete(t) || claimed.has(t.id)) clear(developer)
     else {
       delete developer.idleWorkCheck
@@ -51,8 +56,8 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   }
   const current = (developer: Developer) => byId.get(developer.activeTicketID ?? '')
   const context = (developer: Developer) => state.tickets.filter(t =>
-    (t.id === developer.activeTicketID || !claimed.has(t.id)) && !isWorkComplete(t)
-    && (t.actualStatus === 'todo' || t.actualStatus === 'in_progress'))
+    (t.id === developer.activeTicketID || !claimed.has(t.id)) && t.actualStatus !== 'backlog'
+    && (t.id === developer.activeTicketID || t.reportedStatus === 'todo' || t.reportedStatus === 'in_progress'))
   const restore = (developer: Developer) => {
     validateReview(developer)
     delete developer.assessmentClock
@@ -60,6 +65,10 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     if (developer.lastAssessment && !('trigger' in developer.lastAssessment)) delete developer.lastAssessment
     const ticket = current(developer)
     if (!ticket) return
+    // A restored To Do claim genuinely begins execution once. A missed report
+    // on already-started work does not gain another chance on each caller slice.
+    const started = ticket.actualStatus === 'todo'
+    if (started) ticket.actualStatus = 'in_progress'
     beginWorkStint(state, developer, ticket)
     if (developer.estimateDiscovery && developer.estimateDiscovery.ticketId !== ticket.id) pauseDiscovery(developer)
     if (developer.flowStreak && developer.flowStreak.ticketId !== ticket.id) {
@@ -68,12 +77,15 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       delete developer.workSession
     }
     beginEstimateReporting(state, developer, ticket, now, draw, undefined, internal)
+    if (started) reportStatus(ticket, developer, 'in_progress', draw)
     observeBoard(observe, ticket, now)
     resumeDiscovery(developer, ticket.id)
   }
-  const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>, currentInsight?: number) => {
+  const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>, currentInsight?: number, justCompleted?: Ticket) => {
     const previous = current(developer)
-    const decision = selectWork(context(developer), developer, draw, trigger, now, previous, alternatives, currentInsight)
+    // A completion already got its report attempt at this instant. Other
+    // engineers can encounter it; this engineer can rediscover it at a later check.
+    const decision = selectWork(context(developer).filter(t => t.id !== justCompleted?.id), developer, draw, trigger, now, previous, alternatives, currentInsight)
     if (!decision) return
     developer.lastAssessment = decision
     internal?.({ kind: 'decision', ticketId: decision.selectedId, ticketTitle: byId.get(decision.selectedId)!.title,
@@ -93,6 +105,16 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
       previous.actualStatus = 'in_progress'
     }
     const ticket = byId.get(decision.selectedId)!
+    if (isWorkComplete(ticket)) {
+      // One encounter consumes this selection opportunity, without work, ownership,
+      // estimate publication or enduring knowledge. No same-instant retry cascade.
+      ticket.actualStatus = 'done'
+      reportStatus(ticket, developer, 'done', draw)
+      observeBoard(observe, ticket, now)
+      clear(developer)
+      scheduleIdleWorkCheck(developer, now, draw)
+      return
+    }
     const appraisal = decision.considered.find(t => t.id === ticket.id)!
     pauseDiscovery(developer)
     developer.activeTicketID = ticket.id
@@ -107,14 +129,14 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     claimed.add(ticket.id)
     ticket.assignedDeveloperId = developer.id
     ticket.actualStatus = 'in_progress'
-    ticket.reportedStatus = 'in_progress'
     observeBoard(observe, ticket, now)
     beginEstimateReporting(state, developer, ticket, now, draw,
       appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined, internal)
+    reportStatus(ticket, developer, 'in_progress', draw)
     observeBoard(observe, ticket, now)
     resumeDiscovery(developer, ticket.id)
   }
-  return { claimed, clear, context, current, restore, decide }
+  return { claimed, completed, clear, context, current, restore, decide }
 }
 
 function changedRelativeOrder(before: ReadonlyMap<string, Ticket>, options: Ticket[]) {
@@ -155,5 +177,10 @@ export function reconsiderPriorities(before: GameState, reordered: GameState, ob
     const ticket = transitions.current(developer)
     if (ticket) prepareDiscovery(result, developer, ticket, draw)
   }
+  // A priority action is not this restored completion's recognition event.
+  // Preserve the saved reference for advanceSimulation's existing completion
+  // pass, rather than losing its report and immediate next-work opportunity.
+  result.developers = result.developers.map((developer, index) => transitions.completed.has(developer.id)
+    ? structuredClone(reordered.developers[index]) : developer)
   return assessed ? result : reordered
 }

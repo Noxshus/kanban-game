@@ -20,7 +20,7 @@ const multipliers = [1, 1.5, 2, 3, 5]
 const noDraw = () => { throw Error('Complexity must not consume RNG') }
 function oneIdleSchedule() {
   let count = 0
-  return { draw: () => { assert.equal(++count, 1, 'Only the new post-completion idle deadline may draw'); return .5 }, count: () => count }
+  return { draw: () => { assert.ok(++count <= 2, 'Only completion status and the idle deadline may draw'); return count === 1 ? 0 : .5 }, count: () => count }
 }
 
 // Equal base effort and seed; change technical difficulty or expertise independently.
@@ -97,7 +97,7 @@ test('integrated Flow, execution, completion projection and DEV rates use the sa
     const projection = projectCompletion(d, t, true)
     close(effortNumber(integratedWork(d, t, projection.seconds!, 18))!, t.requiredWork)
     const idle = oneIdleSchedule(), done = advanceSimulation(s, projection.seconds!, idle.draw)
-    assert.equal(idle.count(), 1)
+    assert.equal(idle.count(), 2)
     assert.equal(done.tickets[0].actualStatus, 'done')
     assert.equal(done.tickets[0].completedWork, 100)
     assert.equal(effortNumber(done.workLog![0].effort), 100)
@@ -119,7 +119,7 @@ test('perceived decision times and actual completion economics agree when the re
     close(decision.considered[0].completionSeconds!, actual.seconds!)
     const idle = oneIdleSchedule()
     assert.equal(advanceSimulation(s, actual.seconds!, idle.draw).tickets[0].actualStatus, 'done')
-    assert.equal(idle.count(), 1)
+    assert.equal(idle.count(), 2)
   }
 })
 
@@ -235,7 +235,7 @@ test('scaled complexity rates preserve numeric extremes, subnormal productive wo
     let split = s
     for (const dt of [0.3, 0.3, 0.4]) split = JSON.parse(JSON.stringify(advanceSimulation(split, dt, noDraw)))
     for (let i = 1; i < end; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 1, splitIdle.draw)))
-    assert.equal(wholeIdle.count(), 1); assert.equal(splitIdle.count(), 1)
+    assert.equal(wholeIdle.count(), 2); assert.equal(splitIdle.count(), 2)
     compareOutcomes(split, whole)
     assert.equal(whole.tickets[0].actualStatus, 'done')
     assert.equal(whole.tickets[0].completedWork, work)

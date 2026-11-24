@@ -10,7 +10,7 @@ import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimePr
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
 import { getTicketComplexity } from './complexity.ts'
-import { scheduleIdleWorkCheck, scheduleReview, validateReview } from './discipline.ts'
+import { reportStatus, scheduleIdleWorkCheck, scheduleReview, validateReview } from './discipline.ts'
 import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
@@ -34,6 +34,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
   const byId = new Map(tickets.map(ticket => [ticket.id, ticket]))
   const draw = random ?? simulationDraw(result)
   let transitions = workTransitions(result, now, draw, observe, internal)
+  const restoredCompleted = transitions.completed
   const complete = isWorkComplete
   for (const developer of developers) transitions.restore(developer)
   const completedAtInstant = new Map<string, Ticket>()
@@ -48,9 +49,10 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       const review = developer.estimateReview
       const reviewDue = review && compareEventTime(review.dueTime, now) <= 0
       let insight: number | undefined
-      const finished = completedAtInstant.get(developer.id)
+      const finished = completedAtInstant.get(developer.id) ?? restoredCompleted.get(developer.id)
       if (finished) {
-        evaluateEstimate(result, developer, finished, 'completion', draw, now, false, undefined, internal)
+        if (completedAtInstant.has(developer.id)) evaluateEstimate(result, developer, finished, 'completion', draw, now, false, undefined, internal)
+        reportStatus(finished, developer, 'done', draw)
         observeBoard(observe, finished, now)
       }
       else if (developer.activeTicketID !== undefined && (overrun || discovery || reviewDue)) {
@@ -58,14 +60,16 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
         // Completion wins. At a work/review tie assess once, using the review's
         // guaranteed follow-through; only the work event can trigger a decision.
         const assessment = evaluateEstimate(result, developer, ticket, overrun ? 'overrun' : discovery ? 'discovery' : 'review', draw, now, !!reviewDue, undefined, internal)
+        if (reviewDue) reportStatus(ticket, developer, 'in_progress', draw, true)
         observeBoard(observe, ticket, now)
         if ((overrun || discovery) && assessment.improved) insight = assessment.candidate
       }
       if (developer.activeTicketID === undefined) {
         const check = developer.idleWorkCheck
         if (!check || compareEventTime(check, now) <= 0) {
-          transitions.decide(developer, 'pickup')
-          if (developer.activeTicketID === undefined) scheduleIdleWorkCheck(developer, now, draw)
+          delete developer.idleWorkCheck
+          transitions.decide(developer, 'pickup', undefined, undefined, finished)
+          if (developer.activeTicketID === undefined && !developer.idleWorkCheck) scheduleIdleWorkCheck(developer, now, draw)
         }
       }
       else if (insight !== undefined) transitions.decide(developer, 'estimate_revision', undefined, insight)
@@ -73,6 +77,7 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       if (reviewDue && developer.activeTicketID === review.ticketId) scheduleReview(developer, review.ticketId, now, draw)
     }
     completedAtInstant.clear()
+    restoredCompleted.clear()
     for (const developer of developers) {
       if (developer.activeTicketID !== undefined) {
         prepareDiscovery(result, developer, byId.get(developer.activeTicketID)!, draw)
@@ -85,15 +90,12 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       ticket.reportedProgress = clampReportedProgress(ticket.reportedProgress)
       if (complete(ticket)) {
         ticket.actualStatus = 'done'
-        ticket.reportedStatus = 'done'
         if (workBoundary && transitions.claimed.has(ticket.id)) publishProgress(ticket, 100, now)
         else {
           // A restored inconsistent Done snapshot supplies no historical report time.
           if (ticket.reportedProgress !== 100) delete ticket.progressReport
           ticket.reportedProgress = 100
         }
-      } else if (transitions.claimed.has(ticket.id)) {
-        ticket.reportedStatus = ticket.actualStatus
       }
       observeBoard(observe, ticket, now)
     }
@@ -174,10 +176,6 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
       // interval. Anchor that observation to the interval's start, not an arbitrary
       // caller's slice endpoint; the original assignment/work mutation is unchanged.
       observeBoard(observe, ticket, now)
-      // A restored active To Do claim starts work at this interval's beginning,
-      // even if the first caller's slice also completes it. Observe that report
-      // without moving the existing actual/reported status writes or work integral.
-      if (observe && ticket.actualStatus === 'todo') observeBoard(observe, { ...ticket, reportedStatus: 'in_progress' }, now)
       ticket.actualStatus = complete(ticket) ? 'done' : 'in_progress'
     }
     const previous = now

@@ -384,8 +384,8 @@ test('completion preempts a coincident evaluation, including an exact discovery 
   assert.equal(result.developers[0].estimateDiscovery, undefined)
   const exactBoard = fixture(1, 1)
   let idleDraws = 0
-  const completed = advanceSimulation(exactBoard, 10, () => { assert.equal(++idleDraws, 1); return .999999 })
-  assert.equal(idleDraws, 1) // Only the post-completion idle schedule, censored beyond this interval.
+  const completed = advanceSimulation(exactBoard, 10, () => { assert.ok(++idleDraws <= 2); return .999999 })
+  assert.equal(idleDraws, 2) // Completion status and idle schedule, censored beyond this interval.
   assert.equal(completed.tickets[0].lastEstimateEvaluation!.reason, 'completion')
   assert.equal(completed.tickets[0].lastEstimateEvaluation!.published, false)
   assert.equal(completed.tickets[0].overrunEvaluationConsumed, false)
@@ -414,7 +414,7 @@ test('mixed completion/discovery instants preserve engineer-ordered claims and R
         boardEstimate: 20, requiredWork: 100, judgement: 10, productive: true, target: workAmount(1) } },
     ]
     state.tickets = [
-      { ...ticket, id: 'finish', rank: 3, requiredWork: 1, initialEffortEstimate: { developerId: 'original', totalWork: 1 }, reportedEffortEstimate: 1 },
+      { ...ticket, id: 'finish', rank: 3, requiredWork: 1, reportedStatus: 'done', initialEffortEstimate: { developerId: 'original', totalWork: 1 }, reportedEffortEstimate: 1 },
       { ...ticket, id: 'ongoing', rank: 2 },
       { ...ticket, id: 'contested', rank: 1, actualStatus: 'todo', initialEffortEstimate: { developerId: 'original', totalWork: 100 }, reportedEffortEstimate: 100 },
     ]
@@ -485,8 +485,8 @@ test('accurate tickets, idle workers and zero productive work create no discover
   assert.equal(draws, 1)
   const zero = fixture(0, 0)
   let idleDraws = 0
-  assert.equal(advanceSimulation(zero, 1, () => { assert.equal(++idleDraws, 1); return .5 }).tickets[0].actualStatus, 'done')
-  assert.equal(idleDraws, 1) // Zero-size work produces no discovery; it still leaves an idle engineer.
+  assert.equal(advanceSimulation(zero, 1, () => { assert.ok(++idleDraws <= 2); return .5 }).tickets[0].actualStatus, 'done')
+  assert.equal(idleDraws, 2) // Zero-size work has a status report and idle schedule, no discovery.
 })
 
 test('invalid baselines fail purely; board-only legacy saves retain E0 without inventing an author', () => {

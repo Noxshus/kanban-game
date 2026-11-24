@@ -15,9 +15,10 @@ function coincident(reverse=false,offset=0,complexity: TicketComplexity='S') {
  base.focus=0;base.competencies.frontend=5
  s.developers=[{...base,id:'finishing',activeTicketID:'finish'},{...base,id:'revising',activeTicketID:'ongoing'}]
  s.tickets=[
-  {...template,id:'finish',rank:3,requiredWork:1,estimateHistory:[],initialEffortEstimate:undefined},
+  // Pre-reported statuses isolate decision-type ordering from fallible status draws.
+  {...template,id:'finish',rank:3,requiredWork:1,reportedStatus:'done',estimateHistory:[],initialEffortEstimate:undefined},
   {...template,id:'ongoing',rank:2,requiredWork:1000,estimateHistory:[],initialEffortEstimate:undefined,reportedEffortEstimate:600},
-  {...template,id:'contested',rank:1,requiredWork:100,actualStatus:'todo',reportedStatus:'todo',estimateHistory:[],initialEffortEstimate:undefined},
+  {...template,id:'contested',rank:1,requiredWork:100,actualStatus:'todo',reportedStatus:'in_progress',estimateHistory:[],initialEffortEstimate:undefined},
  ]
  for(const t of s.tickets)for(const d of s.developers)setPublishedEstimate(t,d.id,t.id==='ongoing'&&d.id==='revising'?600:t.requiredWork)
  for(const t of s.tickets)t.reportedEffortEstimate=t.id==='ongoing'?600:t.requiredWork
@@ -100,8 +101,8 @@ test('completion wins a discovery tie on the same ticket and releases every clai
  t.overrunEvaluationConsumed=true
  const due=projectWork(d,t,workAmount(100)).seconds!
  let idleDraws=0
- const r=advanceSimulation(s,due,()=>{assert.equal(++idleDraws,1);return .5})
- assert.equal(idleDraws,1) // Post-completion idle schedule only; no assessment/decision RNG.
+ const r=advanceSimulation(s,due,()=>{assert.ok(++idleDraws<=2);return .5})
+ assert.equal(idleDraws,2) // Completion status and idle schedule; no assessment/decision RNG.
  assert.equal(r.tickets[0].actualStatus,'done')
  assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'completion')
  assert.equal(r.tickets[0].lastEstimateEvaluation!.published,false)

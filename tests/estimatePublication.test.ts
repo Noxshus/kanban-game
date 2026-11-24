@@ -23,7 +23,7 @@ test('a genuine pickup publishes total work once, with one estimate draw before 
   const firstDraw = nextRandom(1), secondDraw = nextRandom(firstDraw.state)
   const first = advanceSimulation(input, 0.1)
   const expected = estimateInitialEffort(1e6, 0, 0, firstDraw.value)
-  assert.equal(first.randomState, nextRandom(nextRandom(secondDraw.state).state).state) // preview, report, review, discovery
+  assert.equal(first.randomState, nextRandom(nextRandom(nextRandom(secondDraw.state).state).state).state) // preview, report, review, start status, discovery
   assert.deepEqual(first.tickets[0].initialEffortEstimate, { developerId: input.developers[0].id, totalWork: expected })
   assert.equal(first.tickets[0].reportedEffortEstimate, expected)
   assert.equal(first.tickets[0].assignedDeveloperId, input.developers[0].id)
@@ -75,7 +75,7 @@ test('ownership alone, completed work and stale/duplicate active references neve
     { ...state.tickets[0], id: 'done', rank: 3, actualStatus: 'done', completedWork: 1e6 })
   let draws = 0
   const result = advanceSimulation(state, 0.1, () => { draws++; return 0.5 })
-  assert.equal(draws, 6) // initial estimate/report/review/discovery, plus two invalid claimants' idle schedules
+  assert.equal(draws, 8) // initial estimate/report/review/discovery, two stale-completion reports and two idle schedules
   assert.equal(result.developers[1].activeTicketID, undefined)
   assert.equal(result.developers[2].activeTicketID, undefined)
   assert.ok(result.tickets.slice(1).every(t => t.initialEffortEstimate === undefined))
@@ -119,7 +119,7 @@ test('event switches and returns retain shared estimates and pending discovery w
   s.tickets.push({...scenario().tickets[0],id:'other',rank:2,reportedProgress:99.999})
   let calls=0
   s=decideNow(s,()=>{calls++;return .5})
-  assert.equal(calls,6) // preview, departure effort/progress, pickup effort/progress, new-ticket review
+  assert.equal(calls,7) // preview, departure effort/progress, pickup effort/progress, review and start-status report
   assert.equal(s.developers[0].activeTicketID,'other')
   const beliefs=s.tickets.map(t=>structuredClone(t.initialEffortEstimate))
   s.tickets[0].reportedProgress=99.9999;s.tickets[1].reportedProgress=0
@@ -171,7 +171,7 @@ function coincident(reverse: boolean) {
     { ...base, id: 'reconsidering', activeTicketID: 'ongoing', assessmentClock: { elapsed: 0, remaining: 1000 } },
   ]
   state.tickets = [
-    { ...ticket, id: 'finish', rank: 3, requiredWork: 1, actualStatus: 'in_progress' },
+    { ...ticket, id: 'finish', rank: 3, requiredWork: 1, actualStatus: 'in_progress', reportedStatus: 'done' },
     { ...ticket, id: 'ongoing', rank: 2, requiredWork: 1000, actualStatus: 'in_progress' },
     { ...ticket, id: 'contested', rank: 1, requiredWork: 100, reportedProgress: 100 },
   ]
@@ -199,7 +199,7 @@ test('simultaneous first publications preserve engineer order, partitioned decis
     for (let i = 0; i < 3; i++) split = JSON.parse(JSON.stringify(advanceSimulation(split, 0.3)))
     split = advanceSimulation(split, due + 0.25 - 0.9)
     let expectedSeed = state.randomState
-    for (let i = 0; i < 5; i++) expectedSeed = nextRandom(expectedSeed).state // preview, effort/progress, review, discovery
+    for (let i = 0; i < 6; i++) expectedSeed = nextRandom(expectedSeed).state // preview, effort/progress, review, start status, discovery
     assert.equal(whole.randomState, expectedSeed)
     assert.equal(split.randomState, whole.randomState)
     assert.deepEqual(split.developers.map(d => [d.id, d.activeTicketID, d.lastAssessment]),

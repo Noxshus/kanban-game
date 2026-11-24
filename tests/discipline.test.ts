@@ -218,8 +218,8 @@ test('completion wins a coincident review/discovery and cancels its clock before
   t.reportedEffortEstimate=100;t.initialEffortEstimate!.totalWork=100
   a.estimateDiscovery!.boardEstimate=100;a.estimateDiscovery!.baseline=100;a.estimateDiscovery!.target=workAmount(100)
   const due=projectWork(a,t,workAmount(100)).seconds!;a.estimateReview!.dueTime={high:due,low:0}
-  const idle=sequence([.5]),r=advanceSimulation(s,due,idle.draw)
-  assert.equal(idle.count(),1) // No review/discovery draw; only the post-completion idle deadline.
+  const idle=sequence([0,.5]),r=advanceSimulation(s,due,idle.draw)
+  assert.equal(idle.count(),2) // Completion status and idle deadline, no review/discovery draw.
   assert.equal(r.tickets[0].actualStatus,'done')
   assert.equal(r.developers[0].activeTicketID,undefined)
   assert.equal(r.developers[0].estimateReview,undefined)
@@ -334,8 +334,8 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
   const s=fixture(true),a=s.developers[0]
   delete a.activeTicketID;delete a.estimateReview
   s.tickets[0].actualStatus='todo';s.tickets[0].reportedStatus='todo'
-  const pickup=sequence([.5,.9,.5]),working=advanceSimulation(s,1,pickup.draw)
-  assert.equal(pickup.count(),3)
+  const pickup=sequence([.5,.9,.5,0]),working=advanceSimulation(s,1,pickup.draw)
+  assert.equal(pickup.count(),4) // Estimate/report/review, then independent start-status publication.
   const unknown=working.tickets[0],failedCandidate=unknown.lastEstimateEvaluation!.candidate
   assert.equal(failedCandidate,50)
   assert.equal(unknown.reportedEffortEstimate,undefined)
@@ -361,7 +361,7 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
   assert.equal(decision.trigger,'priority');assert.equal(decision.outcome,'switch');assert.equal(d.activeTicketID,'fast')
   assert.equal(decision.considered.find(option=>option.id==='ticket')!.estimateSource,'temporary')
   close(decision.considered.find(option=>option.id==='ticket')!.estimatedTotal,e0)
-  assert.equal(reordered.randomState,reviewDraw.state) // appraisal, independent effort/progress, review; no resampling
+  assert.equal(reordered.randomState,nextRandom(reviewDraw.state).state) // appraisal, effort/progress, review, start status; no resampling
   assert.equal(t.lastEstimateEvaluation!.reason,'departure');assert.equal(t.lastEstimateEvaluation!.published,true)
   assert.equal(t.lastEstimateEvaluation!.reportDraw,reportDraw.value)
   close(t.reportedEffortEstimate!,e0);close(firstPublishedEstimate(t)!,e0)
@@ -374,9 +374,9 @@ test('Unknown pickup missed report can first publish on a genuine Rank departure
   // Completion naturally returns the engineer to the original ticket. A saved
   // board reference is reused: progress chance, new review and discovery target.
   const finishTime=projectWork(d,reordered.tickets[2],workAmount(5)).seconds!
-  const returnDraws=sequence([.9,.5,.001])
+  const returnDraws=sequence([0,.9,.5,.001])
   const returned=advanceSimulation(JSON.parse(JSON.stringify(reordered)),finishTime,returnDraws.draw)
-  assert.equal(returnDraws.count(),3)
+  assert.equal(returnDraws.count(),4) // Completion status, then returning progress/review/discovery.
   const returning=returned.developers[0],original=returned.tickets[0],schedule=returning.estimateDiscovery!
   assert.equal(returning.activeTicketID,'ticket')
   assert.equal(schedule.baseline,e0);assert.equal(schedule.boardEstimate,e0)
@@ -427,8 +427,8 @@ test('completion has one fresh departure-report opportunity instead of a coincid
     t.requiredWork=1
     const due=projectWork(a,t,workAmount(1)).seconds!
     a.estimateReview!.dueTime={high:due,low:0}
-    const random=sequence([.5,reportDraw,.5]),r=advanceSimulation(s,due,random.draw)
-    assert.equal(random.count(),3) // Completion appraisal/report, then idle search schedule.
+    const random=sequence([.5,reportDraw,0,.5]),r=advanceSimulation(s,due,random.draw)
+    assert.equal(random.count(),4) // Completion appraisal/report, independent status, then idle schedule.
     assert.equal(r.tickets[0].actualStatus,'done')
     assert.equal(r.tickets[0].lastEstimateEvaluation!.reason,'completion')
     assert.equal(r.tickets[0].lastEstimateEvaluation!.published,published)
@@ -444,7 +444,7 @@ test('mixed simultaneous completion and review/discovery share engineer order an
   for(const reverse of [false,true]) {
     const s=fixture(),base=s.developers[0],ongoing=s.tickets[0]
     ongoing.rank=2;base.estimateDiscovery!.target=workAmount(1)
-    s.tickets.push({...ongoing,id:'finish',rank:3,requiredWork:1,reportedEffortEstimate:1,
+    s.tickets.push({...ongoing,id:'finish',rank:3,requiredWork:1,reportedStatus:'done',reportedEffortEstimate:1,
       initialEffortEstimate:{developerId:'original',totalWork:1}},
       {...ongoing,id:'contested',rank:1,requiredWork:5,reportedEffortEstimate:5,
         initialEffortEstimate:{developerId:'original',totalWork:5},actualStatus:'todo'})

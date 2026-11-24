@@ -130,6 +130,7 @@ test('a returning target beyond remaining capacity stays censored instead of rer
   const target=structuredClone(a.estimateDiscovery!.target)
   pauseDiscovery(a);encounterEstimate(t,b,at,noDraw);t.completedWork=99.9
   encounterEstimate(t,a,at,noDraw);resumeDiscovery(a,t.id);a.activeTicketID=t.id;s.developers=[a]
+  t.actualStatus='in_progress' // Returning to already-started work, not a first status-report event.
   const result=advanceSimulation(s,.01,noDraw)
   assert.deepEqual(result.developers[0].estimateDiscovery!.target,target)
   assert.equal(result.developers[0].workSession!.estimateEvents!.discovery,null)
@@ -160,6 +161,7 @@ test('old personal assessments are discarded while genuine historical publicatio
 test('legacy no-op evaluation cannot identify the author of an earlier publication or invent a belief', () => {
   const s=fixture(),t=s.tickets[0],b=s.developers[1]
   s.simulationTime=100;s.developers=[b];b.activeTicketID=t.id
+  t.actualStatus='in_progress'
   b.estimateDiscovery={ticketId:t.id,boardEstimate:60,requiredWork:100,judgement:0,productive:true,target:null}
   t.initialEffortEstimate={developerId:'a',totalWork:20};t.reportedEffortEstimate=60;t.completedWork=30
   t.lastEstimateEvaluation={developerId:'b',reason:'discovery',personalWork:5,candidate:25,published:false}
@@ -200,6 +202,7 @@ test('board-only legacy E0 is frozen without an invented author; a private-only 
 
 test('zero time and repeated stays do not publish, migrate, consume RNG or manufacture assessment history', () => {
   let s=fixture();s.developers=[s.developers[0]];s.developers[0].activeTicketID='ticket'
+  s.tickets[0].actualStatus='in_progress'
   encounterEstimate(s.tickets[0],s.developers[0],at,()=>0)
   assert.deepEqual(advanceSimulation(s,0,noDraw),s)
   const history=structuredClone(s.tickets[0].estimateHistory)
@@ -242,7 +245,7 @@ test('extreme work/attributes support publication and keep fixed E0/history outs
   }
 })
 
-test('completion preempts coincident discovery without a publication or additional RNG draw', () => {
+test('completion preempts coincident discovery without an estimate publication or discovery roll', () => {
   const s=fixture();s.developers=[s.developers[0]]
   const a=s.developers[0],t=s.tickets[0]
   encounterEstimate(t,a,at,()=>.5);a.activeTicketID=t.id;t.overrunEvaluationConsumed=true
