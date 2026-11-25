@@ -34,7 +34,8 @@ Do not treat proposed mechanics or open design questions as approved implementat
 
 - Preserve pure, deterministic simulation transitions; seeded random draws belong to simulation state, not ambient browser randomness.
 - Keep reported workflow status and progress distinct from actual ticket status and completed work. Developer assignment represents ownership, not necessarily active work.
-- Developers select only eligible committed To Do or unfinished unclaimed In Progress work under ordinary rules. Preserve the category-selection and switching rules in `GAME_DESIGN.md` unless the design changes.
+- Developers select from one reported-eligible To Do/In Progress pool, excluding actual Backlog and other engineers' active claims. Physical completion is checked on execution, so stale-completed tickets remain candidates. Existing unfinished active claims may continue even if their reports differ; ownership alone does not reserve work.
+- Preserve the current perceived-work selector, deliberately top-heavy soft Rank preference and event-driven reconsideration in `GAME_DESIGN.md`. The old 50/50 category selection, 1% random switching and periodic active-work reconsideration are superseded. Successful stale Done corrections permit immediate normal reselection; failed reports use the existing idle-check schedule (#90).
 - Keep player-facing selectors from exposing authoritative diagnostic values. Technical regression cases and implementation particulars belong in code/tests or finite GitHub issues, not in the game design decision log.
 
 ## Development UI visibility
@@ -44,7 +45,7 @@ Do not treat proposed mechanics or open design questions as approved implementat
 - Production (`npm run build` then `npm run preview`, also GitHub Pages) renders the reported board, normal developer information, Pause/Resume, and simulation clock. Step, Restart, RNG tools, and all true-state diagnostics are development-only.
 - Keep simulation behavior independent of Vite build mode and keep hidden values out of `getPlayerView`.
 - This is a UI visibility convention, not information security: all simulation state exists client-side. Do not add staging, authentication, or a feature-flag framework for it.
-- Ticket truth Match/Mismatch indicators are a **proposed development-only diagnostic feature** tracked in [issue #25](https://github.com/Noxshus/kanban-game/issues/25), not a player-facing mechanic. Compare reported and actual values through diagnostic selectors without leaking authoritative state into the player view; the detailed acceptance criteria belong in the issue.
+- Ticket Match/Mismatch indicators are **implemented development-only diagnostics** ([#25](https://github.com/Noxshus/kanban-game/issues/25), [#69](https://github.com/Noxshus/kanban-game/issues/69)), not a player-facing mechanic or a manager accuracy verdict. Preserve the diagnostic selectors' status, progress and ownership/active-work comparisons, including valid historical ownership on completed tickets, without leaking authoritative state into the player view.
 
 
 ## AI-assisted development workflow
