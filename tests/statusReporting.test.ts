@@ -32,6 +32,163 @@ function stale() {
   return s
 }
 
+function staleChain(count: number, usefulCount = 0) {
+  const s = stale(), template = s.tickets[0]
+  s.tickets = Array.from({ length: count }, (_, i) => ({ ...structuredClone(template), id: `stale-${i}`, rank: i + 1 }))
+  s.workLog = s.tickets.map(t => ({ developerId: 'a', ticketId: t.id, effort: workAmount(100) }))
+  for (let i = 0; i < usefulCount; i++) s.tickets.push({ ...structuredClone(template), id: `useful-${i}`, rank: count + i + 1,
+    actualStatus: 'todo', completedWork: 0, reportedProgress: 0, assignedDeveloperId: undefined })
+  return s
+}
+
+test('successful stale Done publication immediately picks useful work at the same instant without an idle draw', () => {
+  const s = staleChain(1, 1), original = structuredClone(s)
+  s.simulationTime = 7.25; original.simulationTime = s.simulationTime
+  const rng = sequence([0, .5]), c = collectSimulationActivity(s.tickets)
+  const r = advanceSimulation(s, .5, rng.draw, c.board.observe, c.internal)
+  assert.equal(rng.count(), 2) // Done publication, then the useful ticket's normal review schedule.
+  assert.equal(r.developers[0].activeTicketID, 'useful-0')
+  assert.equal(r.developers[0].idleWorkCheck, undefined)
+  assert.equal(r.developers[0].flowStreak!.duration, .5)
+  close(r.tickets[1].completedWork, expectedWork(1, .5, 0))
+  assert.deepEqual(r.tickets[0], { ...original.tickets[0], reportedStatus: 'done' })
+  assert.deepEqual(r.workLog![0], original.workLog![0])
+  assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => [e.ticketId, e.decision.trigger, e.at]),
+    [['stale-0', 'pickup', eventTime(7.25)], ['useful-0', 'pickup', eventTime(7.25)]])
+  assert.deepEqual(c.board.events.filter(e => e.kind === 'status').map(e => [e.ticketId, e.to, e.at]),
+    [['stale-0', 'done', eventTime(7.25)]])
+  assert.deepEqual(s, original)
+})
+
+test('failed stale reporting still idles despite useful work; a later successful encounter resumes immediately', () => {
+  const s = staleChain(1, 1), rng = sequence([.9, .5, 0, .5])
+  const first = advanceSimulation(s, 1, rng.draw)
+  assert.equal(rng.count(), 2)
+  assert.equal(first.developers[0].activeTicketID, undefined)
+  assert.deepEqual(first.developers[0].idleWorkCheck, eventTime(12))
+  assert.deepEqual(first.tickets, s.tickets)
+  assert.deepEqual(first.workLog, s.workLog)
+  const c = collectSimulationActivity(first.tickets)
+  const later = advanceSimulation(restore(first), 11, rng.draw, c.board.observe, c.internal)
+  assert.equal(rng.count(), 4)
+  assert.equal(later.developers[0].activeTicketID, 'useful-0')
+  assert.equal(later.developers[0].idleWorkCheck, undefined)
+  assert.deepEqual(later.developers[0].flowStreak, { ticketId: 'useful-0', duration: 0 })
+  assert.equal(later.tickets[0].reportedStatus, 'done')
+  assert.equal(later.tickets[1].completedWork, 0)
+  assert.deepEqual(later.workLog, s.workLog)
+  assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => [e.ticketId, e.at]),
+    [['stale-0', eventTime(12)], ['useful-0', eventTime(12)]])
+})
+
+test('consecutive successful corrections terminate on useful work or one ordinary idle schedule when none remains', () => {
+  for (const usefulCount of [0, 1]) {
+    const s = staleChain(3, usefulCount), rng = sequence([0, 0, 0, .5]), c = collectSimulationActivity(s.tickets)
+    const r = advanceSimulation(s, 1, rng.draw, c.board.observe, c.internal)
+    assert.equal(rng.count(), 4) // Three corrections, then exactly one active-review OR idle schedule.
+    assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => e.ticketId),
+      [...s.tickets.map(t => t.id)])
+    assert.ok(c.diagnostics.every(e => e.at.high === 0 && e.at.low === 0))
+    assert.deepEqual(c.board.events.filter(e => e.kind === 'status').map(e => e.ticketId), ['stale-0', 'stale-1', 'stale-2'])
+    for (let i = 0; i < 3; i++) {
+      assert.deepEqual(r.tickets[i], { ...s.tickets[i], reportedStatus: 'done' })
+      assert.deepEqual(r.workLog![i], s.workLog![i])
+    }
+    if (usefulCount) {
+      assert.equal(r.developers[0].activeTicketID, 'useful-0')
+      assert.equal(r.developers[0].idleWorkCheck, undefined)
+    } else {
+      assert.equal(r.developers[0].activeTicketID, undefined)
+      assert.equal(r.developers[0].flowStreak, undefined)
+      assert.equal(r.developers[0].estimateReview, undefined)
+      assert.equal(r.developers[0].estimateDiscovery, undefined)
+      assert.deepEqual(r.developers[0].idleWorkCheck, eventTime(12))
+      assert.deepEqual(advanceSimulation(restore(r), 1, noDraw).developers, r.developers)
+    }
+  }
+})
+
+test('a failed report stops a successful correction chain without attempting later stale tickets', () => {
+  const s = staleChain(3, 1), rng = sequence([0, .9, .5]), c = collectSimulationActivity(s.tickets)
+  const r = advanceSimulation(s, 1, rng.draw, c.board.observe, c.internal)
+  assert.equal(rng.count(), 3)
+  assert.deepEqual(r.tickets.map(t => t.reportedStatus), ['done', 'in_progress', 'in_progress', 'in_progress'])
+  assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => e.ticketId), ['stale-0', 'stale-1'])
+  assert.equal(r.developers[0].activeTicketID, undefined)
+  assert.equal(r.developers[0].flowStreak, undefined)
+  assert.deepEqual(r.developers[0].idleWorkCheck, eventTime(12))
+  assert.deepEqual(r.workLog, s.workLog)
+})
+
+test('same-instant correction chains retain engineer order and exclusive competing useful claims', () => {
+  for (const reverse of [false, true]) for (const at of [0, 5]) {
+    const s = staleChain(2, 2)
+    s.developers.push({ ...s.developers[0], id: 'b', name: 'B' })
+    if (reverse) s.developers.reverse()
+    if (at) for (const d of s.developers) d.idleWorkCheck = eventTime(at)
+    const rng = sequence([0, 0, .5, .5]), c = collectSimulationActivity(s.tickets)
+    const r = advanceSimulation(s, at + 1, rng.draw, c.board.observe, c.internal)
+    assert.equal(rng.count(), 4)
+    assert.deepEqual(r.developers.map(d => d.activeTicketID), ['useful-0', 'useful-1'])
+    assert.ok(r.developers.every(d => d.idleWorkCheck === undefined && d.flowStreak!.duration === 1))
+    const [first, second] = s.developers.map(d => d.id)
+    assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => [e.developerId, e.ticketId]),
+      [[first, 'stale-0'], [first, 'stale-1'], [first, 'useful-0'], [second, 'useful-1']])
+    assert.ok(c.diagnostics.every(e => e.at.high === at && e.at.low === 0))
+    assert.deepEqual(r.workLog!.slice(0, 2), s.workLog)
+    assert.deepEqual(r.workLog!.slice(2).map(e => [e.developerId, e.ticketId]), [[first, 'useful-0'], [second, 'useful-1']])
+  }
+})
+
+test('failed own-completion reporting is not retried after a different stale ticket is successfully corrected', () => {
+  const s = fixture(), d = s.developers[0], t = s.tickets[0]
+  t.requiredWork = 1; setPublishedEstimate(t, d.id, 1)
+  const due = projectWork(d, t, workAmount(1)).seconds!
+  d.estimateReview!.dueTime = eventTime(due)
+  const extra = staleChain(1, 1)
+  extra.tickets[0].rank = 2; extra.tickets[1].rank = 3
+  s.tickets.push(...extra.tickets)
+  const rng = sequence([.9, 0, .5]), c = collectSimulationActivity(s.tickets)
+  const r = advanceSimulation(s, due, rng.draw, c.board.observe, c.internal)
+  assert.equal(rng.count(), 3) // Failed own Done, successful encounter Done, new active review; no coincident review or idle draw.
+  assert.equal(r.tickets[0].reportedStatus, 'in_progress')
+  assert.equal(r.tickets[0].actualStatus, 'done')
+  assert.equal(r.tickets[1].reportedStatus, 'done')
+  assert.equal(r.developers[0].activeTicketID, 'useful-0')
+  assert.deepEqual(r.developers[0].flowStreak, { ticketId: 'useful-0', duration: 0 })
+  assert.deepEqual(c.diagnostics.filter(e => e.kind === 'decision').map(e => [e.ticketId, e.at]),
+    [['stale-0', eventTime(due)], ['useful-0', eventTime(due)]])
+  assert.ok(c.diagnostics.filter(e => e.kind === 'decision').every(e => e.decision.considered.every(t => t.id !== 'current')))
+  assert.deepEqual(r.workLog!.map(e => [e.ticketId, e.effort]), [['current', workAmount(1)]])
+})
+
+test('successful correction chains replay exactly across fractional JSON saves, scheduled checks and later completions', () => {
+  for (const seed of [1, 35, 87, 1000]) for (const reverse of [false, true]) {
+    const s = staleChain(2, 2); s.randomState = seed
+    for (const t of s.tickets.slice(2)) { t.requiredWork = 10; setPublishedEstimate(t, 'a', 10) }
+    s.developers.push({ ...s.developers[0], id: 'b', name: 'B' })
+    if (reverse) s.developers.reverse()
+    const original = structuredClone(s), a = collectSimulationActivity(s.tickets), b = collectSimulationActivity(s.tickets)
+    assert.deepEqual(advanceSimulation(s, 0, noDraw, a.board.observe, a.internal), s)
+    assert.deepEqual(a.diagnostics, [])
+    const whole = advanceSimulation(s, 60, undefined, a.board.observe, a.internal)
+    let split = restore(s)
+    for (let i = 0; i < 60; i++) for (const dt of [.3, .3, .4]) split = restore(advanceSimulation(split, dt, undefined, b.board.observe, b.internal))
+    assert.deepEqual(split, whole)
+    assert.deepEqual(a.board.events, b.board.events)
+    assert.deepEqual(a.diagnostics, b.diagnostics)
+    assert.deepEqual(advanceSimulation(s, 60), whole)
+    assert.ok(whole.tickets.every(t => t.actualStatus === 'done'))
+    assert.deepEqual(s, original)
+  }
+})
+
+test('a failure after a successful correction still leaves the input state, histories and RNG untouched', () => {
+  const s = staleChain(1, 1), original = structuredClone(s)
+  assert.throws(() => advanceSimulation(s, 1, sequence([0, NaN]).draw), /uniform|RNG/i)
+  assert.deepEqual(s, original)
+})
+
 test('status uses existing Discipline probability, strict threshold and no draw for unchanged reports', () => {
   for (const discipline of [0, 10, 100, Number.MAX_VALUE]) {
     const s = fixture(), d = s.developers[0], t = s.tickets[0]
@@ -136,16 +293,19 @@ test('stale completion encounter performs no work, Flow, assignment, estimate or
 })
 
 test('an Unknown stale-completed appraisal stays transient and is never promoted into estimate history', () => {
-  const s = stale(), t = s.tickets[0]
-  delete t.reportedEffortEstimate; delete t.initialEffortEstimate; delete t.estimateHistory
-  const rng = sequence([.5, .9, .5]), r = advanceSimulation(s, 1, rng.draw)
-  assert.equal(rng.count(), 3) // Selection appraisal, failed Done report, future idle deadline.
-  close(r.developers[0].lastAssessment!.considered[0].estimatedTotal, 100 * Math.exp(Math.log1p(-.5) / (1 + .09 * 5)))
-  assert.equal(r.tickets[0].reportedEffortEstimate, undefined)
-  assert.equal(r.tickets[0].initialEffortEstimate, undefined)
-  assert.equal(r.tickets[0].estimateHistory, undefined)
-  assert.equal(r.tickets[0].lastEstimateEvaluation, undefined)
-  assert.equal(r.workLog, undefined)
+  for (const uniform of [0, .9]) {
+    const s = stale(), t = s.tickets[0]
+    delete t.reportedEffortEstimate; delete t.initialEffortEstimate; delete t.estimateHistory
+    const rng = sequence([.5, uniform, .5]), r = advanceSimulation(s, 1, rng.draw)
+    assert.equal(rng.count(), 3) // Selection appraisal, Done attempt, future idle deadline with no remaining work.
+    close(r.developers[0].lastAssessment!.considered[0].estimatedTotal, 100 * Math.exp(Math.log1p(-.5) / (1 + .09 * 5)))
+    assert.equal(r.tickets[0].reportedStatus, uniform === 0 ? 'done' : 'in_progress')
+    assert.equal(r.tickets[0].reportedEffortEstimate, undefined)
+    assert.equal(r.tickets[0].initialEffortEstimate, undefined)
+    assert.equal(r.tickets[0].estimateHistory, undefined)
+    assert.equal(r.tickets[0].lastEstimateEvaluation, undefined)
+    assert.equal(r.workLog, undefined)
+  }
 })
 
 test('both failed start and failed completion reports can leave To Do with terminal 100% progress', () => {
@@ -224,8 +384,9 @@ test('reported unfinished eligibility excludes either Backlog boundary and repor
   close(working.tickets[0].completedWork, expectedWork(1, 1, 0))
 })
 
-test('priority decisions include stale-completed alternatives, leave no active claim, and schedule a future check', () => {
+test('failed stale Done publication during a priority decision still leaves no active claim and schedules a future check', () => {
   const s = fixture(), current = s.tickets[0]
+  s.randomState = 1000 // First status draw fails; the opportunity must still end.
   current.reportedStatus = 'todo'; current.rank = 1
   s.tickets.push({ ...current, id: 'stale', rank: 2, actualStatus: 'done', completedWork: 100 })
   // Equal forecasts make Rank decisive; stale completion must not disappear during relevance filtering.
@@ -240,6 +401,40 @@ test('priority decisions include stale-completed alternatives, leave no active c
   const waiting = advanceSimulation(restore(r), .0001, noDraw)
   assert.deepEqual(waiting.developers, r.developers)
   assert.equal(waiting.randomState, r.randomState)
+})
+
+test('successful priority encounters use unrestricted normal pickup on running reorder, paused Step and Resume', () => {
+  for (const mode of ['running', 'step', 'resume']) {
+    const s = fixture(), current = s.tickets[0]
+    current.reportedStatus = 'todo'
+    const extra = staleChain(1, 1)
+    extra.tickets[0].rank = 2; extra.tickets[0].reportedStatus = 'todo'
+    extra.tickets[1].rank = 3; extra.tickets[1].requiredWork = 10
+    setPublishedEstimate(extra.tickets[1], 'a', 10)
+    s.tickets.push(...extra.tickets)
+    const c = collectSimulationActivity(s.tickets), original = structuredClone(s)
+    let session = simulationReducer({ game: s, isPaused: mode !== 'running' },
+      { type: 'reorderTodo', ticketId: 'stale-0', targetId: current.id }, c.board.observe, c.internal)
+    if (mode !== 'running') {
+      assert.deepEqual(session.game.developers, original.developers)
+      assert.equal(session.game.randomState, original.randomState)
+      assert.deepEqual(c.diagnostics, [])
+      session = simulationReducer(restore(session), { type: mode === 'step' ? 'step' : 'togglePause' }, c.board.observe, c.internal)
+    }
+    const r = session.game
+    assert.equal(r.developers[0].activeTicketID, 'useful-0') // Unaffected by the original reorder, but eligible for normal pickup.
+    assert.equal(r.developers[0].idleWorkCheck, undefined)
+    assert.equal(r.tickets[1].reportedStatus, 'done')
+    assert.equal(r.simulationTime, mode === 'step' ? 1 : 0)
+    assert.equal(r.developers[0].flowStreak!.duration, mode === 'step' ? 1 : 0)
+    assert.equal(r.randomState, nextRandom(nextRandom(s.randomState).state).state) // Successful Done and new active review, no idle draw.
+    const decisions = c.diagnostics.filter(e => e.kind === 'decision')
+    assert.deepEqual(decisions.map(e => [e.ticketId, e.decision.trigger, e.at]),
+      [['stale-0', 'priority', eventTime(0)], ['useful-0', 'pickup', eventTime(0)]])
+    assert.deepEqual(decisions[0].decision.considered.map(t => t.id), ['stale-0', current.id])
+    assert.deepEqual(decisions[1].decision.considered.map(t => t.id), [current.id, 'useful-0'])
+    assert.deepEqual(s, original)
+  }
 })
 
 test('all-idle stale encounters replay exactly across fractional/one-second saves with no observer-dependent draws', () => {

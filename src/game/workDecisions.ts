@@ -82,59 +82,73 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
     resumeDiscovery(developer, ticket.id)
   }
   const decide = (developer: Developer, trigger: AssessmentDecision['trigger'], alternatives?: ReadonlySet<string>, currentInsight?: number, justCompleted?: Ticket) => {
-    const previous = current(developer)
-    // A completion already got its report attempt at this instant. Other
-    // engineers can encounter it; this engineer can rediscover it at a later check.
-    const decision = selectWork(context(developer).filter(t => t.id !== justCompleted?.id), developer, draw, trigger, now, previous, alternatives, currentInsight)
-    if (!decision) return
-    developer.lastAssessment = decision
-    internal?.({ kind: 'decision', ticketId: decision.selectedId, ticketTitle: byId.get(decision.selectedId)!.title,
-      developerId: developer.id, developerName: developer.name, at: { ...now }, decision: structuredClone(decision) })
-    if (decision.selectedId === previous?.id) return
-    if (previous) {
-      // A discovery-triggered switch already had its one reporting opportunity.
-      // Rank departure may freshly assess own work, reusing an Unknown preview.
-      if (trigger !== 'estimate_revision') {
-        const preview = decision.considered.find(option => option.id === previous.id)!
-        evaluateEstimate(state, developer, previous, 'departure', draw, now, false,
-          preview.estimateSource === 'temporary' ? preview.estimatedTotal : undefined, internal)
-        observeBoard(observe, previous, now)
+    let correctedStaleStatus = false
+    while (true) {
+      const previous = current(developer)
+      // A completion already got its report attempt at this instant. Other
+      // engineers can encounter it; this engineer can rediscover it at a later check.
+      const decision = selectWork(context(developer).filter(t => t.id !== justCompleted?.id), developer, draw, trigger, now, previous, alternatives, currentInsight)
+      if (!decision) {
+        if (correctedStaleStatus) scheduleIdleWorkCheck(developer, now, draw)
+        return
       }
-      applySwitchLoss(state, developer, previous)
-      claimed.delete(previous.id)
-      previous.actualStatus = 'in_progress'
-    }
-    const ticket = byId.get(decision.selectedId)!
-    if (isWorkComplete(ticket)) {
-      // One encounter consumes this selection opportunity, without work, ownership,
-      // estimate publication or enduring knowledge. No same-instant retry cascade.
-      ticket.actualStatus = 'done'
-      reportStatus(ticket, developer, 'done', draw)
+      developer.lastAssessment = decision
+      internal?.({ kind: 'decision', ticketId: decision.selectedId, ticketTitle: byId.get(decision.selectedId)!.title,
+        developerId: developer.id, developerName: developer.name, at: { ...now }, decision: structuredClone(decision) })
+      if (decision.selectedId === previous?.id) return
+      if (previous) {
+        // A discovery-triggered switch already had its one reporting opportunity.
+        // Rank departure may freshly assess own work, reusing an Unknown preview.
+        if (trigger !== 'estimate_revision') {
+          const preview = decision.considered.find(option => option.id === previous.id)!
+          evaluateEstimate(state, developer, previous, 'departure', draw, now, false,
+            preview.estimateSource === 'temporary' ? preview.estimatedTotal : undefined, internal)
+          observeBoard(observe, previous, now)
+        }
+        applySwitchLoss(state, developer, previous)
+        claimed.delete(previous.id)
+        previous.actualStatus = 'in_progress'
+      }
+      const ticket = byId.get(decision.selectedId)!
+      if (isWorkComplete(ticket)) {
+        ticket.actualStatus = 'done'
+        const published = reportStatus(ticket, developer, 'done', draw)
+        observeBoard(observe, ticket, now)
+        clear(developer)
+        if (published) {
+          // Each correction removes one option from reported eligibility, so the
+          // same engineer's normal pickups terminate without a retry cap or memory.
+          correctedStaleStatus = true
+          trigger = 'pickup'
+          alternatives = undefined
+          currentInsight = undefined
+          continue
+        }
+        scheduleIdleWorkCheck(developer, now, draw)
+        return
+      }
+      const appraisal = decision.considered.find(t => t.id === ticket.id)!
+      pauseDiscovery(developer)
+      developer.activeTicketID = ticket.id
+      delete developer.idleWorkCheck
+      developer.flowStreak = { ticketId: ticket.id, duration: 0 }
+      delete developer.workStint
+      beginWorkStint(state, developer, ticket)
+      delete developer.workSession
+      delete developer.estimateDiscovery
+      delete developer.assessmentClock
+      delete developer.estimateReview
+      claimed.add(ticket.id)
+      ticket.assignedDeveloperId = developer.id
+      ticket.actualStatus = 'in_progress'
       observeBoard(observe, ticket, now)
-      clear(developer)
-      scheduleIdleWorkCheck(developer, now, draw)
+      beginEstimateReporting(state, developer, ticket, now, draw,
+        appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined, internal)
+      reportStatus(ticket, developer, 'in_progress', draw)
+      observeBoard(observe, ticket, now)
+      resumeDiscovery(developer, ticket.id)
       return
     }
-    const appraisal = decision.considered.find(t => t.id === ticket.id)!
-    pauseDiscovery(developer)
-    developer.activeTicketID = ticket.id
-    delete developer.idleWorkCheck
-    developer.flowStreak = { ticketId: ticket.id, duration: 0 }
-    delete developer.workStint
-    beginWorkStint(state, developer, ticket)
-    delete developer.workSession
-    delete developer.estimateDiscovery
-    delete developer.assessmentClock
-    delete developer.estimateReview
-    claimed.add(ticket.id)
-    ticket.assignedDeveloperId = developer.id
-    ticket.actualStatus = 'in_progress'
-    observeBoard(observe, ticket, now)
-    beginEstimateReporting(state, developer, ticket, now, draw,
-      appraisal.estimateSource === 'temporary' ? appraisal.estimatedTotal : undefined, internal)
-    reportStatus(ticket, developer, 'in_progress', draw)
-    observeBoard(observe, ticket, now)
-    resumeDiscovery(developer, ticket.id)
   }
   return { claimed, completed, clear, context, current, restore, decide }
 }
