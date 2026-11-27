@@ -22,7 +22,7 @@ export interface PlanningOutcome {
 }
 
 export type PlanningState = { stage: 'shortlist'; ticketIds: string[] }
-  | { stage: 'estimated'; ticketIds: string[]; outcomes: PlanningOutcome[] }
+  | { stage: 'estimated'; ticketIds: string[]; outcomes: PlanningOutcome[]; commitmentIds?: string[] }
 
 export type PlanningAction = { type: 'addEstimation'; ticketId: string }
   | { type: 'removeEstimation'; ticketId: string }

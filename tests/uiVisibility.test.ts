@@ -11,6 +11,7 @@ import { getPlayerView as playerView } from '../src/store/playerView.ts'
 import { getDiagnosticsView as diagnosticsView } from '../src/store/diagnosticsView.ts'
 import { boardReducer, createDevelopmentBoardSession } from '../src/store/boardSession.ts'
 import { collectPlayerObservations, createPlayerObservations, getPlayerObservations } from '../src/store/playerObservations.ts'
+import { getPlanningView } from '../src/store/planningView.ts'
 
 const textContent = (html: string) => html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim()
 
@@ -27,7 +28,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
     mkdirSync(temporaryRoot, { recursive: true })
     const output = mode === 'production' ? mkdtempSync(resolve(temporaryRoot, 'ui-visibility-')) : null
     try {
-      if (output) await build({ logLevel: 'silent', build: { ssr: true, outDir: output, emptyOutDir: false, rollupOptions: { input: { App: resolve('src/App.tsx'), GameBoard: resolve('src/components/GameBoard.tsx') } } } })
+      if (output) await build({ logLevel: 'silent', build: { ssr: true, outDir: output, emptyOutDir: false, rollupOptions: { input: { App: resolve('src/App.tsx'), GameBoard: resolve('src/components/GameBoard.tsx'), SprintPlanning: resolve('src/components/SprintPlanning.tsx') } } } })
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
       const planningHtml = renderToStaticMarkup(createElement(App))
@@ -45,6 +46,19 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.equal((html.match(/class="ticket-complexity"/g) ?? []).length, 7)
       for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</span>`), mode)
       assert.ok(!html.includes('activity-internal'))
+      const { SprintPlanning } = server ? await server.ssrLoadModule('/src/components/SprintPlanning.tsx')
+        : await import(pathToFileURL(resolve(output!, 'SprintPlanning.js')).href)
+      let scoped = boardReducer(createDevelopmentBoardSession(), { type: 'resolveEstimation' })
+      scoped = boardReducer(scoped, { type: 'addCommitment', ticketId: 'ticket-6' })
+      const commitmentHtml = renderToStaticMarkup(createElement(SprintPlanning, {
+        view: getPlanningView(playerView(scoped.simulation.game), scoped.sprint), dispatch: () => {},
+      }))
+      for (const visible of ['Choose the sprint scope', 'Commit and start sprint', 'Known-work utilisation: Not quantified', 'Unknown work: 1', 'Per-ticket forecast breakdown', 'public base productivity only']) assert.ok(commitmentHtml.includes(visible), `${mode}: ${visible}`)
+      for (const hidden of ['Actual estimation capacity', 'Frontend competency:', 'Actual work:', 'Start prototype sprint', 'First published estimate:', 'workLog']) assert.ok(!commitmentHtml.includes(hidden), `${mode}: ${hidden}`)
+      scoped = boardReducer(scoped, { type: 'commitSprint' })
+      const scopedBoard = renderToStaticMarkup(createElement(Board, { view: playerView(scoped.simulation.game) }))
+      assert.equal((scopedBoard.match(/class="ticket-scope"/g) ?? []).length, 1)
+      assert.ok(scopedBoard.includes('In sprint'))
       // Exercise the real published/unpublished histories, not just an empty App.
       const initial = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
       initial.simulation.game.randomState = 87 // Both genuine public publications and a failed report.

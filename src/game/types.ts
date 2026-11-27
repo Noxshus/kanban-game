@@ -143,6 +143,9 @@ export interface AssessmentDecision {
 }
 
 export interface GameState {
+  // Explicit sprint membership, independent of actual/reported workflow state.
+  // Missing on pre-commitment saves and isolated engine/DEV test runs.
+  committedTicketIds?: string[]
   // The manager knows their own Command. Older saves default to Command 0.
   manager?: { command: number }
   randomState: number

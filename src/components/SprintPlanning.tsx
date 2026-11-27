@@ -3,9 +3,17 @@ import type { Dispatch } from 'react'
 import type { PlanningAction } from '../game/planning'
 import type { PlanningView } from '../store/planningView'
 import { formatEffort } from './formatEffort'
+import type { CommitmentAction } from '../game/commitment'
+import { SprintCommitment } from './SprintCommitment'
 
-export function SprintPlanning({ view, dispatch }: { view: PlanningView; dispatch: Dispatch<PlanningAction> }) {
+export function SprintPlanning({ view, dispatch }: { view: PlanningView; dispatch: Dispatch<PlanningAction | CommitmentAction> }) {
   const [selected, setSelected] = useState('')
+  if (view.prototypeComplete) return <section className="sprint-planning" aria-labelledby="planning-heading">
+    <p className="eyebrow">Sprint Planning · Prototype boundary</p>
+    <h2 id="planning-heading">Prototype sprint complete</h2>
+    <p>Execution is paused and its state is preserved. Recurring planning, carryover and sprint outcomes are deferred to #98.</p>
+    <p>Restart through development tools to try another first-sprint scope.</p>
+  </section>
   const editable = view.stage === 'shortlist'
   return <section className="sprint-planning" aria-labelledby="planning-heading">
     <div className="planning-heading">
@@ -56,6 +64,9 @@ export function SprintPlanning({ view, dispatch }: { view: PlanningView; dispatc
     {editable ? <div className="planning-submit">
       <p>Resolve once per planning cycle. The shortlist locks after submission, including requests the team cannot complete.</p>
       <button type="button" onClick={() => dispatch({ type: 'resolveEstimation' })}>Resolve estimates and lock shortlist</button>
-    </div> : <p role="status">Estimation resolved. Shortlist locked. Sprint commitment is not available in this prototype yet.</p>}
+    </div> : <>
+      <p role="status">Estimation resolved. Shortlist locked.</p>
+      <SprintCommitment view={view} dispatch={dispatch} />
+    </>}
   </section>
 }

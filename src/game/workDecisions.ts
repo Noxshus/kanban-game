@@ -12,6 +12,7 @@ import { reportStatus, scheduleIdleWorkCheck, validateReview } from './disciplin
 import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
+import { inCommittedScope, validateCommittedScope } from './commitment.ts'
 
 export function simulationDraw(state: GameState) {
   return () => {
@@ -24,6 +25,7 @@ export function simulationDraw(state: GameState) {
 // Mutates only the caller-owned clone. Both elapsed events and reducer actions
 // use this same reservation/claim/publication path, without another event queue.
 export function workTransitions(state: GameState, now: EventTime, draw: () => number, observe?: BoardObserver, internal?: InternalObserver) {
+  validateCommittedScope(state)
   const byId = new Map(state.tickets.map(t => [t.id, t]))
   const claimed = new Set<string>()
   // Call-local restoration encounters, not saved completion knowledge. Clearing
@@ -46,9 +48,9 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   // Reserve existing work before any idle pickup, irrespective of engineer order.
   for (const developer of state.developers) {
     const t = byId.get(developer.activeTicketID ?? '')
-    if (t && t.actualStatus !== 'backlog' && isWorkComplete(t)
+    if (t && inCommittedScope(state, t.id) && t.actualStatus !== 'backlog' && isWorkComplete(t)
         && ![...completed.values()].some(previous => previous.id === t.id)) completed.set(developer.id, t)
-    if (!t || t.actualStatus === 'backlog' || isWorkComplete(t) || claimed.has(t.id)) clear(developer)
+    if (!t || !inCommittedScope(state, t.id) || t.actualStatus === 'backlog' || isWorkComplete(t) || claimed.has(t.id)) clear(developer)
     else {
       delete developer.idleWorkCheck
       claimed.add(t.id)
@@ -56,7 +58,7 @@ export function workTransitions(state: GameState, now: EventTime, draw: () => nu
   }
   const current = (developer: Developer) => byId.get(developer.activeTicketID ?? '')
   const context = (developer: Developer) => state.tickets.filter(t =>
-    (t.id === developer.activeTicketID || !claimed.has(t.id)) && t.actualStatus !== 'backlog'
+    inCommittedScope(state, t.id) && (t.id === developer.activeTicketID || !claimed.has(t.id)) && t.actualStatus !== 'backlog'
     && (t.id === developer.activeTicketID || t.reportedStatus === 'todo' || t.reportedStatus === 'in_progress'))
   const restore = (developer: Developer) => {
     validateReview(developer)

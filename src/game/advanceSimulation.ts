@@ -16,6 +16,7 @@ import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
 import { publishProgress } from './progressReporting.ts'
 import type { EventTime } from './eventTime'
+import { inCommittedScope } from './commitment.ts'
 
 export function advanceSimulation(state: GameState, advance: number | EventTime, random?: () => number, observe?: BoardObserver, internal?: InternalObserver): GameState {
   let now = eventTime(state.simulationTime, state.simulationTimeRemainder)
@@ -90,7 +91,7 @@ export function advanceSimulation(state: GameState, advance: number | EventTime,
   }
   const report = (workBoundary = false) => {
     for (const ticket of tickets) {
-      if (ticket.actualStatus === 'backlog') continue
+      if (!inCommittedScope(result, ticket.id) || ticket.actualStatus === 'backlog') continue
       ticket.reportedProgress = clampReportedProgress(ticket.reportedProgress)
       if (complete(ticket)) {
         ticket.actualStatus = 'done'

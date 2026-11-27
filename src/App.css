@@ -526,3 +526,10 @@
 .planning-request-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
 .planning-result { font-weight: 650; }
 .planning-submit { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }
+.sprint-commitment { border-top: 1px solid var(--line); padding-top: 1.25rem; margin-top: 1.25rem; }
+.sprint-commitment > p { margin: .6rem 0; }
+.delivery-forecast { padding: 1rem; margin: 1rem 0; background: var(--paper); border: 1px solid var(--line); border-radius: 4px; }
+.delivery-forecast p, .delivery-forecast li { margin-top: .5rem; }
+.delivery-forecast details { margin-top: .75rem; }
+.delivery-forecast summary { cursor: pointer; }
+.ticket-scope { color: var(--teal); font-size: .75rem; font-weight: 700; }

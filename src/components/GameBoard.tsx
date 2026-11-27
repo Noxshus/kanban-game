@@ -218,6 +218,7 @@ export function GameBoard({ view, diagnostics, onReorder, activity = noActivity,
                         <div className="ticket-categories">
                           <span className="ticket-domain">{ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</span>
                           <span className="ticket-complexity">Complexity: {ticket.complexity}</span>
+                          {view.committedTicketIds?.includes(ticket.id) && <span className="ticket-scope">In sprint</span>}
                         </div>
                         <dl className="ticket-report">
                           <div><dt>Assigned to:</dt><dd className={assignee ? undefined : 'report-unset'}>{assignee?.name ?? 'Unassigned'}</dd></div>

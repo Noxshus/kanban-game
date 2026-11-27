@@ -8,6 +8,8 @@ import { advanceSession, createSimulationSession, simulationReducer } from './si
 import type { SimulationAction, SimulationSession } from './simulationControls'
 import { createPlanning, resolveEstimation } from '../game/planning.ts'
 import type { PlanningAction, PlanningState } from '../game/planning'
+import { availableForCommitment, commitScope } from '../game/commitment.ts'
+import type { CommitmentAction } from '../game/commitment'
 
 export interface SprintState {
   phase: 'planning' | 'execution'
@@ -28,6 +30,7 @@ export interface SprintSession {
 
 export type SprintAction = Exclude<SimulationAction, { type: 'tick' }>
   | PlanningAction
+  | CommitmentAction
   | { type: 'tick'; elapsedRealMilliseconds: EventTime }
   | { type: 'startSprint' }
 
@@ -48,9 +51,26 @@ export function sprintWorkingTime(sprint: SprintState, now: EventTime) {
 // Owns phase boundaries around the existing engine, not another event scheduler.
 export function sprintReducer(session: SprintSession, action: SprintAction, observe?: BoardObserver, internal?: InternalObserver): SprintSession {
   const { simulation, sprint } = session
+  if (action.type === 'addCommitment' || action.type === 'removeCommitment' || action.type === 'moveCommitment') {
+    const planning = sprint.planning
+    if (sprint.phase !== 'planning' || planning?.stage !== 'estimated' || simulation.game.committedTicketIds !== undefined) return session
+    const ids = [...planning.commitmentIds ?? []], index = ids.indexOf(action.ticketId)
+    if (action.type === 'addCommitment') {
+      if (index !== -1 || !simulation.game.tickets.some(ticket => ticket.id === action.ticketId && availableForCommitment(ticket))) return session
+      ids.push(action.ticketId)
+    } else if (action.type === 'removeCommitment') {
+      if (index === -1) return session
+      ids.splice(index, 1)
+    } else {
+      const target = index + (action.direction === 'up' ? -1 : 1)
+      if (index === -1 || target < 0 || target >= ids.length) return session
+      ;[ids[index], ids[target]] = [ids[target], ids[index]]
+    }
+    return { simulation, sprint: { ...sprint, planning: { ...planning, commitmentIds: ids } } }
+  }
   if (action.type === 'addEstimation' || action.type === 'removeEstimation' || action.type === 'moveEstimation' || action.type === 'resolveEstimation') {
     const planning = sprint.planning ?? createPlanning()
-    if (sprint.phase !== 'planning' || planning.stage !== 'shortlist') return session
+    if (sprint.phase !== 'planning' || planning.stage !== 'shortlist' || simulation.game.committedTicketIds !== undefined) return session
     if (action.type === 'resolveEstimation') {
       const result = resolveEstimation(simulation.game, planning.ticketIds, observe)
       return { simulation: { ...simulation, game: result.game }, sprint: { ...sprint, planning: result.planning } }
@@ -83,12 +103,22 @@ export function sprintReducer(session: SprintSession, action: SprintAction, obse
     }
   }
   if (action.type === 'restart') return createSprintSession(sprint.calendar)
-  if (action.type === 'startSprint') {
-    if (sprint.phase !== 'planning') return session
+  if (action.type === 'startSprint' || action.type === 'commitSprint') {
+    // #97 supports the first player commitment only. Do not invent #98 carryover
+    // or reset frozen claims at a later boundary. Restart opens another test run.
+    if (sprint.phase !== 'planning' || simulation.game.committedTicketIds !== undefined) return session
+    if (action.type === 'commitSprint' && sprint.planning?.stage !== 'estimated') return session
     const startedAt = eventTime(simulation.game.simulationTime, simulation.game.simulationTimeRemainder)
     const duration = sprintSimulationSeconds(sprint.calendar)
     const deadline = addEventTime(startedAt, duration)
     if (compareEventTime(deadline, startedAt) <= 0) throw new RangeError('Sprint has no positive representable interval')
+    if (action.type === 'commitSprint') {
+      // This establishes opening Rank, not a mid-sprint priority-change event.
+      const { pausedPriorityOrder: _pending, ...ready } = simulation
+      const game = commitScope(simulation.game, sprint.planning!.stage === 'estimated' ? sprint.planning!.commitmentIds ?? [] : [], observe)
+      return { simulation: { ...ready, game, isPaused: true }, sprint: { ...sprint, phase: 'execution', startedAt, deadline } }
+    }
+    // Isolated DEV/timing-test bridge; never rendered as a production action.
     return { simulation: { ...simulation, isPaused: true }, sprint: { ...sprint, phase: 'execution', startedAt, deadline } }
   }
   if (action.type === 'tick' || action.type === 'step') {

@@ -12,6 +12,7 @@ export type PlayerTicket = Pick<
 export function getPlayerView(state: GameState) {
   return {
     manager: { command: getCommand(state) },
+    ...(state.committedTicketIds !== undefined ? { committedTicketIds: [...state.committedTicketIds] } : {}),
     simulationTime: state.simulationTime,
     ...(state.simulationTimeRemainder !== undefined ? { simulationTimeRemainder: state.simulationTimeRemainder } : {}),
     // Explicit selection prevents hidden simulation fields leaking into the interface.

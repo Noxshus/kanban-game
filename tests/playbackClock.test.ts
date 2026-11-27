@@ -150,6 +150,33 @@ test('phase alone selects dedicated Planning and Execution screens without reset
   } finally { await app.close() }
 })
 
+test('player commitment starts paused Execution, preserves the forecast as hypothetical, and ends at the #98 prototype boundary', async () => {
+  const app = await mountedApp()
+  try {
+    const original = structuredClone(app.dev().props.state as GameState)
+    app.action('resolveEstimation')
+    app.action({ type: 'addCommitment', ticketId: 'ticket-7' })
+    assert.deepEqual(app.dev().props.state, original)
+    app.action('commitSprint')
+    const committed = app.dev().props.state as GameState
+    assert.deepEqual(committed.committedTicketIds, ['ticket-7'])
+    assert.deepEqual(committed.developers, original.developers)
+    assert.equal(app.time(), 0); assert.equal(app.timers.size, 0)
+    assert.equal(app.dev().props.isPaused, true)
+    assert.deepEqual(app.screen(), ['GameBoard'])
+    app.action('step')
+    const advanced = app.dev().props.state as GameState
+    assert.deepEqual(advanced.tickets.slice(0, 5), original.tickets.slice(0, 5))
+    app.pause(false); app.render(); app.elapse(240000); app.callback()
+    assert.deepEqual(app.screen(), ['SprintPlanning']); assert.equal(app.time(), 240)
+    assert.deepEqual((app.dev().props.state as GameState).committedTicketIds, ['ticket-7'])
+    const frozen = structuredClone(app.dev().props.state)
+    app.action('commitSprint'); app.action('startSprint')
+    assert.deepEqual(app.dev().props.state, frozen)
+    assert.equal((app.dev().props.sprint as SprintState).phase, 'planning')
+  } finally { await app.close() }
+})
+
 test('delayed browser callbacks count actual elapsed time once, cap the sprint and cannot resurrect timers', async () => {
   const app = await mountedApp()
   try {

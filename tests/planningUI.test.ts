@@ -8,6 +8,7 @@ import { boardReducer, createBoardSession } from '../src/store/boardSession.ts'
 import { getPlayerView } from '../src/store/playerView.ts'
 import { getPlanningView } from '../src/store/planningView.ts'
 import type { PlanningAction } from '../src/game/planning'
+import type { CommitmentAction } from '../src/game/commitment'
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
   if (Array.isArray(node)) return node.flatMap(elements)
@@ -107,5 +108,52 @@ test('planning presentation distinguishes known and Unknown reports, retained ou
       outcomes: session.sprint.planning!.ticketIds.map(ticketId => ({ ticketId, result: 'retained' })) }
     assert.equal((render().match(/Existing estimate retained/g) ?? []).length, 3)
     assert.ok(!render().includes('Resolve estimates and lock shortlist'))
+  } finally { await server.close() }
+})
+
+test('commitment controls preview public workload, allow Unknown/overcommitment and start through the real reducer', async () => {
+  const hookId = 'virtual:commitment-test-hooks'
+  const server = await createServer({ server: { middlewareMode: true, ws: false }, appType: 'custom', plugins: [{
+    name: 'commitment-test-hook-host', enforce: 'pre',
+    resolveId(id) { if (id === hookId) return '\0' + hookId },
+    load(id) { if (id === '\0' + hookId) return `let selected = ''; export function useState() { return [selected, value => { selected = value; }]; }` },
+    transform(code, id) {
+      if (id.replaceAll('\\', '/').endsWith('/src/components/SprintCommitment.tsx')) {
+        return code.replace("import { useState } from 'react'", `import { useState } from '${hookId}'`)
+      }
+    },
+  }] })
+  try {
+    const { SprintCommitment } = await server.ssrLoadModule('/src/components/SprintCommitment.tsx')
+    let session = boardReducer(createBoardSession(), { type: 'resolveEstimation' })
+    session.simulation.game.tickets[1].reportedEffortEstimate = 10000
+    const original = structuredClone(session.simulation)
+    const render = () => elements(SprintCommitment({ view: getPlanningView(getPlayerView(session.simulation.game), session.sprint),
+      dispatch: (action: CommitmentAction) => { session = boardReducer(session, action) } }))
+    const click = (label: string) => {
+      const button = render().find(node => node.type === 'button' && (node.props['aria-label'] ?? node.props.children) === label)!
+      assert.ok(button); assert.ok(!button.props.disabled)
+      ;(button.props.onClick as () => void)()
+    }
+    function add(id: string) {
+      ;(render().find(node => node.type === 'select')!.props.onChange as (event: unknown) => void)({ target: { value: id } })
+      ;(render().find(node => node.type === 'form')!.props.onSubmit as (event: unknown) => void)({ preventDefault() {} })
+    }
+    assert.ok(render().some(node => node.type === 'label' && node.props.htmlFor === 'commitment-ticket'))
+    add('ticket-7'); add('ticket-2')
+    assert.ok(!render().some(node => node.type === 'option' && node.props.value === 'ticket-7'))
+    click('Move ticket-2 earlier in commitment order')
+    click('Remove ticket-7 from sprint'); add('ticket-7')
+    const view = getPlanningView(getPlayerView(session.simulation.game), session.sprint)
+    assert.deepEqual(view.commitment.map(t => t.id), ['ticket-2', 'ticket-7'])
+    assert.ok(view.forecast.utilisation! > 100); assert.equal(view.forecast.unknownCount, 1)
+    assert.deepEqual(session.simulation, original) // Includes RNG and actual assignment.
+    const html = renderToStaticMarkup(createElement('div', {}, render()[0]))
+    for (const text of ['Known-work utilisation:', 'Unknown work: 1', 'unquantified workload, not zero effort', 'public base productivity only', 'not assignments', 'Per-ticket forecast breakdown', 'Execution starts paused']) assert.ok(html.includes(text), text)
+    assert.ok(!html.includes('Infinity') && !html.includes('NaN'))
+    click('Commit and start sprint')
+    assert.equal(session.sprint.phase, 'execution'); assert.equal(session.simulation.isPaused, true)
+    assert.deepEqual(session.simulation.game.committedTicketIds, ['ticket-2', 'ticket-7'])
+    assert.equal(session.simulation.game.simulationTime, 0)
   } finally { await server.close() }
 })

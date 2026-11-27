@@ -72,8 +72,10 @@ export function DevelopmentUI({ state, isPaused, sprint, dispatch, children, act
             <button type="button" onClick={() => closePanel(simulationPanel.current)}>Close Simulation Controls</button>
             {sprint?.phase === 'planning' && <section aria-label="Prototype sprint bridge">
               <p>Actual estimation capacity (DEV): {formatEffort(estimationCapacity(state))}</p>
-              <p>DEV-only sprint bridge: start an execution timebox using the existing board. Sprint commitment is not implemented yet.</p>
-              <button type="button" onClick={() => dispatch({ type: 'startSprint' })}>Start prototype sprint</button>
+              {state.committedTicketIds === undefined && <>
+                <p>DEV-only unscoped test bridge for timing/engine QA. Normal gameplay uses Commit and start sprint after estimation.</p>
+                <button type="button" onClick={() => dispatch({ type: 'startSprint' })}>Start prototype sprint</button>
+              </>}
             </section>}
             <DevelopmentControls isPaused={isPaused} canExecute={sprint?.phase !== 'planning'} randomState={state.randomState} dispatch={dispatch} />
           </div>
