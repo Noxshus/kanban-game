@@ -5,11 +5,13 @@ import type { SprintAction, SprintState } from '../store/sprintSession'
 import { getDiagnosticsView } from '../store/diagnosticsView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DevelopmentControls } from './DevelopmentControls'
-import { TeamDiagnostics } from './Diagnostics'
+import { DeveloperDiagnostics, TeamDiagnostics, TicketDiagnostics } from './Diagnostics'
 import { filterDiagnosticActivity } from '../game/simulationActivity'
 import type { DiagnosticActivity } from '../game/simulationActivity'
 import type { ActivityDisplay } from './BoardActivity'
 import { describeDiagnosticActivity } from './developmentActivityPresentation'
+import { estimationCapacity } from '../game/planning'
+import { formatEffort } from './formatEffort'
 
 interface Props {
   state: GameState
@@ -69,7 +71,8 @@ export function DevelopmentUI({ state, isPaused, sprint, dispatch, children, act
           <div className="development-panel" role="region" aria-label="Simulation Controls">
             <button type="button" onClick={() => closePanel(simulationPanel.current)}>Close Simulation Controls</button>
             {sprint?.phase === 'planning' && <section aria-label="Prototype sprint bridge">
-              <p>DEV-only sprint foundation: start an execution timebox using the existing board. Planning, estimation and commitment UI are not implemented yet.</p>
+              <p>Actual estimation capacity (DEV): {formatEffort(estimationCapacity(state))}</p>
+              <p>DEV-only sprint bridge: start an execution timebox using the existing board. Sprint commitment is not implemented yet.</p>
               <button type="button" onClick={() => dispatch({ type: 'startSprint' })}>Start prototype sprint</button>
             </section>}
             <DevelopmentControls isPaused={isPaused} canExecute={sprint?.phase !== 'planning'} randomState={state.randomState} dispatch={dispatch} />
@@ -80,13 +83,22 @@ export function DevelopmentUI({ state, isPaused, sprint, dispatch, children, act
           <div className="development-panel" role="region" aria-label="Team Diagnostics">
             <button type="button" onClick={() => closePanel(teamPanel.current)}>Close Team Diagnostics</button>
             <TeamDiagnostics team={getDiagnosticsView(state).team} />
+            {sprint?.phase === 'planning' && diagnostics && <>
+              {diagnostics.developers.map(developer => <details key={developer.id}>
+                <summary>{developer.name} — engineer diagnostics</summary>
+                <DeveloperDiagnostics developer={developer} />
+              </details>)}
+              {diagnostics.tickets.map(ticket => <details key={ticket.id}>
+                <summary>{ticket.id} — ticket diagnostics</summary>
+                <TicketDiagnostics ticket={ticket} />
+              </details>)}
+            </>}
           </div>
         </details>
-        <button type="button" aria-label={isPaused ? 'Resume simulation' : 'Pause simulation'}
-          disabled={sprint?.phase === 'planning'}
+        {sprint?.phase !== 'planning' && <button type="button" aria-label={isPaused ? 'Resume simulation' : 'Pause simulation'}
           onClick={() => dispatch({ type: 'togglePause' })}>
           {isPaused ? 'Resume' : 'Pause'}
-        </button>
+        </button>}
       <label className="diagnostics-toggle">
         <input type="checkbox" checked={showDiagnostics}
           aria-label="Show development diagnostics (true simulation values)"

@@ -503,3 +503,26 @@
   .ticket.drop-before { outline: 3px solid Highlight; }
   .ticket.drop-after { outline: 3px solid Highlight; }
 }
+.sprint-planning {
+  margin-bottom: var(--space-6);
+  padding: 1.25rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 6px;
+}
+.planning-heading { display: flex; justify-content: space-between; align-items: flex-start; gap: 1rem; flex-wrap: wrap; }
+.planning-heading h2 { margin: 0; font-size: 1.25rem; }
+.planning-capacity { display: flex; flex-wrap: wrap; gap: 1.5rem; margin: 0; }
+.sprint-planning > p { margin-top: .6rem; }
+.planning-capacity dt, .planning-note { color: var(--muted); font-size: .85rem; }
+.planning-capacity dd { margin: .25rem 0 0; font-weight: 650; font-variant-numeric: tabular-nums; }
+.planning-add { display: flex; flex-wrap: wrap; align-items: center; gap: .6rem; margin: 1rem 0; }
+.planning-add select { flex: 1 1 280px; min-width: 0; padding: .5rem; color: inherit; background: transparent; border: 1px solid var(--line); border-radius: 4px; }
+.planning-add select:focus-visible { outline: 3px solid var(--teal); outline-offset: 3px; }
+.planning-requests { padding-left: 1.5rem; margin: 1rem 0; }
+.planning-requests li { padding: .7rem 0; border-bottom: 1px solid var(--line); }
+.planning-request-info { display: flex; flex-direction: column; gap: .25rem; overflow-wrap: anywhere; }
+.planning-request-info > span { font-size: .85rem; }
+.planning-request-actions { display: flex; flex-wrap: wrap; gap: .4rem; margin-top: .5rem; }
+.planning-result { font-weight: 650; }
+.planning-submit { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: .75rem; }

@@ -6,12 +6,16 @@ import type { BoardObserver } from '../game/boardActivity'
 import type { InternalObserver } from '../game/simulationActivity'
 import { advanceSession, createSimulationSession, simulationReducer } from './simulationControls.ts'
 import type { SimulationAction, SimulationSession } from './simulationControls'
+import { createPlanning, resolveEstimation } from '../game/planning.ts'
+import type { PlanningAction, PlanningState } from '../game/planning'
 
 export interface SprintState {
   phase: 'planning' | 'execution'
   calendar: WorkingCalendar
   startedAt: EventTime
   deadline: EventTime | null
+  // Optional on #95 saves; missing means an editable empty shortlist.
+  planning?: PlanningState
   // Persist the conversion origin and cumulative unpaused milliseconds. Scaling each tick
   // independently rounds fractional speeds differently across call partitions.
   playback?: { origin: EventTime; elapsed: EventTime; speed: number; unit: 'milliseconds' }
@@ -23,13 +27,14 @@ export interface SprintSession {
 }
 
 export type SprintAction = Exclude<SimulationAction, { type: 'tick' }>
+  | PlanningAction
   | { type: 'tick'; elapsedRealMilliseconds: EventTime }
   | { type: 'startSprint' }
 
 export function createSprintSession(calendar: WorkingCalendar = DEFAULT_WORKING_CALENDAR): SprintSession {
   sprintSimulationSeconds(calendar)
   return { simulation: createSimulationSession(), sprint: {
-    phase: 'planning', calendar: { ...calendar }, startedAt: eventTime(0), deadline: null,
+    phase: 'planning', calendar: { ...calendar }, startedAt: eventTime(0), deadline: null, planning: createPlanning(),
   } }
 }
 
@@ -43,6 +48,27 @@ export function sprintWorkingTime(sprint: SprintState, now: EventTime) {
 // Owns phase boundaries around the existing engine, not another event scheduler.
 export function sprintReducer(session: SprintSession, action: SprintAction, observe?: BoardObserver, internal?: InternalObserver): SprintSession {
   const { simulation, sprint } = session
+  if (action.type === 'addEstimation' || action.type === 'removeEstimation' || action.type === 'moveEstimation' || action.type === 'resolveEstimation') {
+    const planning = sprint.planning ?? createPlanning()
+    if (sprint.phase !== 'planning' || planning.stage !== 'shortlist') return session
+    if (action.type === 'resolveEstimation') {
+      const result = resolveEstimation(simulation.game, planning.ticketIds, observe)
+      return { simulation: { ...simulation, game: result.game }, sprint: { ...sprint, planning: result.planning } }
+    }
+    const ticketIds = [...planning.ticketIds], index = ticketIds.indexOf(action.ticketId)
+    if (action.type === 'addEstimation') {
+      if (index !== -1 || !simulation.game.tickets.some(ticket => ticket.id === action.ticketId)) return session
+      ticketIds.push(action.ticketId)
+    } else if (action.type === 'removeEstimation') {
+      if (index === -1) return session
+      ticketIds.splice(index, 1)
+    } else {
+      const target = index + (action.direction === 'up' ? -1 : 1)
+      if (index === -1 || target < 0 || target >= ticketIds.length) return session
+      ;[ticketIds[index], ticketIds[target]] = [ticketIds[target], ticketIds[index]]
+    }
+    return { simulation, sprint: { ...sprint, planning: { stage: 'shortlist', ticketIds } } }
+  }
   if (action.type === 'tick') {
     const input = action.elapsedRealMilliseconds
     if ('elapsedRealSeconds' in action || !input || typeof input !== 'object'
@@ -76,7 +102,7 @@ export function sprintReducer(session: SprintSession, action: SprintAction, obse
     const before = eventTime(simulation.game.simulationTime, simulation.game.simulationTimeRemainder)
     if (compareEventTime(before, sprint.deadline) > 0) throw new RangeError('Execution is beyond its sprint deadline')
     if (compareEventTime(before, sprint.deadline) === 0) {
-      return { simulation: { ...simulation, isPaused: true }, sprint: { ...sprint, phase: 'planning' } }
+      return { simulation: { ...simulation, isPaused: true }, sprint: { ...sprint, phase: 'planning', planning: createPlanning() } }
     }
     const { playback: savedPlayback, ...withoutPlayback } = sprint
     let playback: SprintState['playback']
@@ -107,7 +133,7 @@ export function sprintReducer(session: SprintSession, action: SprintAction, obse
     // Finish all ordinary events at the exact deadline, then freeze the snapshot.
     // Claims, Flow and work are preserved pending the separately designed #98 lifecycle.
     return compareEventTime(now, sprint.deadline) === 0
-      ? { simulation: { ...next, isPaused: true }, sprint: { ...withoutPlayback, phase: 'planning' } }
+      ? { simulation: { ...next, isPaused: true }, sprint: { ...withoutPlayback, phase: 'planning', planning: createPlanning() } }
       : { simulation: next, sprint: playback ? { ...sprint, playback } : withoutPlayback }
   }
   if (action.type === 'togglePause' && sprint.phase === 'planning') return session

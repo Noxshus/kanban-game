@@ -24,17 +24,17 @@ export function TicketDiagnostics({ ticket }: { ticket: DiagnosticsView['tickets
       <p>Work domain: {ticket.workDomain === 'frontend' ? 'Frontend' : 'Backend'}</p>
       <p>Size: {format(ticket.requiredWork)} work units</p>
       <p>First published estimate: {ticket.initialEffortEstimate
-        ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + ticket.initialEffortEstimate.developerId + ')' : 'Unknown'}</p>
+        ? formatEffort(ticket.initialEffortEstimate.totalWork) + ' work units (' + (ticket.initialEffortEstimate.source === 'collective' ? 'Collective team' : ticket.initialEffortEstimate.developerId) + ')' : 'Unknown'}</p>
       <p>Published effort estimate: {formatEffort(ticket.reportedEffortEstimate ?? undefined)}; actual total effort: {formatEffort(ticket.requiredWork)} work units</p>
       <details>
         <summary>Estimate publication history ({ticket.estimateHistory.length})</summary>
         {ticket.estimateHistory.length ? <ol>{ticket.estimateHistory.map((event, index) => (
           <li key={index}>
-            {event.kind}: {event.developerId ?? 'Unknown author'}; {formatEffort(event.totalWork)} work units;
+            {event.kind}: {'source' in event && event.source === 'collective' ? 'Collective team' : event.developerId ?? 'Unknown author'}; {formatEffort(event.totalWork)} work units;
             {' '}{event.at ? format(event.at.high + event.at.low) + 's' : 'historical time unknown'}
             {'reason' in event ? '; ' + event.reason : 'evidence' in event ? '; ' + event.evidence : '; imported board observation'}
             {event.kind === 'publication' && event.replacedTotalWork !== undefined
-              ? '; replaced ' + formatEffort(event.replacedTotalWork) + ' (' + (event.replacedDeveloperId ?? 'unknown author') + ')' : ''}
+              ? '; replaced ' + formatEffort(event.replacedTotalWork) + ' (' + (event.replacedSource === 'collective' ? 'Collective team' : event.replacedDeveloperId ?? 'unknown author') + ')' : ''}
           </li>
         ))}</ol> : <p>No estimate events recorded.</p>}
       </details>

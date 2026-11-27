@@ -8,6 +8,8 @@ import { sprintWorkingTime } from './store/sprintSession'
 import type { SprintAction } from './store/sprintSession'
 import { eventTime } from './game/eventTime'
 import { formatEffort } from './components/formatEffort'
+import { SprintPlanning } from './components/SprintPlanning'
+import { getPlanningView } from './store/planningView'
 import './App.css'
 
 function App() {
@@ -75,22 +77,26 @@ function GameApplication({ development = false }: { development?: boolean }) {
           <p className="eyebrow">Engineering operations</p>
           <h1>Kanban Game<span aria-hidden="true">.</span></h1>
         </div>
-        <div className="simulation-controls" aria-label="Simulation controls">
-          <p className="simulation-clock"><span>{executing ? 'Sprint Execution' : 'Sprint Planning'}</span>
+        {executing ? <div className="simulation-controls" aria-label="Simulation controls">
+          <p className="simulation-clock"><span>Sprint Execution</span>
             <strong>{formatEffort(workingTime.elapsedMinutes)}<small> / {formatEffort(workingTime.totalMinutes)} working minutes</small></strong></p>
           <p className="simulation-clock"><span>Simulation time</span><strong>{view.simulationTime}<small>seconds</small></strong></p>
           <p className={`simulation-status ${isPaused ? 'is-paused' : 'is-running'}`} role="status">{isPaused ? 'Paused' : 'Running'}</p>
-          <button type="button" disabled={!executing} onClick={() => send({ type: 'togglePause' })}>
+          <button type="button" onClick={() => send({ type: 'togglePause' })}>
             {isPaused ? 'Resume' : 'Pause'}
           </button>
-        </div>
+        </div> : <p className="simulation-status" role="status">Sprint Planning</p>}
       </header>
 
       {development ? (
         <DevelopmentUI state={state} isPaused={isPaused} sprint={sprint} dispatch={send} activity={diagnosticActivity}>
-          {(diagnostics, activityDisplay) => <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => send({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />}
+          {(diagnostics, activityDisplay) => executing
+            ? <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} activityDisplay={activityDisplay} onReorder={(ticketId, targetId, after) => send({ type: 'reorderTodo', ticketId, targetId, after })} view={view} diagnostics={diagnostics} />
+            : <SprintPlanning view={getPlanningView(view, sprint)} dispatch={send} />}
         </DevelopmentUI>
-      ) : <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} onReorder={(ticketId, targetId, after) => send({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />}
+      ) : executing
+        ? <GameBoard projections={projections} isPaused={isPaused} observations={observationView} activity={activity} onReorder={(ticketId, targetId, after) => send({ type: 'reorderTodo', ticketId, targetId, after })} view={view} />
+        : <SprintPlanning view={getPlanningView(view, sprint)} dispatch={send} />}
     </main>
   )
 }

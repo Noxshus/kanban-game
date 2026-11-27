@@ -94,7 +94,8 @@ test('diagnostics update live through completion and remain separate from player
   assert.equal(getDiagnosticsView(state).tickets[0].completedWork, 4)
   assert.equal(player.tickets[0].reportedProgress, 5)
   assert.equal(player.tickets[0].reportedStatus, 'todo')
-  assert.deepEqual(Object.keys(player).sort(), ['developers', 'simulationTime', 'tickets'])
+  assert.deepEqual(Object.keys(player).sort(), ['developers', 'manager', 'simulationTime', 'tickets'])
+  assert.deepEqual(player.manager, { command: 0 }) // The manager knows their own Command, not team capacity.
   assert.deepEqual(Object.keys(player.tickets[0]).sort(),
     ['assignedDeveloperId', 'complexity', 'id', 'rank', 'reportedEffortEstimate', 'reportedProgress', 'reportedStatus', 'title', 'workDomain'])
   assert.deepEqual(Object.keys(player.developers[0]).sort(), ['id', 'name', 'productivity'])

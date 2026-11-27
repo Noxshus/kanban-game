@@ -1,4 +1,4 @@
-import type { Developer, EstimateEvent, Ticket } from './types'
+import type { Developer, EstimateAuthor, EstimateEvent, Ticket } from './types'
 import type { EventTime } from './eventTime'
 import { compareEventTime } from './eventTime.ts'
 import { estimateInitialEffort } from './effortEstimate.ts'
@@ -12,7 +12,11 @@ export function validateEstimateHistory(ticket: Ticket) {
   let previous: EventTime | null = null
   for (const [index, event] of (ticket.estimateHistory ?? []).entries()) {
     validEffort(ticket, event.totalWork)
-    if ((event.kind !== 'legacy_publication' || event.developerId !== undefined) && !event.developerId) {
+    const collective = 'source' in event && event.source === 'collective'
+    if (collective && (event.developerId !== undefined || event.kind !== 'publication' && event.kind !== 'legacy_publication')) {
+      throw new RangeError('Collective publications cannot be attributed to an individual engineer')
+    }
+    if (!collective && (event.kind !== 'legacy_publication' || event.developerId !== undefined) && !event.developerId) {
       throw new RangeError('Estimate history requires an engineer ID')
     }
     if ((event.kind === 'assessment' || event.kind === 'publication') && !event.at) {
@@ -46,8 +50,10 @@ export function migrateEstimateHistory(ticket: Ticket) {
     // An explicit initial publication proves the board was Unknown. Older private
     // provenance must yield to it; partial revision/takeover history proves no such thing.
     if (first?.kind === 'publication' && first.reason === 'initial' && original
-        && (original.totalWork !== first.totalWork || original.developerId !== first.developerId)) {
-      ticket.initialEffortEstimate = { developerId: first.developerId, totalWork: first.totalWork }
+        && (original.totalWork !== first.totalWork || original.developerId !== first.developerId || original.source !== first.source)) {
+      ticket.initialEffortEstimate = first.source === 'collective'
+        ? { source: 'collective', totalWork: first.totalWork }
+        : { developerId: first.developerId, totalWork: first.totalWork }
       delete ticket.learningBaseline
     }
     ticket.estimateHistory = ticket.estimateHistory.flatMap(event => {
@@ -89,15 +95,19 @@ export function firstPublishedEstimate(ticket: Ticket) {
   return baseline
 }
 
-export function publishEstimate(ticket: Ticket, developerId: string, totalWork: number, reason: 'initial' | 'revision', at: EventTime) {
+export function publishEstimate(ticket: Ticket, author: string | Extract<EstimateAuthor, { source: 'collective' }>, totalWork: number, reason: 'initial' | 'revision', at: EventTime) {
   validEffort(ticket, totalWork)
   migrateEstimateHistory(ticket)
   const previous = ticket.estimateHistory?.at(-1)
   const board = ticket.reportedEffortEstimate
+  // A genuine first publication is not legacy evidence of an earlier crossing.
+  // Both individual and collective reports preserve any explicit lifetime history.
+  if (board === undefined) ticket.overrunEvaluationConsumed ??= false
   const history = ticket.estimateHistory ??= []
-  history.push({ kind: 'publication', developerId, totalWork, reason, at: { ...at },
+  history.push({ kind: 'publication', ...(typeof author === 'string' ? { developerId: author } : { source: 'collective' as const }), totalWork, reason, at: { ...at },
     ...(board !== undefined ? { replacedTotalWork: board } : {}),
-    ...(previous?.totalWork === board && previous?.developerId ? { replacedDeveloperId: previous.developerId } : {}) })
+    ...(previous?.totalWork === board && previous?.developerId ? { replacedDeveloperId: previous.developerId } : {}),
+    ...(previous && previous.totalWork === board && 'source' in previous && previous.source === 'collective' ? { replacedSource: 'collective' as const } : {}) })
   ticket.reportedEffortEstimate = totalWork
 }
 

@@ -1,6 +1,7 @@
 import type { GameState } from '../game/types'
 
 export const exampleGameState: GameState = {
+  manager: { command: 0 },
   randomState: 1,
   simulationTime: 0,
   developers: [

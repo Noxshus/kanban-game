@@ -2,6 +2,7 @@ import type { GameState, Ticket } from '../game/types'
 import { clampReportedProgress } from '../game/reportedProgress.ts'
 import { compareRank } from '../game/rank.ts'
 import { getTicketComplexity } from '../game/complexity.ts'
+import { getCommand } from '../game/planning.ts'
 
 export type PlayerTicket = Pick<
   Ticket,
@@ -10,6 +11,7 @@ export type PlayerTicket = Pick<
 
 export function getPlayerView(state: GameState) {
   return {
+    manager: { command: getCommand(state) },
     simulationTime: state.simulationTime,
     ...(state.simulationTimeRemainder !== undefined ? { simulationTimeRemainder: state.simulationTimeRemainder } : {}),
     // Explicit selection prevents hidden simulation fields leaking into the interface.

@@ -87,7 +87,6 @@ export function reportEffort(ticket: Ticket, developer: Developer, candidate: nu
   if (published) {
     if (ticket.reportedEffortEstimate === undefined) {
       encounterEstimate(ticket, developer, at, () => { throw Error('An assessment must not be rerolled for publication') }, candidate)
-      ticket.overrunEvaluationConsumed ??= false
     } else publishEstimate(ticket, developer.id, candidate, 'revision', at)
     if (developer.workSession) delete developer.workSession.estimateEvents
   }

@@ -4,6 +4,7 @@ import { isValidElement } from 'react'
 import type { ReactElement, ReactNode } from 'react'
 import { createServer } from 'vite'
 import type { GameState } from '../src/game/types'
+import type { SprintAction, SprintState } from '../src/store/sprintSession'
 import { decisionFixture } from './helpers/decisionFixture.ts'
 
 function elements(node: ReactNode): ReactElement<Record<string, unknown>>[] {
@@ -75,6 +76,9 @@ async function mountedApp(game?: GameState) {
   const floatingPause = () => elements(toolbar()).find(node => node.props['aria-label'] === 'Pause simulation' || node.props['aria-label'] === 'Resume simulation')!.props.onClick as () => void
   return {
     render, dev, timers, stale,
+    screen: () => elements((dev().props.children as (diagnostics: null, display: object) => ReactNode)(null, {}))
+      .filter(node => typeof node.type === 'function').map(node => (node.type as { name: string }).name),
+    headerButtons: () => elements(render()).filter(node => node.type === 'button'),
     time: () => (dev().props.state as { simulationTime: number }).simulationTime,
     elapse(ms: number) { now += ms },
     callback() { for (const run of [...timers.values()]) run(); render() },
@@ -83,7 +87,7 @@ async function mountedApp(game?: GameState) {
       const button = elements(toolbar()).find(node => node.type === 'button' && node.props.children === 'Start prototype sprint')!
       ;(button.props.onClick as () => void)(); render()
     },
-    action(type: string) { (dev().props.dispatch as (action: { type: string }) => void)({ type }); render() },
+    action(action: string | SprintAction) { (dev().props.dispatch as (action: SprintAction) => void)(typeof action === 'string' ? { type: action } as SprintAction : action); render() },
     async close() {
       hooks.unmount(); assert.equal(timers.size, 0)
       if (oldWindow) Object.defineProperty(globalThis, 'window', oldWindow); else Reflect.deleteProperty(globalThis, 'window')
@@ -108,6 +112,42 @@ test('both actual Pause controls settle partial monotonic intervals and exclude 
       app.action('step'); assert.equal(app.time(), 4.25)
     } finally { await app.close() }
   }
+})
+
+test('phase alone selects dedicated Planning and Execution screens without resetting shared simulation state', async () => {
+  const app = await mountedApp()
+  try {
+    assert.deepEqual(app.screen(), ['SprintPlanning'])
+    assert.equal(app.headerButtons().length, 0)
+    app.action({ type: 'addEstimation', ticketId: 'ticket-6' })
+    app.action('resolveEstimation')
+    const planned = structuredClone(app.dev().props.state)
+    const planning = structuredClone((app.dev().props.sprint as SprintState).planning)
+    assert.equal(planning!.stage, 'estimated')
+    assert.deepEqual(app.screen(), ['SprintPlanning']) // Resolution does not enter Execution.
+    app.start()
+    assert.deepEqual(app.dev().props.state, planned)
+    assert.deepEqual((app.dev().props.sprint as SprintState).planning, planning)
+    assert.deepEqual(app.screen(), ['GameBoard'])
+    assert.equal(app.headerButtons().length, 1)
+    assert.equal(app.headerButtons()[0].props.children, 'Resume')
+    app.action('step')
+    assert.equal(app.time(), 1)
+    assert.deepEqual((app.dev().props.sprint as SprintState).planning, planning)
+    assert.deepEqual(app.screen(), ['GameBoard'])
+    app.pause(false); app.render()
+    app.elapse(240000); app.callback()
+    assert.equal(app.time(), 240)
+    assert.deepEqual(app.screen(), ['SprintPlanning'])
+    assert.equal(app.headerButtons().length, 0)
+    const frozen = structuredClone(app.dev().props.state)
+    app.elapse(60000); app.callback()
+    assert.deepEqual(app.dev().props.state, frozen)
+    assert.equal(app.timers.size, 0)
+    app.action('restart')
+    assert.deepEqual(app.screen(), ['SprintPlanning'])
+    assert.equal(app.time(), 0)
+  } finally { await app.close() }
 })
 
 test('delayed browser callbacks count actual elapsed time once, cap the sprint and cannot resurrect timers', async () => {

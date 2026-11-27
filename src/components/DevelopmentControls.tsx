@@ -39,7 +39,7 @@ export function DevelopmentControls({ isPaused, canExecute = true, randomState, 
       <p>Current active RNG seed/state: <output>{randomState}</output></p>
       <p>Apply a seed while paused to control subsequent decisions. RNG state changes as draws occur.</p>
       <div className="simulation-controls">
-        <button type="button" disabled={!isPaused || !canExecute} onClick={() => dispatch({ type: 'step' })}>Step +1s</button>
+        {canExecute && <button type="button" disabled={!isPaused} onClick={() => dispatch({ type: 'step' })}>Step +1s</button>}
         <button type="button" onClick={restart}>Restart Simulation</button>
       </div>
       <p>Restart discards the current run and restores the example seed (1), paused.</p>

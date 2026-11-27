@@ -93,7 +93,7 @@ test('forecast beyond 100 is not completion or the physical overrun alarm, and D
   const { s, t, c } = fixture()
   close(projectedProgress(c.projections[0], at(200)).percentage!, 220)
   assert.equal(s.tickets[0].actualStatus, 'in_progress')
-  assert.equal(s.tickets[0].overrunEvaluationConsumed, undefined)
+  assert.equal(s.tickets[0].overrunEvaluationConsumed, false) // First publication initializes the alarm; a forecast never consumes it.
   assert.equal(s.randomState, 1)
   t.reportedStatus = 'done'; c.observe(t, at(200))
   assert.equal(projectedProgress(c.projections[0], at(1e6)).percentage, 100)

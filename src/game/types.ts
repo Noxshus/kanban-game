@@ -6,13 +6,17 @@ export type WorkDomain = 'frontend' | 'backend'
 export type TicketComplexity = 'S' | 'M' | 'L' | 'XL' | 'XXL'
 export type EffortAssessmentReason = 'pickup' | 'discovery' | 'overrun' | 'review' | 'departure' | 'completion'
 
+// Missing source on existing individual publications remains an engineer author.
+export type EstimateAuthor = { developerId: string; source?: 'engineer' }
+  | { source: 'collective'; developerId?: never }
+
 // Only publications are written now. Assessment variants/source indices are
 // accepted solely to migrate old saves; they never supply engineer knowledge.
 export type EstimateEvent =
   | { kind: 'assessment'; developerId: string; totalWork: number; reason: 'initial' | 'discovery' | 'overrun'; at: EventTime }
   | { kind: 'legacy_assessment'; developerId: string; totalWork: number; baseline: number; evidence: 'original' | 'published_revision' | 'active_fallback'; at: EventTime | null }
-  | { kind: 'publication'; developerId: string; totalWork: number; reason: 'initial' | 'takeover' | 'return' | 'revision'; sourceAssessmentIndex?: number; replacedTotalWork?: number; replacedDeveloperId?: string; at: EventTime }
-  | { kind: 'legacy_publication'; developerId?: string; totalWork: number; sourceAssessmentIndex?: number; at: null }
+  | ({ kind: 'publication'; totalWork: number; reason: 'initial' | 'takeover' | 'return' | 'revision'; sourceAssessmentIndex?: number; replacedTotalWork?: number; replacedDeveloperId?: string; replacedSource?: 'collective'; at: EventTime } & EstimateAuthor)
+  | { kind: 'legacy_publication'; developerId?: string; source?: 'engineer' | 'collective'; totalWork: number; sourceAssessmentIndex?: number; at: null }
 
 export interface EstimateDiscovery {
   ticketId: string; boardEstimate: number; requiredWork: number; judgement: number
@@ -44,7 +48,7 @@ export interface Ticket {
 
   assignedDeveloperId?: string
   // First published estimate/provenance: fixed E0 for learning, never private memory.
-  initialEffortEstimate?: { developerId: string; totalWork: number }
+  initialEffortEstimate?: EstimateAuthor & { totalWork: number }
   reportedEffortEstimate?: number
   estimateHistory?: EstimateEvent[]
   // Legacy board-only states lack #57 provenance: retain their first observed baseline, not an invented author.
@@ -139,6 +143,8 @@ export interface AssessmentDecision {
 }
 
 export interface GameState {
+  // The manager knows their own Command. Older saves default to Command 0.
+  manager?: { command: number }
   randomState: number
   tickets: Ticket[]
   developers: Developer[]

@@ -8,6 +8,7 @@ import { resolve, sep } from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { exampleGameState as fixture } from '../src/data/exampleGameState.ts'
 import { getPlayerView as playerView } from '../src/store/playerView.ts'
+import { getDiagnosticsView as diagnosticsView } from '../src/store/diagnosticsView.ts'
 import { boardReducer, createDevelopmentBoardSession } from '../src/store/boardSession.ts'
 import { collectPlayerObservations, createPlayerObservations, getPlayerObservations } from '../src/store/playerObservations.ts'
 
@@ -29,15 +30,21 @@ test('Vite development shows diagnostics; production retains only the player UI'
       if (output) await build({ logLevel: 'silent', build: { ssr: true, outDir: output, emptyOutDir: false, rollupOptions: { input: { App: resolve('src/App.tsx'), GameBoard: resolve('src/components/GameBoard.tsx') } } } })
       const { default: App } = server ? await server.ssrLoadModule('/src/App.tsx')
         : await import(pathToFileURL(resolve(output!, 'App.js')).href)
-      const html = renderToStaticMarkup(createElement(App))
-      const text = textContent(html)
-      assert.equal(text.includes('Include internal activity (DEV)'), mode === 'development')
-      assert.ok(!html.includes('activity-internal')) // Internal display defaults off even locally.
+      const planningHtml = renderToStaticMarkup(createElement(App))
+      for (const operational of ['Kanban board', 'Board Activity', 'Include internal activity (DEV)', 'Step +1s', '>Resume</button>', 'aria-label="Simulation controls"', 'draggable="true"']) {
+        assert.ok(!planningHtml.includes(operational), `${mode}: planning exposed ${operational}`)
+      }
+      const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
+        : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
+      // Execution's existing board remains independently covered in both builds;
+      // App now mounts it only in Execution, rather than alongside Planning.
+      const html = renderToStaticMarkup(createElement(Board, { view: playerView(fixture),
+        diagnostics: mode === 'development' ? diagnosticsView(fixture) : null }))
+      const text = textContent(planningHtml + html)
       assert.equal((text.match(/Estimated effort: Unknown/g) ?? []).length, 7)
       assert.equal((html.match(/class="ticket-complexity"/g) ?? []).length, 7)
       for (const size of ['S', 'XL', 'XXL']) assert.ok(html.includes(`Complexity: ${size}</span>`), mode)
-      const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
-        : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
+      assert.ok(!html.includes('activity-internal'))
       // Exercise the real published/unpublished histories, not just an empty App.
       const initial = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
       initial.simulation.game.randomState = 87 // Both genuine public publications and a failed report.
@@ -117,33 +124,45 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.ok(!html.includes('Move ticket-2 down'))
       assert.ok(html.includes('Rank: 2')) // Managerial priority is player-visible in every mode.
       assert.doesNotMatch(html, /<li[^>]*draggable="true"[^>]*><div class="ticket-reference"><span class="ticket-id">ticket-6<\/span>/)
-      const header = html.match(/<header[^>]*>(.*?)<\/header>/)?.[1] ?? ''
-      assert.ok(textContent(header).includes(`Sprint Planning 0 / ${(4800).toLocaleString()} working minutes`))
+      const header = planningHtml.match(/<header[^>]*>(.*?)<\/header>/)?.[1] ?? ''
+      assert.ok(textContent(header).includes('Sprint Planning'))
       assert.equal(text.includes('Start prototype sprint'), mode === 'development')
-      assert.equal(html.includes('Prototype sprint bridge'), mode === 'development')
-      assert.ok(textContent(header).includes('Simulation time 0 seconds'))
-      assert.match(header, /role="status">Paused/)
-      assert.match(header, /disabled="">Resume<\/button>/)
-      assert.equal((html.match(/>Resume<\/button>/g) ?? []).length, mode === 'development' ? 2 : 1)
+      assert.equal(planningHtml.includes('Prototype sprint bridge'), mode === 'development')
+      assert.ok(planningHtml.includes('Prepare the estimates'))
+      assert.ok(planningHtml.includes('Command</dt><dd>0'))
+      assert.ok(planningHtml.includes('Available capacity</dt><dd>Unknown'))
+      assert.ok(planningHtml.includes('Resolve estimates and lock shortlist'))
+      assert.equal(planningHtml.includes('Actual estimation capacity (DEV): 6'), mode === 'development')
+      assert.match(header, /role="status">Sprint Planning/)
+      assert.ok(!header.includes('<button'))
       if (mode === 'development') {
-        const panels = [...html.matchAll(/<details([^>]*)><summary[^>]*>([^<]+)<\/summary>/g)]
+        const panels = [...planningHtml.matchAll(/<details([^>]*)><summary[^>]*>([^<]+)<\/summary>/g)]
         assert.deepEqual(panels.slice(0, 2).map((panel) => panel[2]), ['Simulation', 'Team'])
         // Separate unnamed disclosures start closed and are not an exclusive accordion group.
         for (const panel of panels) {
           assert.doesNotMatch(panel[1], /\bopen(?:\s|=|$)/)
           assert.doesNotMatch(panel[1], /\bname=/)
         }
-        assert.ok(html.includes('Close Simulation Controls'))
-        assert.ok(html.includes('Close Team Diagnostics'))
-        assert.ok(html.includes('aria-label="Simulation Controls"'))
-        assert.ok(html.includes('aria-label="Team Diagnostics"'))
-        assert.match(html, /<\/details><button type="button" aria-label="Resume simulation" disabled="">Resume<\/button>/)
+        assert.ok(planningHtml.includes('Close Simulation Controls'))
+        assert.ok(planningHtml.includes('Close Team Diagnostics'))
+        assert.ok(planningHtml.includes('aria-label="Simulation Controls"'))
+        assert.ok(planningHtml.includes('aria-label="Team Diagnostics"'))
+        assert.ok(textContent(planningHtml).includes('ticket-1 — ticket diagnostics'))
+        assert.ok(!planningHtml.includes('aria-label="Resume simulation"'))
         const { DevelopmentUI } = await server!.ssrLoadModule('/src/components/DevelopmentUI.tsx')
         const { exampleGameState } = await server!.ssrLoadModule('/src/data/exampleGameState.ts')
         const { GameBoard } = await server!.ssrLoadModule('/src/components/GameBoard.tsx')
         const { getPlayerView } = await server!.ssrLoadModule('/src/store/playerView.ts')
         const { getDiagnosticsView } = await server!.ssrLoadModule('/src/store/diagnosticsView.ts')
         const { DeveloperDiagnostics, TicketDiagnostics } = await server!.ssrLoadModule('/src/components/Diagnostics.tsx')
+        const collective = structuredClone(exampleGameState)
+        collective.tickets[0].initialEffortEstimate = { source: 'collective', totalWork: 12 }
+        collective.tickets[0].reportedEffortEstimate = 12
+        collective.tickets[0].estimateHistory = [{ kind: 'publication', source: 'collective', totalWork: 12, at: { high: 0, low: 0 }, reason: 'initial' }]
+        const collectiveHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(collective).tickets[0] }))
+        assert.ok(collectiveHtml.includes('First published estimate: 12 work units (Collective team)'))
+        assert.ok(collectiveHtml.includes('publication: Collective team'))
+        assert.ok(!collectiveHtml.includes('undefined'))
         const completedHtml = renderToStaticMarkup(createElement(TicketDiagnostics, { ticket: getDiagnosticsView(completed).tickets[0] }))
         assert.ok(completedHtml.includes('class="comparison-match"'))
         for (const text of ['Active work: N/A — completed.', 'Historical owner: Alex (developer-1).', 'All applicable comparisons match.']) assert.ok(completedHtml.includes(text))
@@ -210,23 +229,23 @@ test('Vite development shows diagnostics; production retains only the player UI'
             dispatch: () => {},
           }, () => null))
           assert.match(toolbar, new RegExp(`<\\/details><button type="button" aria-label="${label} simulation">${label}<\\/button>`))
+          assert.ok(toolbar.includes('Step +1s'))
           const disclosures = [...toolbar.matchAll(/<details([^>]*)>/g)]
           assert.equal(disclosures.length, 2)
           assert.ok(disclosures.every((panel) => !/\bopen(?:\s|=|$)/.test(panel[1])))
         }
       }
       for (const playerText of ['Kanban board', 'Backlog', 'To Do', 'In Progress', 'Done',
-        'Projected progress', 'Engineer report:', 'Assigned to:', 'Developers', 'Productivity:', 'Resume',
-        'Simulation time 0 seconds']) {
+        'Projected progress', 'Engineer report:', 'Assigned to:', 'Developers', 'Productivity:']) {
         assert.ok(text.includes(playerText), `${mode}: missing ${playerText}`)
       }
-      for (const debugText of ['Show development diagnostics', 'Step +1s', 'Restart Simulation',
+      for (const debugText of ['Show development diagnostics', 'Restart Simulation',
         'Current active RNG seed/state:', 'Apply seed', 'Development diagnostics: team overview',
         'Actual team work', 'Actual work:', 'Remaining:', 'ETA:', 'Active developer:',
         'First published estimate:', 'Published effort estimate:', 'actual total effort:', 'Productive effort by engineer', 'Latest effort re-evaluation:', 'Estimate publication history',
         'Active work:', 'Assigned tickets (ownership):', 'Work domain: Frontend', 'Work domain: Backend',
         'Frontend competency:', 'Backend competency:', 'Base productivity:', 'Effective productivity:', 'Judgement:', 'Focus:', 'Most recent assessment', 'Uninterrupted work duration:', 'Flow bonus:']) {
-        assert.equal(html.includes(debugText), mode === 'development', `${mode}: ${debugText}`)
+        assert.equal((planningHtml + html).includes(debugText), mode === 'development', `${mode}: ${debugText}`)
       }
     } finally {
       if (server) await server.close()
