@@ -6,7 +6,7 @@ import { validateSelectionAttributes } from './selectWork.ts'
 import { getFlowDuration } from './flow.ts'
 import { projectCompletion } from './completionTime.ts'
 import { accumulateWork, integratedWork, isWorkComplete, validWorkSession } from './work.ts'
-import { addEventTime, compareEventTime, eventInterval, eventTime, requireTimeProgress } from './eventTime.ts'
+import { addEventTime, compareEventTime, eventInterval, eventTime } from './eventTime.ts'
 import { recordProductiveEffort, validateWorkLog } from './workLog.ts'
 import { evaluateEstimate, prepareDiscovery, projectEstimateEvents } from './reestimation.ts'
 import { getTicketComplexity } from './complexity.ts'
@@ -15,16 +15,20 @@ import { observeBoard } from './boardActivity.ts'
 import type { BoardObserver } from './boardActivity'
 import type { InternalObserver } from './simulationActivity'
 import { publishProgress } from './progressReporting.ts'
+import type { EventTime } from './eventTime'
 
-export function advanceSimulation(state: GameState, elapsedSeconds: number, random?: () => number, observe?: BoardObserver, internal?: InternalObserver): GameState {
+export function advanceSimulation(state: GameState, advance: number | EventTime, random?: () => number, observe?: BoardObserver, internal?: InternalObserver): GameState {
+  let now = eventTime(state.simulationTime, state.simulationTimeRemainder)
+  const elapsedSeconds = typeof advance === 'number' ? advance : eventInterval(advance, now)
   if (!Number.isFinite(elapsedSeconds) || elapsedSeconds < 0 || !Number.isFinite(state.simulationTime + elapsedSeconds)) {
     throw new RangeError('Elapsed time and resulting simulation time must be finite and non-negative')
   }
   const result = structuredClone(state)
   if (elapsedSeconds === 0) return result
-  let now = eventTime(state.simulationTime, state.simulationTimeRemainder)
-  const end = addEventTime(now, elapsedSeconds)
-  requireTimeProgress(now.high, end.high, elapsedSeconds)
+  // Playback supplies an anchored absolute target, retaining its low word all
+  // the way into the scheduler. Numeric callers retain the ordinary delta API.
+  const end = typeof advance === 'number' ? addEventTime(now, advance) : eventTime(advance.high, advance.low)
+  if (compareEventTime(end, now) <= 0) throw new RangeError('Positive interval is below the session-time numeric resolution')
   const { tickets, developers } = result
   validateWorkLog(result.workLog)
   tickets.forEach(validateEstimateHistory)
@@ -154,7 +158,11 @@ export function advanceSimulation(state: GameState, elapsedSeconds: number, rand
             && session.completionSeconds !== null && elapsed >= session.completionSeconds) {
           throw new RangeError('Distinct completion events exceed session-time numeric resolution')
         }
-        requireTimeProgress(session.elapsed, elapsed, interval)
+        // Clock progress is checked using compensated instants, not the rounded
+        // integration duration. Its low word remains in currentTime/originTime;
+        // later cumulative integration recovers it even if this work total rounds
+        // unchanged. Never replace the origin with an incrementally rounded total.
+        if (elapsed < session.elapsed) throw new RangeError('Cumulative work time moved backward')
         // A very old Flow streak may round unchanged while the independently
         // anchored work-session interval still advances and delivers real work.
         if (!Number.isFinite(session.initialFlowDuration + elapsed)) throw new RangeError('Flow duration exceeds the numeric range')

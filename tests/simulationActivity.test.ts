@@ -122,10 +122,10 @@ test('multiple evaluations inside one Step are retained instead of inferred from
 })
 
 test('DEV and player sessions have identical gameplay and public IDs, including deferred priority events', () => {
-  let player = createBoardSession(), dev = createDevelopmentBoardSession()
+  let player = boardReducer(createBoardSession(), { type: 'startSprint' }), dev = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
   const actions = [
     { type: 'reorderTodo', ticketId: 'ticket-5', targetId: 'ticket-2' },
-    { type: 'togglePause' }, { type: 'tick' }, { type: 'tick' }, { type: 'togglePause' }, { type: 'step' },
+    { type: 'togglePause' }, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }, { type: 'togglePause' }, { type: 'step' },
   ] as const
   for (const action of actions) {
     player = boardReducer(player, action); dev = boardReducer(dev, action)
@@ -183,7 +183,7 @@ test('diagnostic callbacks receive copies and failed transitions discard interna
     if (event.kind === 'decision') event.decision.considered.length = 0
   })
   assert.deepEqual(observed, advanceSimulation(s, due, () => .9))
-  const session = createDevelopmentBoardSession(), g = session.simulation.game
+  const session = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' }), g = session.simulation.game
   g.randomState = 2 // Keep the underflow reproduction after progress reporting adds a draw.
   g.tickets = g.tickets.slice(0, 2).map((t, i) => ({ ...t, completedWork: 0, requiredWork: i ? Number.MIN_VALUE : 100 }))
   g.developers = g.developers.slice(0, 2).map(d => ({ ...d, judgement: 0, discipline: 0, competencies: { frontend: 0, backend: 0 } }))

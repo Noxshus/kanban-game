@@ -144,14 +144,14 @@ test('failed publication is not an observed revision, while a successful work-bo
 })
 
 test('pause and paused priority edits preserve observations; restart clears evidence independently of ticker history', () => {
-  const session = createBoardSession(), s = decisionFixture()
+  const session = boardReducer(createBoardSession(), { type: 'startSprint' }), s = decisionFixture()
   s.developers[0].productivity = 0
   session.simulation.game = s
   session.observations = seededObservations(s)
   let next = session
   for (let i = 0; i < 20; i++) next = boardReducer(next, { type: 'step' })
   assert.deepEqual(next.observations, session.observations)
-  assert.strictEqual(boardReducer(next, { type: 'tick' }), next)
+  assert.strictEqual(boardReducer(next, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }), next)
   assert.deepEqual(boardReducer(next, { type: 'reorderTodo', ticketId: 'missing', targetId: 'current' }).observations, next.observations)
   const resumed = boardReducer(next, { type: 'togglePause' })
   const paused = boardReducer(resumed, { type: 'togglePause' })
@@ -199,10 +199,10 @@ test('an intermediate estimate chain in one advance cannot disappear into a fina
 })
 
 test('player and DEV sessions observe the same facts without changing gameplay, RNG or public activity IDs', () => {
-  let player = createBoardSession(), dev = createDevelopmentBoardSession()
+  let player = boardReducer(createBoardSession(), { type: 'startSprint' }), dev = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
   const initial = structuredClone(player)
   const actions = [{ type: 'reorderTodo', ticketId: 'ticket-5', targetId: 'ticket-2' }, { type: 'step' },
-    { type: 'togglePause' }, { type: 'tick' }, { type: 'tick' }, { type: 'togglePause' }, { type: 'step' }] as const
+    { type: 'togglePause' }, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }, { type: 'togglePause' }, { type: 'step' }] as const
   for (const action of actions) {
     const direct = simulationReducer(player.simulation, action)
     player = boardReducer(player, action); dev = boardReducer(dev, action)
@@ -211,7 +211,7 @@ test('player and DEV sessions observe the same facts without changing gameplay, 
     assert.deepEqual(player.observations, dev.observations)
     assert.deepEqual(player.activity, dev.activity)
   }
-  assert.deepEqual(initial, createBoardSession())
+  assert.deepEqual(initial, boardReducer(createBoardSession(), { type: 'startSprint' }))
   const saved = JSON.parse(JSON.stringify(player))
   assert.deepEqual(boardReducer(saved, { type: 'step' }), boardReducer(player, { type: 'step' }))
   const serialized = JSON.stringify(player.observations)

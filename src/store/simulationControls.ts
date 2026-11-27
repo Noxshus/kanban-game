@@ -5,6 +5,7 @@ import { compareRank, reorderTodo } from '../game/rank.ts'
 import { reconsiderPriorities } from '../game/workDecisions.ts'
 import type { BoardObserver } from '../game/boardActivity'
 import type { InternalObserver } from '../game/simulationActivity'
+import type { EventTime } from '../game/eventTime'
 
 export interface SimulationSession {
   game: GameState
@@ -49,6 +50,11 @@ function applyPendingPriorities(session: SimulationSession, observe?: BoardObser
   return { ...ready, game: reconsiderPriorities(before, session.game, observe, internal) }
 }
 
+export function advanceSession(session: SimulationSession, advance: number | EventTime, observe?: BoardObserver, internal?: InternalObserver): SimulationSession {
+  const ready = applyPendingPriorities(session, observe, internal)
+  return { ...ready, game: advanceSimulation(ready.game, advance, undefined, observe, internal) }
+}
+
 export function simulationReducer(
   session: SimulationSession,
   action: SimulationAction,
@@ -75,10 +81,7 @@ export function simulationReducer(
     case 'step':
       // Guard against queued timer ticks after pause/restart, and stepping during a live run.
       if (action.type === 'tick' ? session.isPaused : !session.isPaused) return session
-      {
-        const ready = applyPendingPriorities(session, observe, internal)
-        return { ...ready, game: advanceSimulation(ready.game, 1, undefined, observe, internal) }
-      }
+      return advanceSession(session, 1, observe, internal)
     case 'restart':
       return createSimulationSession()
     case 'applySeed':

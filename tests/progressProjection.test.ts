@@ -169,8 +169,8 @@ test('real report/assignment events preserve projection anchors, chronology, RNG
 })
 
 test('pause freezes projections, Step changes them once, Resume does not add elapsed time and Restart clears anchors', () => {
-  const initial = createBoardSession(), before = structuredClone(initial)
-  assert.strictEqual(boardReducer(initial, { type: 'tick' }), initial)
+  const initial = boardReducer(createBoardSession(), { type: 'startSprint' }), before = structuredClone(initial)
+  assert.strictEqual(boardReducer(initial, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }), initial)
   const stepped = boardReducer(initial, { type: 'step' })
   const saved = JSON.parse(JSON.stringify(stepped))
   assert.deepEqual(boardReducer(saved, { type: 'step' }), boardReducer(stepped, { type: 'step' }))

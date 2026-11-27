@@ -39,7 +39,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
       const { GameBoard: Board } = server ? await server.ssrLoadModule('/src/components/GameBoard.tsx')
         : await import(pathToFileURL(resolve(output!, 'GameBoard.js')).href)
       // Exercise the real published/unpublished histories, not just an empty App.
-      const initial = createDevelopmentBoardSession()
+      const initial = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
       initial.simulation.game.randomState = 87 // Both genuine public publications and a failed report.
       const populated = boardReducer(initial, { type: 'step' })
       assert.ok(populated.activity.length > 0)
@@ -118,9 +118,12 @@ test('Vite development shows diagnostics; production retains only the player UI'
       assert.ok(html.includes('Rank: 2')) // Managerial priority is player-visible in every mode.
       assert.doesNotMatch(html, /<li[^>]*draggable="true"[^>]*><div class="ticket-reference"><span class="ticket-id">ticket-6<\/span>/)
       const header = html.match(/<header[^>]*>(.*?)<\/header>/)?.[1] ?? ''
+      assert.ok(textContent(header).includes(`Sprint Planning 0 / ${(4800).toLocaleString()} working minutes`))
+      assert.equal(text.includes('Start prototype sprint'), mode === 'development')
+      assert.equal(html.includes('Prototype sprint bridge'), mode === 'development')
       assert.ok(textContent(header).includes('Simulation time 0 seconds'))
       assert.match(header, /role="status">Paused/)
-      assert.match(header, />Resume<\/button>/)
+      assert.match(header, /disabled="">Resume<\/button>/)
       assert.equal((html.match(/>Resume<\/button>/g) ?? []).length, mode === 'development' ? 2 : 1)
       if (mode === 'development') {
         const panels = [...html.matchAll(/<details([^>]*)><summary[^>]*>([^<]+)<\/summary>/g)]
@@ -134,7 +137,7 @@ test('Vite development shows diagnostics; production retains only the player UI'
         assert.ok(html.includes('Close Team Diagnostics'))
         assert.ok(html.includes('aria-label="Simulation Controls"'))
         assert.ok(html.includes('aria-label="Team Diagnostics"'))
-        assert.match(html, /<\/details><button type="button" aria-label="Resume simulation">Resume<\/button>/)
+        assert.match(html, /<\/details><button type="button" aria-label="Resume simulation" disabled="">Resume<\/button>/)
         const { DevelopmentUI } = await server!.ssrLoadModule('/src/components/DevelopmentUI.tsx')
         const { exampleGameState } = await server!.ssrLoadModule('/src/data/exampleGameState.ts')
         const { GameBoard } = await server!.ssrLoadModule('/src/components/GameBoard.tsx')

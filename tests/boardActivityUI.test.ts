@@ -198,7 +198,7 @@ test('GameBoard emphasis expires after five running seconds, retriggers and clea
 test('GameBoard Step cues freeze while paused and Resume consumes only their remaining active time', async () => {
   const board = await mountedBoard()
   try {
-    let session = createDevelopmentBoardSession()
+    let session = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
     const props = () => ({ view: getPlayerView(session.simulation.game), activity: session.activity, isPaused: session.simulation.isPaused })
     const cues = (tree: ReactNode) => elements(tree).filter(node => typeof node.type === 'function' && node.type.name === 'BoardEmphasis')
     board.render(props())
@@ -335,7 +335,7 @@ test('DEV rows reuse the sidebar interactions and expose missed-report details o
   try {
     const { BoardActivityLog } = await server.ssrLoadModule('/src/components/BoardActivity.tsx')
     const { describeDiagnosticActivity } = await server.ssrLoadModule('/src/components/developmentActivityPresentation.ts')
-    const initial = createDevelopmentBoardSession()
+    const initial = boardReducer(createDevelopmentBoardSession(), { type: 'startSprint' })
     initial.simulation.game.randomState = 87 // Populated public reports AND a failed effort report with #87 draws.
     const session = boardReducer(initial, { type: 'step' })
     const filtered = filterDiagnosticActivity(session.diagnosticActivity!, { assessments: true, decisions: true, noopReviews: false })

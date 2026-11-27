@@ -68,7 +68,7 @@ In the released prototype, the player can:
 
 - Observe the Kanban board and available team information.
 - Set global work priorities by reordering tickets within reported To Do.
-- Pause and resume the simulation.
+- Pause and resume Sprint Execution. The temporary start bridge is DEV-only; production remains in Planning until the normal planning/commitment interface exists.
 
 Planned managerial capabilities, not yet implemented, include:
 
@@ -81,6 +81,22 @@ Planned managerial capabilities, not yet implemented, include:
 Additional actions will become available as the game progresses.
 
 ## 4. Core Game Systems
+
+### 4.0. Sprint calendar and phase foundation (#95; released)
+
+The session distinguishes **Sprint Planning** from **Sprint Execution**. Planning is outside the working timeline: no productive work, Flow, scheduled engineer checks, reporting, decisions or simulation time advance. Rank edits can still be staged without triggering engineers. Execution retains normal pause/resume behaviour; paused priority changes are processed only when execution resumes or is stepped.
+
+The provisional calendar is **2 working weeks × 5 working days/week × 8 working hours/day = 80 working hours**. Nights and weekends are skipped entirely; overtime remains future #94. Calendar settings, sprint duration and playback conversion are centralized and configurable.
+
+The existing internal simulation second is unchanged. Normal playback advances **1 simulation second per real-time second**, mapped to **20 in-game working minutes**. Thus the initial sprint lasts **240 unpaused real-time seconds**. Work production, Focus/Flow, Discipline schedules and seeded fractional events keep their existing simulation-second formulas; they are not reinterpreted as per-hour rates. For example, the existing Discipline-0 median review interval of 12 simulation seconds corresponds to 4 working hours at this calendar scale. DEV Step advances one internal second (20 working minutes by default), capped to the remaining sprint interval.
+
+Playback accumulates actual unpaused elapsed time in native browser milliseconds, including partial intervals before either Pause control and delayed callbacks. Conversion uses cumulative elapsed time rather than separately rounding each sample. Paused and Planning time is excluded. Fractional playback conversion is monotonic and retains an anchored elapsed duration through pause/resume and save/restore; a manual Step or playback-speed change establishes a new conversion origin without changing accumulated simulation work. Compensated clock progress can occur while rounded cumulative work or Flow displays stay unchanged: their integration origin is retained for subsequent cumulative calculation, rather than discarding elapsed time.
+
+Playback accepts **only explicit millisecond intervals**; the simulation engine and DEV Step retain simulation-second semantics. Serialized conversion anchors explicitly identify milliseconds. Earlier, unreleased seconds-based or unlabelled playback anchors are rejected for playback rather than silently reinterpreted; Restart clears that prototype timing metadata. Current millisecond anchors restore unchanged, while older saves without sprint metadata still enter Planning as described below.
+
+At the exact execution deadline, ordinary completion/report/decision events are processed in their existing order, then the session returns to Planning and pauses. An advance crossing the boundary uses only the execution interval; excess time is discarded, never carried into planning or a later sprint. Claims, Flow, useful progress, gross effort, estimates and pending engineer deadlines are frozen as they stand, with no boundary loss or invented reporting occasion. Their eventual release/carryover and commitment policy belongs to #98; preserving the snapshot here does not automatically recommit unfinished work. Restart restores the example game in Planning, retaining the configured calendar.
+
+**Temporary DEV bridge, explicitly approved for this slice:** “Start prototype sprint” starts a paused execution timebox using the existing board, without consuming time or RNG. It is isolated inside development controls; Pause/Resume and Step cannot bypass Planning. The normal planning/estimation/commitment interface is not yet implemented, so production has no temporary start bypass. Planning estimates/Command (#96), commitment/delivery forecasts (#97), recurring scope/outcomes (#98), Assessment (#80) and performance scoring remain outside this foundation. Older board sessions lacking phase metadata enter Planning at their saved simulation time without resetting their game state or fabricating sprint history.
 
 ### 4.1. Kanban Board
 
@@ -163,7 +179,7 @@ Pause freezes engineer decisions, estimates/publications, RNG, productive work, 
 
 Events process chronologically. Release all completed claims first, then process pickups and revision decisions in engineer order at a true tie. Priority actions also resolve engineers in order, respecting earlier claims; newly freed work alone does not become a new Rank trigger for later engineers. Completion wins a coincident discovery/overrun on the same ticket. Staying preserves Flow; actual switching/completion resets it. Legacy periodic clock fields are ignored/removed without consuming schedule RNG.
 
-Anchored compensated event instants and integrated actual work remain in place for elapsed partitions, JSON restoration and numerical safety. Unsupported actual time/work precision still fails explicitly. The #49/#56 prototype passed manual QA and independent review and was released in `ec12f8b`. Further active-work decision triggers, planning #60 and overestimation #59 remain unimplemented. Effort-reporting reviews are implemented under #63 below; #61 switch-loss consequences remain separate from decision scoring.
+Anchored compensated event instants and integrated actual work remain in place for elapsed partitions, JSON restoration and numerical safety. Unsupported actual time/work precision still fails explicitly. The #49/#56 prototype passed manual QA and independent review and was released in `ec12f8b`. Further active-work decision triggers, collective planning/commitment (#96/#97) and overestimation #59 remain unimplemented. The #95 phase boundary wraps this engine without changing selection or reporting formulas. Effort-reporting reviews are implemented under #63 below; #61 switch-loss consequences remain separate from decision scoring.
 
 #### 4.2.2.1. Periodic idle work checks (#35; released infrastructure slice)
 
@@ -241,7 +257,7 @@ Gross productive effort in #65, shared estimate publication history and work-bas
 
 **Future learning from past events (#36):** A periodic one-to-one review (monthly is only an example) might allow engineers to explain previous decisions, blockers and mistakes, with observations recorded in their profiles. The engineer's account is not automatically authoritative truth: statements, actual history, player inferences and verified player knowledge must remain distinguishable. Player attributes such as possible **Deduction** could influence how effectively the manager questions an account or identifies contradictions; names and mechanics are not yet confirmed. Design this later, once the behaviour being reviewed exists; do not add managerial interventions during the simulation-first phase.
 
-**PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Attribute-driven behaviour and fallible effort, progress and workflow-status reporting are released; further refinements remain future design work. Sprint Planning (#60), activity indicators (#91) and additional managerial interventions are not implemented.
+**PoC sequencing decision:** Develop convincing autonomous engineer behaviour and the divergence between actual events and Kanban reports **before** introducing new manager interventions. The desired managerial frustration should emerge from watching engineers make their own choices; only then should player actions be designed in response. Attribute-driven behaviour and fallible effort, progress and workflow-status reporting are released; further refinements remain future design work. The released #95 foundation adds calendar/phase boundaries only; collective planning/commitment (#96/#97), activity indicators (#91) and additional managerial interventions are not implemented.
 
 ### 4.2.4. Shared Kanban effort estimates and publication (#57/#70; Stage 2 reporting #63)
 
@@ -284,7 +300,7 @@ A proactive review freshly assesses its **own active ticket** using the existing
 
 Completion wins coincident deadlines. All same-instant completion reports, pickups and ongoing assessments resolve in engineer order after completed claims are released. A coincident review/discovery/overrun performs one assessment, with review follow-through guaranteeing publication of any improvement; the genuine work event can still trigger #56. Overrun takes precedence over ordinary discovery for the lifetime alarm. Each continuing engineer schedules just one next review; switching schedules only the new ticket's clock.
 
-Until the first successful publication, actual work, Flow and reviews continue, but there is no actionable E0, #58 threshold or #68 estimate crossing. Once established, first-published E0 stays fixed. The publication history contains only real reports; missed attempts/no-op checks may appear in a bounded DEV snapshot, never as knowledge used by later decisions. Fallible progress reports reuse these opportunities (#87 below); released workflow-status reporting (#35/#90) uses reliable own-ticket reviews and fallible start/completion/encounter reports. Assignment reliability and further #35 refinements, planning (#60), blockers (#33), overestimation (#59) and multitasking (#73) remain unimplemented.
+Until the first successful publication, actual work, Flow and reviews continue during execution, but there is no actionable E0, #58 threshold or #68 estimate crossing. Once established, first-published E0 stays fixed. The publication history contains only real reports; missed attempts/no-op checks may appear in a bounded DEV snapshot, never as knowledge used by later decisions. Fallible progress reports reuse these opportunities (#87 below); released workflow-status reporting (#35/#90) uses reliable own-ticket reviews and fallible start/completion/encounter reports. Assignment reliability and further #35 refinements, collective planning/commitment (#96/#97), blockers (#33), overestimation (#59) and multitasking (#73) remain unimplemented.
 
 
 ### 4.2.5. Durable productive-effort log (#65)
@@ -455,6 +471,7 @@ Record significant decisions here as the project evolves.
 |---|---|---|
 | Browser-first development | Confirmed | React, TypeScript, Vite |
 | Autonomous developers | Confirmed | Core gameplay premise |
+| Sprint calendar and phase boundary (#95) | Released foundation; broader #60 loop pending | Planning freezes working time; configurable 2 × 5 × 8 hours, 20 working min/internal second and 1 internal second/real second give a 240-second default. Exact deadline events finish before Planning; state is frozen without boundary loss. DEV-only start bridge; estimation, commitment and carryover remain #96–#98. |
 | Unreliable Kanban information | Confirmed | Central design mechanic |
 | RPG-style player attributes | Confirmed direction; not implemented | Attribute/progression details remain future design; no manager Deduction mechanic shipped |
 | Incremental progression | Confirmed direction; not implemented | Resources, upgrades and progression rules remain future design |

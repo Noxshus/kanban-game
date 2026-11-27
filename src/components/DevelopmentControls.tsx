@@ -5,11 +5,12 @@ import type { SimulationAction } from '../store/simulationControls'
 
 interface Props {
   isPaused: boolean
+  canExecute?: boolean
   randomState: number
-  dispatch: Dispatch<SimulationAction>
+  dispatch: Dispatch<Extract<SimulationAction, { type: 'step' | 'restart' | 'applySeed' }>>
 }
 
-export function DevelopmentControls({ isPaused, randomState, dispatch }: Props) {
+export function DevelopmentControls({ isPaused, canExecute = true, randomState, dispatch }: Props) {
   const [seedInput, setSeedInput] = useState('1')
   const [error, setError] = useState<string | null>(null)
 
@@ -38,7 +39,7 @@ export function DevelopmentControls({ isPaused, randomState, dispatch }: Props) 
       <p>Current active RNG seed/state: <output>{randomState}</output></p>
       <p>Apply a seed while paused to control subsequent decisions. RNG state changes as draws occur.</p>
       <div className="simulation-controls">
-        <button type="button" disabled={!isPaused} onClick={() => dispatch({ type: 'step' })}>Step +1s</button>
+        <button type="button" disabled={!isPaused || !canExecute} onClick={() => dispatch({ type: 'step' })}>Step +1s</button>
         <button type="button" onClick={restart}>Restart Simulation</button>
       </div>
       <p>Restart discards the current run and restores the example seed (1), paused.</p>

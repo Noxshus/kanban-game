@@ -106,7 +106,7 @@ test('a new active engineer resumes retained fractional work without inheriting 
   assert.equal(finished.tickets[0].actualStatus, 'done')
 })
 
-test('large session time rejects a positive interval that would be rounded away before losing work', () => {
+test('compensated session time retains small advances even when rounded cumulative work stays unchanged', () => {
   const state = scenario(false)
   state.developers[0].productivity = 1
   state.developers[0].focus = 0
@@ -121,11 +121,21 @@ test('large session time rejects a positive interval that would be rounded away 
   const supported = advanceSimulation(prefix, 2)
   assert.equal(supported.tickets[0].actualStatus, 'done')
   assert.equal(supported.tickets[0].completedWork, state.tickets[0].requiredWork)
-  assert.throws(() => advanceSimulation(prefix, 1), /session-time numeric resolution/)
-  assert.throws(() => advanceSimulation(advanceSimulation(prefix, 1), 1), /session-time numeric resolution/)
+  const first = advanceSimulation(prefix, 1)
+  assert.equal(first.simulationTime, 1e16)
+  assert.equal(first.simulationTimeRemainder, 1)
+  assert.equal(first.developers[0].workSession!.elapsed, 1e16)
+  assert.deepEqual(first.tickets, prefix.tickets)
+  assert.deepEqual(first.workLog, prefix.workLog)
+  assert.equal(first.randomState, prefix.randomState)
+  assert.deepEqual(advanceSimulation(JSON.parse(JSON.stringify(first)), 1), supported)
+  // This increment is lost by BOTH clock words, not just the rounded integral.
+  let draws = 0
+  assert.throws(() => advanceSimulation(first, 1e-40, () => { draws++; return .5 }), /numeric resolution/)
+  assert.equal(draws, 0)
   assert.deepEqual(prefix, original)
   const restored = JSON.parse(JSON.stringify(prefix))
-  assert.throws(() => advanceSimulation(restored, 1), /session-time numeric resolution/)
+  assert.deepEqual(advanceSimulation(restored, 1), first)
   assert.deepEqual(advanceSimulation(restored, 2), supported)
   assert.deepEqual(advanceSimulation(prefix, 0), prefix)
 })

@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import type { CSSProperties, Dispatch, ReactNode } from 'react'
 import type { GameState } from '../game/types'
-import type { SimulationAction } from '../store/simulationControls'
+import type { SprintAction, SprintState } from '../store/sprintSession'
 import { getDiagnosticsView } from '../store/diagnosticsView'
 import type { DiagnosticsView } from '../store/diagnosticsView'
 import { DevelopmentControls } from './DevelopmentControls'
@@ -14,14 +14,15 @@ import { describeDiagnosticActivity } from './developmentActivityPresentation'
 interface Props {
   state: GameState
   isPaused: boolean
-  dispatch: Dispatch<SimulationAction>
+  dispatch: Dispatch<SprintAction>
+  sprint?: SprintState
   activity?: readonly DiagnosticActivity[]
   children: (diagnostics: DiagnosticsView | null, activityDisplay: ActivityDisplay) => ReactNode
 }
 
 // Mounted only by App's Vite DEV boundary. Future overlays can live here without
 // changing the reported player view or putting build-mode decisions in the engine.
-export function DevelopmentUI({ state, isPaused, dispatch, children, activity = [] }: Props) {
+export function DevelopmentUI({ state, isPaused, sprint, dispatch, children, activity = [] }: Props) {
   const [showDiagnostics, setShowDiagnostics] = useState(true)
   const [includeInternal, setIncludeInternal] = useState(false)
   const [assessments, setAssessments] = useState(true)
@@ -67,7 +68,11 @@ export function DevelopmentUI({ state, isPaused, dispatch, children, activity = 
           <summary aria-label="Simulation Controls" title="Simulation Controls">Simulation</summary>
           <div className="development-panel" role="region" aria-label="Simulation Controls">
             <button type="button" onClick={() => closePanel(simulationPanel.current)}>Close Simulation Controls</button>
-            <DevelopmentControls isPaused={isPaused} randomState={state.randomState} dispatch={dispatch} />
+            {sprint?.phase === 'planning' && <section aria-label="Prototype sprint bridge">
+              <p>DEV-only sprint foundation: start an execution timebox using the existing board. Planning, estimation and commitment UI are not implemented yet.</p>
+              <button type="button" onClick={() => dispatch({ type: 'startSprint' })}>Start prototype sprint</button>
+            </section>}
+            <DevelopmentControls isPaused={isPaused} canExecute={sprint?.phase !== 'planning'} randomState={state.randomState} dispatch={dispatch} />
           </div>
         </details>
         <details ref={teamPanel} className="development-menu">
@@ -78,6 +83,7 @@ export function DevelopmentUI({ state, isPaused, dispatch, children, activity = 
           </div>
         </details>
         <button type="button" aria-label={isPaused ? 'Resume simulation' : 'Pause simulation'}
+          disabled={sprint?.phase === 'planning'}
           onClick={() => dispatch({ type: 'togglePause' })}>
           {isPaused ? 'Resume' : 'Pause'}
         </button>

@@ -172,7 +172,7 @@ test('restored To Do work-start precedes completion even when both fall within t
 })
 
 test('session collection is bounded, repeatable under StrictMode, and does not fabricate mount events', () => {
-  const initial = createBoardSession(), before = structuredClone(initial)
+  const initial = boardReducer(createBoardSession(), { type: 'startSprint' }), before = structuredClone(initial)
   assert.equal(initial.activity.length, 0)
   const first = boardReducer(initial, { type: 'step' })
   assert.deepEqual(boardReducer(initial, { type: 'step' }), first)
@@ -207,13 +207,13 @@ test('real seeded team publications and completion events replay across fraction
 })
 
 test('pause retains history, restart clears it, and restoring session JSON does not duplicate events', () => {
-  const first = boardReducer(createBoardSession(), { type: 'step' })
+  const first = boardReducer(boardReducer(createBoardSession(), { type: 'startSprint' }), { type: 'step' })
   assert.ok(first.activity.length > 0)
   const resumed = boardReducer(first, { type: 'togglePause' })
   assert.strictEqual(resumed.activity, first.activity)
   const paused = boardReducer(resumed, { type: 'togglePause' })
   assert.deepEqual(paused.activity, first.activity)
-  assert.strictEqual(boardReducer(paused, { type: 'tick' }), paused)
+  assert.strictEqual(boardReducer(paused, { type: 'tick', elapsedRealMilliseconds: { high: 1000, low: 0 } }), paused)
   const saved = JSON.parse(JSON.stringify(first))
   assert.deepEqual(boardReducer(saved, { type: 'step' }), boardReducer(first, { type: 'step' }))
   const restart = boardReducer(resumed, { type: 'restart' })
@@ -222,7 +222,7 @@ test('pause retains history, restart clears it, and restoring session JSON does 
 })
 
 test('paused Rank edits are silent; Resume and Step capture their public changes once at time zero', () => {
-  const initial = createBoardSession()
+  const initial = boardReducer(createBoardSession(), { type: 'startSprint' })
   const staged = boardReducer(initial, { type: 'reorderTodo', ticketId: 'ticket-5', targetId: 'ticket-2' })
   assert.deepEqual(staged.activity, [])
   for (const type of ['togglePause', 'step'] as const) {
@@ -233,7 +233,7 @@ test('paused Rank edits are silent; Resume and Step capture their public changes
 })
 
 test('running priorities collect immediate changes without time advancement or a second Resume flush', () => {
-  const initial = boardReducer(createBoardSession(), { type: 'togglePause' })
+  const initial = boardReducer(boardReducer(createBoardSession(), { type: 'startSprint' }), { type: 'togglePause' })
   const action = { type: 'reorderTodo', ticketId: 'ticket-5', targetId: 'ticket-2' } as const
   const reordered = boardReducer(initial, action)
   assert.deepEqual(reordered.simulation, simulationReducer(initial.simulation, action))
@@ -258,7 +258,7 @@ test('zero time is silent and observer snapshots cannot mutate simulation or exp
 })
 
 test('a throwing observed transition leaves original session, history and RNG untouched', () => {
-  const session = createBoardSession(), game = session.simulation.game
+  const session = boardReducer(createBoardSession(), { type: 'startSprint' }), game = session.simulation.game
   game.randomState = 2 // A publishes, then B's estimate underflows with the new progress-report draw included.
   game.tickets = game.tickets.slice(0, 2).map((ticket, i) => ({ ...ticket, requiredWork: i ? Number.MIN_VALUE : 100, completedWork: 0 }))
   game.developers = game.developers.slice(0, 2).map(d => ({ ...d, judgement: 0, discipline: 0, competencies: { frontend: 0, backend: 0 } }))

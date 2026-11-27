@@ -33,10 +33,3 @@ export function eventInterval(later: EventTime, earlier: EventTime) {
   if (!Number.isFinite(seconds)) throw new RangeError('Event interval exceeds the numeric range')
   return seconds
 }
-
-export function requireTimeProgress(before: number, after: number, interval: number) {
-  if (!Number.isFinite(after)) throw new RangeError('Work clock exceeds the numeric range')
-  if (interval > 0 && after <= before) {
-    throw new RangeError('Positive interval is below the session-time numeric resolution')
-  }
-}
